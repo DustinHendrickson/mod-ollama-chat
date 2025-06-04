@@ -111,6 +111,9 @@ OllamaChat.MaxConcurrentQueries = 0
 #     Description: The fallback personality description used when a bot has no specific roleplay type assigned.
 #     Default:     Talk like a standard WoW player.
 OllamaChat.DefaultPersonalityPrompt = "Talk like a standard WoW player."
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "像标准魔兽玩家那样说话。"
+# German:     # OllamaChat.DefaultPersonalityPrompt = "Sprich wie ein typischer WoW-Spieler."
+# French:     # OllamaChat.DefaultPersonalityPrompt = "Parle comme un joueur WoW standard."
 
 # OllamaChat.RandomChatterPromptTemplate
 #     Description: The template string for random bot chatter prompts.
@@ -132,6 +135,9 @@ OllamaChat.DefaultPersonalityPrompt = "Talk like a standard WoW player."
 #
 #     Default: See below.
 OllamaChat.RandomChatterPromptTemplate = "You are a World of Warcraft player in the Wrath of the Lich King expansion. Your name is {}. You are a level {} {}, Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. You are currently located in {}, inside the zone '{}' on map '{}'. Your Personality is '{}'. {} Make it a short statement (under 15 words) using casual WoW-style slang and attitude. Respond as a real WoW player would."
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "你是一名《魔兽世界巫妖王之怒》的玩家，。你的名字是{}。你是一个{}级的{}，种族：{}，性别：{}，天赋专精：{}，阵营：{}。你当前位于{}，在区域'{}'中，地图名称'{}'。你的个性是'{}'。{} 用简短的语句（少于15词），使用魔兽玩家常用的俚语和态度。像真正的魔兽玩家那样回应。"
+# German:     # OllamaChat.DefaultPersonalityPrompt = ""
+# French:     # OllamaChat.DefaultPersonalityPrompt = ""
 
 # OllamaChat.ChatPromptTemplate
 #   Description: The main template for bot chat prompts sent to the LLM.
@@ -147,6 +153,9 @@ OllamaChat.RandomChatterPromptTemplate = "You are a World of Warcraft player in 
 #     {} 8  - Player's message (in-game chat)
 #     {} 9  - Extra info (see OllamaChat.ChatExtraInfoTemplate below)
 OllamaChat.ChatPromptTemplate = "You are a World of Warcraft player in the Wrath of the Lich King expansion version of the game, but you are also knowledgeable about Vanilla WoW and The Burning Crusade. Make sure your responses are relevant to the game lore and context. Your character's name is {} and you are a level {} {}. Your Personality is '{}'. A level {} {} named {} said '{}' in the game chat. Reply (under 15 words) relevant to the message and context. {} Keep your responses natural and unfiltered, just like real WoW players; embrace common slang, faction pride, and rivalry. If someone jokes, joke back. If they’re rude, don’t hold back being rude to them. Show respect to high-level players but be snooty and entitled over lower levels. When giving directions, be precise, using landmarks, flight paths, and major cities for clarity. Keep responses accurate, short and to the point. Be factual about everything like your location, race, class, etc. Do not say you're in a location or are a class or race that you are not. Always prioritize sounding like a real human player."
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "你是一名《魔兽世界巫妖王之怒》的玩家，但你也熟悉经典旧世和燃烧的远征。确保回复符合游戏世界观和情境。你的角色名是{}，是一名{}级的{}。你的个性是'{}'。一位{}级的{}玩家{}在游戏聊天中说：'{}'。根据消息和情境进行简短回复（少于15词）。{} 保持自然真实的玩家语气；使用常见俚语，展现阵营荣誉感和对立意识。别人开玩笑时回以玩笑，遭遇粗鲁时不必客气。尊重高等级玩家，对低等级玩家偶尔展现傲慢姿态。指路时用飞行点/主城等地标精确描述。回复要准确简短，如实反映你的位置/种族/职业。优先模仿真实人类玩家的说话方式。"
+# German:     # OllamaChat.DefaultPersonalityPrompt = ""
+# French:     # OllamaChat.DefaultPersonalityPrompt = ""
 
 # OllamaChat.ChatExtraInfoTemplate
 #   Description: The context/details string about the bot and player, injected into the chat prompt as the last parameter.
@@ -171,6 +180,9 @@ OllamaChat.ChatPromptTemplate = "You are a World of Warcraft player in the Wrath
 #     {} 17 - Location info - zone
 #     {} 18 - Location info - map
 OllamaChat.ChatExtraInfoTemplate = "Your info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. Other players info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. Approximate distance between you and other player: {:.1f} yards. You are in the area '{}', zone '{}' and map '{}'."
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "你的信息：种族：{}，性别：{}，天赋专精：{}，阵营：{}，公会：{}，组队状态：{}，金币：{}。对方信息：种族：{}，性别：{}，天赋专精：{}，阵营：{}，公会：{}，组队状态：{}，金币：{}。你与对方的距离：{:.1f}码。当前位置：区域'{}'，地区'{}'，地图'{}'。"
+# German:     # OllamaChat.DefaultPersonalityPrompt = ""
+# French:     # OllamaChat.DefaultPersonalityPrompt = ""
 
 # OllamaChat.EnvCommentCreature
 #     Description: A pipe-separated (|) list of template messages for when any creature is spotted nearby.
@@ -180,6 +192,9 @@ OllamaChat.ChatExtraInfoTemplate = "Your info: Race: {}, Gender: {}, Talent Spec
 #     Example:     You spot a creature named '{}', better be careful.|A wild '{}' appears nearby!|'{}': that's one I haven't seen before.
 #     Default:     You spot a creature named '{}'.
 OllamaChat.EnvCommentCreature = You spot a creature named '{}'.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你发现了一个名为'{}'的生物。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentGameObject
 #     Description: A pipe-separated (|) list of template messages for when a game object is nearby.
@@ -187,6 +202,9 @@ OllamaChat.EnvCommentCreature = You spot a creature named '{}'.
 #     Example:     You see {} nearby.|There's something strange here: {}.
 #     Default:     You see {} nearby.
 OllamaChat.EnvCommentGameObject = You see {} nearby.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你在附近看到了{}。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentEquippedItem
 #     Description: A pipe-separated (|) list of template messages referencing a random equipped item.
@@ -194,6 +212,9 @@ OllamaChat.EnvCommentGameObject = You see {} nearby.
 #     Example:     Talk about your equipped item {}.|Your gear includes {}—not bad!
 #     Default:     Talk about your equipped item {}.
 OllamaChat.EnvCommentEquippedItem = Talk about your equipped item {}.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 聊聊你装备的物品{}。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentBagItem
 #     Description: A pipe-separated (|) list of template messages for an item in the bot's bag.
@@ -201,6 +222,9 @@ OllamaChat.EnvCommentEquippedItem = Talk about your equipped item {}.
 #     Example:     You notice a {} in your bag.|You find {} stuffed away.
 #     Default:     You notice a {} in your bag.
 OllamaChat.EnvCommentBagItem = You notice a {} in your bag.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你注意到背包里有个{}。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentBagItemSell
 #     Description: A pipe-separated (|) list of template messages for an item the bot might try to sell.
@@ -208,6 +232,9 @@ OllamaChat.EnvCommentBagItem = You notice a {} in your bag.
 #     Example:     You are trying persuasively to sell {} of this item {}.|Anyone want to buy {} x {}?
 #     Default:     You are trying persuasively to sell {} of this item {}.
 OllamaChat.EnvCommentBagItemSell = You are trying persuasively to sell {} of this item {}.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你正试图兜售{}件{}商品。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentSpell
 #     Description: A pipe-separated (|) list of template messages about a random known spell.
@@ -215,6 +242,9 @@ OllamaChat.EnvCommentBagItemSell = You are trying persuasively to sell {} of thi
 #     Example:     Talk about use cases or strategies for your spell '{}'.|Your spell '{}' comes in handy sometimes.
 #     Default:     Talk about use cases or strategies for your spell '{}'.
 OllamaChat.EnvCommentSpell = Talk about use cases or strategies for your spell '{}'.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 谈谈你的法术'{}'的战术用途。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentQuestArea
 #     Description: A pipe-separated (|) list of template messages to suggest an area to quest in.
@@ -222,6 +252,9 @@ OllamaChat.EnvCommentSpell = Talk about use cases or strategies for your spell '
 #     Example:     Suggest you could go questing around {}.|Maybe do some quests in {}.
 #     Default:     Suggest you could go questing around {}.
 OllamaChat.EnvCommentQuestArea = Suggest you could go questing around {}.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 建议去{}区域做任务。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentVendor
 #     Description: A pipe-separated (|) list of template messages when a vendor NPC is nearby.
@@ -229,6 +262,9 @@ OllamaChat.EnvCommentQuestArea = Suggest you could go questing around {}.
 #     Example:     You spot {} selling wares nearby.|Time to check what {} has for sale.
 #     Default:     You spot {} selling wares nearby.
 OllamaChat.EnvCommentVendor = You spot {} selling wares nearby.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你发现{}正在附近摆摊。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentQuestgiver
 #     Description: A pipe-separated (|) list of template messages when a questgiver NPC is nearby.
@@ -236,6 +272,9 @@ OllamaChat.EnvCommentVendor = You spot {} selling wares nearby.
 #     Example:     {} looks like they have {} quests for anyone brave enough.|{} has {} quests up for grabs.
 #     Default:     {} looks like they have {} quests for anyone brave enough.
 OllamaChat.EnvCommentQuestgiver = {} looks like they have {} quests for anyone brave enough.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = {}那儿有{}个任务等着勇士接取。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentBagSlots
 #     Description: A pipe-separated (|) list of template messages about available bag slots.
@@ -243,6 +282,9 @@ OllamaChat.EnvCommentQuestgiver = {} looks like they have {} quests for anyone b
 #     Example:     You have {} free bag slots left.|Still {} open slots in your bags.
 #     Default:     You have {} free bag slots left.
 OllamaChat.EnvCommentBagSlots = You have {} free bag slots left.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你的背包还剩{}个空位。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentDungeon
 #     Description: A pipe-separated (|) list of template messages for when the bot is in a dungeon.
@@ -250,6 +292,9 @@ OllamaChat.EnvCommentBagSlots = You have {} free bag slots left.
 #     Example:     You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses.|Running through '{}'—tough place!
 #     Default:     You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses.
 OllamaChat.EnvCommentDungeon = You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 你正在'{}'地下城中，聊聊这个副本或其首领。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
 
 # OllamaChat.EnvCommentUnfinishedQuest
 #     Description: A pipe-separated (|) list of template messages about a random incomplete quest in the bot's log.
@@ -257,3 +302,6 @@ OllamaChat.EnvCommentDungeon = You're in a Dungeon instance named '{}' talk abou
 #     Example:     Say the name of and talk about your un-finished quest '{}'.|Still working on '{}'.
 #     Default:     Say the name of and talk about your un-finished quest '{}'.
 OllamaChat.EnvCommentUnfinishedQuest = Say the name of and talk about your un-finished quest '{}'.
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = 说说你未完成的任务'{}'。
+# German:     # OllamaChat.DefaultPersonalityPrompt = 
+# French:     # OllamaChat.DefaultPersonalityPrompt = 
