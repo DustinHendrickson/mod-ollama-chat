@@ -135,7 +135,7 @@ OllamaChat.DefaultPersonalityPrompt = "Talk like a standard WoW player."
 #
 #     Default: See below.
 OllamaChat.RandomChatterPromptTemplate = "You are a World of Warcraft player in the Wrath of the Lich King expansion. Your name is {}. You are a level {} {}, Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. You are currently located in {}, inside the zone '{}' on map '{}'. Your Personality is '{}'. {} Make it a short statement (under 15 words) using casual WoW-style slang and attitude. Respond as a real WoW player would."
-# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "你是一名《魔兽世界巫妖王之怒》的玩家，。你的名字是{}。你是一个{}级的{}，种族：{}，性别：{}，天赋专精：{}，阵营：{}。你当前位于{}，在区域'{}'中，地图名称'{}'。你的个性是'{}'。{} 用简短的语句（少于15词），使用魔兽玩家常用的俚语和态度。像真正的魔兽玩家那样回应。"
+# Chinese:    # OllamaChat.DefaultPersonalityPrompt = "你是一名《魔兽世界巫妖王之怒》的玩家。你的名字是{}。你是一个{}级的{}，种族：{}，性别：{}，天赋专精：{}，阵营：{}。你当前位于{}，在区域'{}'中，地图名称'{}'。你的个性是'{}'。{} 用简短的语句（少于15词），使用魔兽玩家常用的俚语和态度。像真正的魔兽玩家那样回应。"
 # German:     # OllamaChat.DefaultPersonalityPrompt = ""
 # French:     # OllamaChat.DefaultPersonalityPrompt = ""
 
