@@ -8,7 +8,6 @@
 #include <thread>
 #include <functional> // Add this include for std::function
 
-std::string QueryOllamaAPI(const std::string& prompt);
 
 class QueryManager {
 public:
