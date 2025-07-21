@@ -46,6 +46,27 @@ extern std::string g_OllamaSystemPrompt;
 extern std::string g_OllamaSeed;
 
 // --------------------------------------------
+// Provider Selection
+// --------------------------------------------
+extern std::string g_LLMProvider;
+
+// --------------------------------------------
+// Dify LLM API Configuration
+// --------------------------------------------
+extern std::string g_DifyApiKey;
+extern std::string g_DifyEndpointUrl;
+
+// --------------------------------------------
+// OpenAI LLM API Configuration
+// --------------------------------------------
+extern std::string g_OpenAIApiKey;
+extern std::string g_OpenAIEndpointUrl;
+extern std::string g_OpenAIModel;
+extern uint32_t    g_OpenAIMaxTokens;
+extern float       g_OpenAITemperature;
+extern float       g_OpenAITopP;
+
+// --------------------------------------------
 // Concurrency/Queueing
 // --------------------------------------------
 extern uint32_t    g_MaxConcurrentQueries;

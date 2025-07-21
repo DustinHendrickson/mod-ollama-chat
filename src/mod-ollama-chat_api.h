@@ -6,6 +6,8 @@
 #include "mod-ollama-chat_querymanager.h"
 
 std::string QueryOllamaAPI(const std::string& prompt);
+std::string QueryOpenAIAPI(const std::string& prompt);
+std::string QueryDifyAPI(const std::string& prompt);
 
 // Submits a query to the API.
 std::future<std::string> SubmitQuery(const std::string& prompt);

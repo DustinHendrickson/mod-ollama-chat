@@ -13,6 +13,12 @@
 #     Default:     1 (true)
 OllamaChat.Enable = 1
 
+# OllamaChat.Provider
+#     Description: Select the LLM provider to use for chat generation.
+#                  Supported values: "ollama", "openai", "dify".
+#     Default:     ollama
+OllamaChat.Provider = ollama
+
 # OllamaChat.DebugEnabled
 #     Description: Enables extra logging for debugging purposes.
 #                  When set to 1 (true), detailed debug information will be logged by the module.
@@ -95,7 +101,61 @@ OllamaChat.Stop =
 #                  Leave blank for no system prompt, or enter your own.
 #     Example:     OllamaChat.SystemPrompt = "Always answer as if you are a WoW quest giver."
 #     Default:     (empty)
+
+# --------------------------------------------
+# OPENAI LLM CONNECTION AND INFERENCE
+# --------------------------------------------
+
+
+# OpenAI.ApiKey
+#     Description: Your OpenAI API key for authentication.
+#                  Required when using OpenAI provider.
+#     Default:     "" (empty string)
+OpenAI.ApiKey = ""
+
+# OpenAI.EndpointUrl
+#     Description: The OpenAI API endpoint URL.
+#                  Default points to OpenAI API v1 chat completions.
+#     Default:     https://api.openai.com/v1/chat/completions
+OpenAI.EndpointUrl = https://api.openai.com/v1/chat/completions
+
+# OpenAI.Model
+#     Description: The OpenAI model to use for chat generation.
+#     Default:     gpt-4.1-nano
+OpenAI.Model = gpt-4.1-nano
+
+# OpenAI.MaxTokens
+#     Description: Maximum number of tokens to generate in the response.
+#     Default:     40
+OpenAI.MaxTokens = 40
+
+# OpenAI.Temperature
+#     Description: Controls randomness in responses (0.0 to 2.0).
+#     Default:     0.8
+OpenAI.Temperature = 0.8
+
+# OpenAI.TopP
+#     Description: Controls diversity via nucleus sampling (0.0 to 1.0).
+#     Default:     0.95
+OpenAI.TopP = 0.95
+
 OllamaChat.SystemPrompt =
+
+# --------------------------------------------
+# DIFY LLM CONNECTION AND INFERENCE
+# --------------------------------------------
+
+# Dify.ApiKey
+#     Description: Your Dify API key for authentication.
+#                  Required when using Dify provider.
+#     Default:     "" (empty string)
+Dify.ApiKey = ""
+
+# Dify.EndpointUrl
+#     Description: The Dify API endpoint URL.
+#                  Default points to Dify chat messages API.
+#     Default:     https://cloud.dify.ai/v1/chat-messages
+Dify.EndpointUrl = https://cloud.dify.ai/v1/chat-messages
 
 # OllamaChat.Seed
 #     Description: Optional. Random seed for deterministic generation. Set to a number for repeatable results, or leave blank for normal random output.

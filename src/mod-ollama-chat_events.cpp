@@ -136,7 +136,7 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
             std::string prompt = BuildPrompt(botPtr, g_EventChatterPromptTemplate, type, detail, actorName);
             if (prompt.empty()) return;
 
-            std::string response = QueryOllamaAPI(prompt);
+            std::string response = SubmitQuery(prompt).get();
             if (response.empty()) return;
 
             // reacquire pointers before use

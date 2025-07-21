@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_querymanager.h"
 #include "mod-ollama-chat_config.h"  // For g_MaxConcurrentQueries
 #include <thread>
+#include <functional> // Add this include for std::function
 
 // Constructor: initialize with the configuration value.
 QueryManager::QueryManager()
@@ -15,7 +16,7 @@ void QueryManager::setMaxConcurrentQueries(int maxQueries) {
 }
 
 // Submit a query and return a future for the result.
-std::future<std::string> QueryManager::submitQuery(const std::string& prompt) {
+std::future<std::string> QueryManager::submitQuery(std::function<std::string()> apiCall) {
     std::promise<std::string> promise;
     std::future<std::string> future = promise.get_future();
 
@@ -27,20 +28,21 @@ std::future<std::string> QueryManager::submitQuery(const std::string& prompt) {
             ++currentQueries;
             shouldRunNow = true;
         } else {
-            taskQueue.push({ prompt, std::move(promise) });
+            taskQueue.push({ std::move(apiCall), std::move(promise) });
         }
     }
 
     if (shouldRunNow) {
-        std::thread(&QueryManager::processQuery, this, prompt, std::move(promise)).detach();
+        // Pass the function object directly
+        std::thread(&QueryManager::processQuery, this, std::move(apiCall), std::move(promise)).detach();
     }
 
     return future;
 }
 
 // Process the query by calling the API and then handling any queued tasks.
-void QueryManager::processQuery(const std::string& prompt, std::promise<std::string> promise) {
-    std::string result = QueryOllamaAPI(prompt);
+void QueryManager::processQuery(std::function<std::string()> apiCall, std::promise<std::string> promise) {
+    std::string result = apiCall(); // Execute the function object
     promise.set_value(result);
 
     {
@@ -50,7 +52,8 @@ void QueryManager::processQuery(const std::string& prompt, std::promise<std::str
             QueryTask task = std::move(taskQueue.front());
             taskQueue.pop();
             ++currentQueries;
-            std::thread(&QueryManager::processQuery, this, task.prompt, std::move(task.promise)).detach();
+            // Pass the function object from the task
+            std::thread(&QueryManager::processQuery, this, std::move(task.apiCall), std::move(task.promise)).detach();
         }
     }
 }
