@@ -44,6 +44,21 @@ std::string g_OllamaSystemPrompt = "";
 std::string g_OllamaSeed = "";
 
 // --------------------------------------------
+// Provider Selection
+// --------------------------------------------
+std::string g_LLMProvider = "ollama";
+
+// --------------------------------------------
+// OpenAI LLM API Configuration
+// --------------------------------------------
+std::string g_OpenAIApiKey = "";
+std::string g_OpenAIEndpointUrl = "https://api.openai.com/v1/chat/completions";
+std::string g_OpenAIModel = "gpt-3.5-turbo";
+uint32_t    g_OpenAIMaxTokens = 40;
+float       g_OpenAITemperature = 0.8f;
+float       g_OpenAITopP = 0.95f;
+
+// --------------------------------------------
 // Concurrency/Queueing
 // --------------------------------------------
 uint32_t    g_MaxConcurrentQueries = 0;
@@ -260,6 +275,14 @@ void LoadOllamaChatConfig()
     g_OllamaNumCtx                    = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumCtx", 0);
     g_OllamaStop                      = sConfigMgr->GetOption<std::string>("OllamaChat.Stop", "");
     g_OllamaSystemPrompt              = sConfigMgr->GetOption<std::string>("OllamaChat.SystemPrompt", "");
+    g_LLMProvider = sConfigMgr->GetOption<std::string>("OllamaChat.Provider", "ollama");
+
+    g_OpenAIApiKey = sConfigMgr->GetOption<std::string>("OpenAI.ApiKey", "");
+    g_OpenAIEndpointUrl = sConfigMgr->GetOption<std::string>("OpenAI.EndpointUrl", "https://api.openai.com/v1/chat/completions");
+    g_OpenAIModel = sConfigMgr->GetOption<std::string>("OpenAI.Model", "gpt-3.5-turbo");
+    g_OpenAIMaxTokens = sConfigMgr->GetOption<uint32_t>("OpenAI.MaxTokens", 40);
+    g_OpenAITemperature = sConfigMgr->GetOption<float>("OpenAI.Temperature", 0.8f);
+    g_OpenAITopP = sConfigMgr->GetOption<float>("OpenAI.TopP", 0.95f);
     g_OllamaSeed                      = sConfigMgr->GetOption<std::string>("OllamaChat.Seed", "");
 
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
@@ -373,16 +396,25 @@ void LoadOllamaChatConfig()
     g_EnvCommentDungeon         = LoadEnvCommentVector("OllamaChat.EnvCommentDungeon", { "" });
     g_EnvCommentUnfinishedQuest = LoadEnvCommentVector("OllamaChat.EnvCommentUnfinishedQuest", { "" });
 
+    std::string llmInfo;
+    if (g_LLMProvider == "openai") {
+        llmInfo = fmt::format("Provider = openai, EndpointUrl = {}, Model = {}, MaxTokens = {}, Temperature = {}, TopP = {}, Stop = '{}', SystemPrompt = '{}', Seed = '{}'",
+                              g_OpenAIEndpointUrl, g_OpenAIModel, g_OpenAIMaxTokens, g_OpenAITemperature, g_OpenAITopP, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
+    } else {
+        llmInfo = fmt::format("Provider = ollama, Url = {}, Model = {}, NumPredict = {}, Temperature = {}, TopP = {}, RepeatPenalty = {}, NumCtx = {}, Stop = '{}', SystemPrompt = '{}', Seed = '{}'",
+                              g_OllamaUrl, g_OllamaModel, g_OllamaNumPredict, g_OllamaTemperature, g_OllamaTopP, g_OllamaRepeatPenalty, g_OllamaNumCtx, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
+    }
+
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
              "GeneralDistance = {}, PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
-             "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
-             "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
+             "MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
+             "RandomChatterBotCommentChance = {}. Extra blacklist commands: {}. LLM Info: {}",
              g_Enable, g_SayDistance, g_YellDistance, g_GeneralDistance,
              g_PlayerReplyChance, g_BotReplyChance, g_MaxBotsToPick,
-             g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
+             g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,
-             g_RandomChatterBotCommentChance, g_MaxConcurrentQueries, extraBlacklist);
+             g_RandomChatterBotCommentChance, extraBlacklist, llmInfo);
 }
 
 void LoadPersonalityTemplatesFromDB()

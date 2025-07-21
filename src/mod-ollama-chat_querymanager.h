@@ -6,6 +6,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <functional> // Add this include for std::function
 
 std::string QueryOllamaAPI(const std::string& prompt);
 
@@ -13,15 +14,15 @@ class QueryManager {
 public:
     QueryManager();
     void setMaxConcurrentQueries(int maxQueries);
-    std::future<std::string> submitQuery(const std::string& prompt);
+    std::future<std::string> submitQuery(std::function<std::string()> apiCall);
 
 private:
     struct QueryTask {
-        std::string prompt;
+        std::function<std::string()> apiCall;
         std::promise<std::string> promise;
     };
 
-    void processQuery(const std::string& prompt, std::promise<std::string> promise);
+    void processQuery(std::function<std::string()> apiCall, std::promise<std::string> promise);
 
     int maxConcurrentQueries; // 0 means no limit
     int currentQueries;
