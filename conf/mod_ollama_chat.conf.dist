@@ -15,7 +15,7 @@ OllamaChat.Enable = 1
 
 # OllamaChat.Provider
 #     Description: Select the LLM provider to use for chat generation.
-#                  Supported values: "ollama", "openai".
+#                  Supported values: "ollama", "openai", "dify".
 #     Default:     ollama
 OllamaChat.Provider = ollama
 
@@ -140,6 +140,22 @@ OpenAI.Temperature = 0.8
 OpenAI.TopP = 0.95
 
 OllamaChat.SystemPrompt =
+
+# --------------------------------------------
+# DIFY LLM CONNECTION AND INFERENCE
+# --------------------------------------------
+
+# Dify.ApiKey
+#     Description: Your Dify API key for authentication.
+#                  Required when using Dify provider.
+#     Default:     "" (empty string)
+Dify.ApiKey = ""
+
+# Dify.EndpointUrl
+#     Description: The Dify API endpoint URL.
+#                  Default points to Dify chat messages API.
+#     Default:     https://cloud.dify.ai/v1/chat-messages
+Dify.EndpointUrl = https://cloud.dify.ai/v1/chat-messages
 
 # OllamaChat.Seed
 #     Description: Optional. Random seed for deterministic generation. Set to a number for repeatable results, or leave blank for normal random output.

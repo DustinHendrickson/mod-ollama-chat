@@ -9,12 +9,18 @@
 
 ## Overview
 
-***mod-ollama-chat*** is an AzerothCore module that enhances the Player Bots module by integrating external language model (LLM) support via the Ollama API. This module enables player bots to generate dynamic, in-character chat responses using advanced natural language processing locally on your computer (or remotely hosted). Bots are enriched with personality traits, random chatter triggers, and context-aware replies that mimic the language and lore of World of Warcraft.
+***mod-ollama-chat*** is an AzerothCore module that enhances the Player Bots module by integrating external language model (LLM) support via the Ollama/OpenAI Compatible/Dify Chatflow API. This module enables player bots to generate dynamic, in-character chat responses using advanced natural language processing locally on your computer (or remotely hosted). Bots are enriched with personality traits, random chatter triggers, and context-aware replies that mimic the language and lore of World of Warcraft.
 
 ## Features
 
 - **Ollama LLM Integration:**  
   Bots generate chat responses by querying an external Ollama API endpoint. This enables natural and contextually appropriate in-game dialogue.
+
+- **OpenAI Compatible API Integration**
+  - The module now supports OpenAI-compatible APIs, you can now use OpenAI’s online models via their API, as well as a wide range of OpenAI-compatible models provided by other vendors!.
+
+- **Dify Chatflow API Integration**
+  - The module also supports Dify's Chatflow API, you can build rich agent AI chatflows yourself.
 
 - **Player Bot Personalities:**  
   When enabled, each bot is assigned a personality type (e.g., Gamer, Roleplayer, Trickster) that modifies its chat style. Personalities influence prompt generation and result in varied, immersive responses.

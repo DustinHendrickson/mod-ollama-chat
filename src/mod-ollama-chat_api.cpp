@@ -283,6 +283,100 @@ std::string QueryOpenAIAPI(const std::string& prompt)
     return "I'm having trouble understanding (OpenAI).";
 }
 
+// Function to perform the Dify API call.
+std::string QueryDifyAPI(const std::string& prompt)
+{
+    CURL* curl = curl_easy_init();
+    if (!curl)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Failed to initialize cURL for Dify.");
+        }
+        return "Hmm... I'm lost in thought (Dify).";
+    }
+
+    std::string url = g_DifyEndpointUrl;
+    std::string apiKey = g_DifyApiKey;
+
+    nlohmann::json requestData = {
+        {"query", prompt},
+        {"response_mode", "blocking"},
+        {"user", "azerothcore-user"}, // A fixed user identifier for Dify API
+        {"inputs", nlohmann::json::object()}, // Empty inputs object as per Dify docs
+        {"files", nlohmann::json::array()} // Empty files array as per Dify docs
+    };
+
+    std::string requestDataStr = requestData.dump();
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, fmt::format("Authorization: Bearer {}", apiKey).c_str());
+
+    std::string responseBuffer;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestDataStr.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, long(requestDataStr.length()));
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBuffer);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading",
+                "[Ollama Chat] Failed to reach Dify API. cURL error: {}",
+                curl_easy_strerror(res));
+        }
+        return "Failed to reach Dify API.";
+    }
+
+    try
+    {
+        nlohmann::json jsonResponse = nlohmann::json::parse(responseBuffer);
+        if (jsonResponse.contains("answer") && !jsonResponse["answer"].get<std::string>().empty())
+        {
+            std::string botReply = jsonResponse["answer"].get<std::string>();
+            if (g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Parsed Dify response: {}", botReply);
+            }
+            return botReply;
+        }
+        else if (jsonResponse.contains("message")) // Dify error messages
+        {
+            std::string errorMessage = jsonResponse["message"].get<std::string>();
+            if (g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Dify API Error: {}", errorMessage);
+            }
+            return fmt::format("Dify API Error: {}", errorMessage);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading",
+                "[Ollama Chat] Dify JSON Parsing Error: {}",
+                e.what());
+        }
+        return "Error processing Dify response.";
+    }
+
+    if (g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] No valid Dify response extracted.");
+    }
+    return "I'm having trouble understanding (Dify).";
+}
+
 QueryManager g_queryManager;
 
 // Interface function to submit a query.
@@ -291,6 +385,10 @@ std::future<std::string> SubmitQuery(const std::string& prompt)
     if (g_LLMProvider == "openai")
     {
         return g_queryManager.submitQuery([prompt]() { return QueryOpenAIAPI(prompt); });
+    }
+    else if (g_LLMProvider == "dify")
+    {
+        return g_queryManager.submitQuery([prompt]() { return QueryDifyAPI(prompt); });
     }
     else // Default to ollama
     {

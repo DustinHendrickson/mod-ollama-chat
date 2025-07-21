@@ -44,6 +44,12 @@ std::string g_OllamaSystemPrompt = "";
 std::string g_OllamaSeed = "";
 
 // --------------------------------------------
+// Dify LLM API Configuration
+// --------------------------------------------
+std::string g_DifyApiKey = "";
+std::string g_DifyEndpointUrl = "https://cloud.dify.ai/v1/chat-messages";
+
+// --------------------------------------------
 // Provider Selection
 // --------------------------------------------
 std::string g_LLMProvider = "ollama";
@@ -277,6 +283,9 @@ void LoadOllamaChatConfig()
     g_OllamaSystemPrompt              = sConfigMgr->GetOption<std::string>("OllamaChat.SystemPrompt", "");
     g_LLMProvider = sConfigMgr->GetOption<std::string>("OllamaChat.Provider", "ollama");
 
+    g_DifyApiKey = sConfigMgr->GetOption<std::string>("Dify.ApiKey", "");
+    g_DifyEndpointUrl = sConfigMgr->GetOption<std::string>("Dify.EndpointUrl", "https://cloud.dify.ai/v1/chat-messages");
+
     g_OpenAIApiKey = sConfigMgr->GetOption<std::string>("OpenAI.ApiKey", "");
     g_OpenAIEndpointUrl = sConfigMgr->GetOption<std::string>("OpenAI.EndpointUrl", "https://api.openai.com/v1/chat/completions");
     g_OpenAIModel = sConfigMgr->GetOption<std::string>("OpenAI.Model", "gpt-3.5-turbo");
@@ -399,10 +408,14 @@ void LoadOllamaChatConfig()
     std::string llmInfo;
     if (g_LLMProvider == "openai") {
         llmInfo = fmt::format("Provider = openai, EndpointUrl = {}, Model = {}, MaxTokens = {}, Temperature = {}, TopP = {}, Stop = '{}', SystemPrompt = '{}', Seed = '{}'",
-                              g_OpenAIEndpointUrl, g_OpenAIModel, g_OpenAIMaxTokens, g_OpenAITemperature, g_OpenAITopP, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
-    } else {
+                               g_OpenAIEndpointUrl, g_OpenAIModel, g_OpenAIMaxTokens, g_OpenAITemperature, g_OpenAITopP, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
+    } else if (g_LLMProvider == "dify") {
+        llmInfo = fmt::format("Provider = dify, EndpointUrl = {}, ApiKey = '{}', Stop = '{}'",
+                               g_DifyEndpointUrl, g_DifyApiKey, g_OllamaStop);
+    }
+    else {
         llmInfo = fmt::format("Provider = ollama, Url = {}, Model = {}, NumPredict = {}, Temperature = {}, TopP = {}, RepeatPenalty = {}, NumCtx = {}, Stop = '{}', SystemPrompt = '{}', Seed = '{}'",
-                              g_OllamaUrl, g_OllamaModel, g_OllamaNumPredict, g_OllamaTemperature, g_OllamaTopP, g_OllamaRepeatPenalty, g_OllamaNumCtx, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
+                               g_OllamaUrl, g_OllamaModel, g_OllamaNumPredict, g_OllamaTemperature, g_OllamaTopP, g_OllamaRepeatPenalty, g_OllamaNumCtx, g_OllamaStop, g_OllamaSystemPrompt, g_OllamaSeed);
     }
 
     LOG_INFO("server.loading",

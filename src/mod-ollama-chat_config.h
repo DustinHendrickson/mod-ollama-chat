@@ -51,6 +51,12 @@ extern std::string g_OllamaSeed;
 extern std::string g_LLMProvider;
 
 // --------------------------------------------
+// Dify LLM API Configuration
+// --------------------------------------------
+extern std::string g_DifyApiKey;
+extern std::string g_DifyEndpointUrl;
+
+// --------------------------------------------
 // OpenAI LLM API Configuration
 // --------------------------------------------
 extern std::string g_OpenAIApiKey;
