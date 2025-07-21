@@ -59,7 +59,7 @@ std::string g_LLMProvider = "ollama";
 // --------------------------------------------
 std::string g_OpenAIApiKey = "";
 std::string g_OpenAIEndpointUrl = "https://api.openai.com/v1/chat/completions";
-std::string g_OpenAIModel = "gpt-3.5-turbo";
+std::string g_OpenAIModel = "gpt-4.1-nano";
 uint32_t    g_OpenAIMaxTokens = 40;
 float       g_OpenAITemperature = 0.8f;
 float       g_OpenAITopP = 0.95f;
@@ -288,7 +288,7 @@ void LoadOllamaChatConfig()
 
     g_OpenAIApiKey = sConfigMgr->GetOption<std::string>("OpenAI.ApiKey", "");
     g_OpenAIEndpointUrl = sConfigMgr->GetOption<std::string>("OpenAI.EndpointUrl", "https://api.openai.com/v1/chat/completions");
-    g_OpenAIModel = sConfigMgr->GetOption<std::string>("OpenAI.Model", "gpt-3.5-turbo");
+    g_OpenAIModel = sConfigMgr->GetOption<std::string>("OpenAI.Model", "gpt-4.1-nano");
     g_OpenAIMaxTokens = sConfigMgr->GetOption<uint32_t>("OpenAI.MaxTokens", 40);
     g_OpenAITemperature = sConfigMgr->GetOption<float>("OpenAI.Temperature", 0.8f);
     g_OpenAITopP = sConfigMgr->GetOption<float>("OpenAI.TopP", 0.95f);

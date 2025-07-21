@@ -121,8 +121,8 @@ OpenAI.EndpointUrl = https://api.openai.com/v1/chat/completions
 
 # OpenAI.Model
 #     Description: The OpenAI model to use for chat generation.
-#     Default:     gpt-3.5-turbo
-OpenAI.Model = gpt-3.5-turbo
+#     Default:     gpt-4.1-nano
+OpenAI.Model = gpt-4.1-nano
 
 # OpenAI.MaxTokens
 #     Description: Maximum number of tokens to generate in the response.
