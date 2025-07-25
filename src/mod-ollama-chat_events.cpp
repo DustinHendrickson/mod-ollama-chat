@@ -4,6 +4,7 @@
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat-utilities.h"
 #include "mod-ollama-chat_personality.h"
+#include "mod-ollama-chat_sentiment.h"
 #include "Player.h"
 #include "ObjectAccessor.h"
 #include "Guild.h"
@@ -181,6 +182,18 @@ std::string OllamaBotEventChatter::BuildPrompt(Player* bot, std::string promptTe
     std::string botZoneName = botCurrentZone ? ai->GetLocalizedAreaName(botCurrentZone) : "UnknownZone";
     std::string botMapName = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
 
+    // Try to get sentiment information if the actor is a player
+    std::string sentimentInfo = "";
+    if (g_EnableSentimentTracking && !actorName.empty())
+    {
+        // Try to find the actor player by name
+        Player* actorPlayer = ObjectAccessor::FindPlayerByName(actorName);
+        if (actorPlayer)
+        {
+            sentimentInfo = GetSentimentPromptAddition(bot, actorPlayer);
+        }
+    }
+
     return SafeFormat(
         promptTemplate,
         fmt::arg("bot_name", botName),
@@ -196,7 +209,8 @@ std::string OllamaBotEventChatter::BuildPrompt(Player* bot, std::string promptTe
         fmt::arg("bot_personality", personalityPrompt),
         fmt::arg("event_type", eventType),
         fmt::arg("event_detail", eventDetail),
-        fmt::arg("actor_name", actorName)
+        fmt::arg("actor_name", actorName),
+        fmt::arg("sentiment_info", sentimentInfo)
     );
 }
 

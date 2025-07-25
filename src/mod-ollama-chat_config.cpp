@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_sentiment.h"
 #include "Config.h"
 #include "Log.h"
 #include "mod-ollama-chat_api.h"
@@ -111,6 +112,21 @@ std::string g_ChatBotSnapshotTemplate;
 std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
 std::mutex g_ConversationHistoryMutex;
 time_t g_LastHistorySaveTime = 0;
+
+// --------------------------------------------
+// Bot-Player Sentiment Tracking System
+// --------------------------------------------
+bool        g_EnableSentimentTracking = true;
+float       g_SentimentDefaultValue = 0.5f;              // Default sentiment value (0.5 = neutral)
+float       g_SentimentAdjustmentStrength = 0.1f;        // How much to adjust sentiment per message
+uint32_t    g_SentimentSaveInterval = 10;                // How often to save sentiment to DB (minutes)
+std::string g_SentimentAnalysisPrompt = "Analyze the sentiment of this message: \"{message}\". Respond only with: POSITIVE, NEGATIVE, or NEUTRAL.";
+std::string g_SentimentPromptTemplate = "Your relationship sentiment with {player_name} is {sentiment_value} (0.0=hostile, 0.5=neutral, 1.0=friendly). Use this to guide your tone and response.";
+
+// In-memory sentiment storage and mutex
+std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+std::mutex g_SentimentMutex;
+time_t g_LastSentimentSaveTime = 0;
 
 // --------------------------------------------
 // Blacklist: Prefixes for Commands (not chat)
@@ -306,6 +322,14 @@ void LoadOllamaChatConfig()
 
     g_EnableChatHistory               = sConfigMgr->GetOption<bool>("OllamaChat.EnableChatHistory", true);
 
+    // Bot-Player Sentiment Tracking
+    g_EnableSentimentTracking         = sConfigMgr->GetOption<bool>("OllamaChat.EnableSentimentTracking", true);
+    g_SentimentDefaultValue           = sConfigMgr->GetOption<float>("OllamaChat.SentimentDefaultValue", 0.5f);
+    g_SentimentAdjustmentStrength     = sConfigMgr->GetOption<float>("OllamaChat.SentimentAdjustmentStrength", 0.1f);
+    g_SentimentSaveInterval           = sConfigMgr->GetOption<uint32_t>("OllamaChat.SentimentSaveInterval", 10);
+    g_SentimentAnalysisPrompt         = sConfigMgr->GetOption<std::string>("OllamaChat.SentimentAnalysisPrompt", "Analyze the sentiment of this message: \"{message}\". Respond only with: POSITIVE, NEGATIVE, or NEUTRAL.");
+    g_SentimentPromptTemplate         = sConfigMgr->GetOption<std::string>("OllamaChat.SentimentPromptTemplate", "Your relationship sentiment with {player_name} is {sentiment_value} (0.0=hostile, 0.5=neutral, 1.0=friendly). Use this to guide your tone and response.");
+
     g_ThinkModeEnableForModule        = sConfigMgr->GetOption<bool>("OllamaChat.ThinkModeEnableForModule", false);
 
     g_EventTypeDefeated           = sConfigMgr->GetOption<std::string>("OllamaChat.EventTypeDefeated", "");
@@ -447,4 +471,5 @@ void OllamaChatConfigWorldScript::OnStartup()
     LoadOllamaChatConfig();
     LoadBotPersonalityList();
     LoadBotConversationHistoryFromDB();
+    InitializeSentimentTracking();
 }

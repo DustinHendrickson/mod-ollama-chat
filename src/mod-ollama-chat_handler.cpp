@@ -27,6 +27,7 @@
 #include "mod-ollama-chat_personality.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat-utilities.h"
+#include "mod-ollama-chat_sentiment.h"
 #include <iomanip>
 #include "SpellMgr.h"
 #include "SpellInfo.h"
@@ -762,6 +763,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                         default:              botAI->Say(response); break;
                     }
                 }
+                
+                // Update sentiment based on the player's message
+                UpdateBotPlayerSentiment(botPtr, senderPtr, msg);
+                
                 AppendBotConversation(botGuid, senderGuid, msg, response);
                 float respDistance = senderPtr->GetDistance(botPtr);
                 if(g_DebugEnabled)
@@ -875,6 +880,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     float playerDistance            = player->IsInWorld() && bot->IsInWorld() ? player->GetDistance(bot) : -1.0f;
 
     std::string chatHistory         = GetBotHistoryPrompt(botGuid, playerGuid, playerMessage);
+    std::string sentimentInfo       = GetSentimentPromptAddition(bot, player);
 
     std::string extraInfo = SafeFormat(
         g_ChatExtraInfoTemplate,
@@ -908,7 +914,9 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
         fmt::arg("player_class", playerClass),
         fmt::arg("player_name", playerName),
         fmt::arg("player_message", playerMessage),
-        fmt::arg("extra_info", extraInfo)
+        fmt::arg("extra_info", extraInfo),
+        fmt::arg("chat_history", chatHistory),
+        fmt::arg("sentiment_info", sentimentInfo)
     );
 
     if(g_EnableChatBotSnapshotTemplate)

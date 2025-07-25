@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_handler.h"
+#include "mod-ollama-chat_sentiment.h"
 #include "Log.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -42,6 +43,17 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
         {
             SaveBotConversationHistoryToDB();
             g_LastHistorySaveTime = now;
+        }
+    }
+
+    // Save sentiment data periodically
+    if (g_EnableSentimentTracking && g_SentimentSaveInterval > 0)
+    {
+        time_t now = time(nullptr);
+        if (difftime(now, g_LastSentimentSaveTime) >= g_SentimentSaveInterval * 60)
+        {
+            SaveBotPlayerSentimentsToDB();
+            g_LastSentimentSaveTime = now;
         }
     }
 

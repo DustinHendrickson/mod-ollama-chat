@@ -136,6 +136,21 @@ extern std::vector<std::string> g_EnvCommentDungeon;
 extern std::vector<std::string> g_EnvCommentUnfinishedQuest;
 
 // --------------------------------------------
+// Bot-Player Sentiment Tracking System
+// --------------------------------------------
+extern bool        g_EnableSentimentTracking;
+extern float       g_SentimentDefaultValue;              // Default sentiment value (0.5 = neutral)
+extern float       g_SentimentAdjustmentStrength;        // How much to adjust sentiment per message (0.1)
+extern uint32_t    g_SentimentSaveInterval;              // How often to save sentiment to DB (minutes)
+extern std::string g_SentimentAnalysisPrompt;            // Prompt template for sentiment analysis
+extern std::string g_SentimentPromptTemplate;            // Template for including sentiment in bot prompts
+
+// In-memory sentiment storage and mutex
+extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+extern std::mutex g_SentimentMutex;
+extern time_t g_LastSentimentSaveTime;
+
+// --------------------------------------------
 // Event Chatter: Event Type Strings
 // These control the event type string sent to eventChatter for world event prompts.
 // Values are loaded from conf (see mod_ollama_chat.conf.dist)
