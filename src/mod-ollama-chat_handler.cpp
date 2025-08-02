@@ -662,8 +662,9 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     channel->GetName(), channel->GetChannelId());
         }
         
-        auto const& allPlayers = ObjectAccessor::GetPlayers();
-        for (auto const& itr : allPlayers)
+        // Check only bots that are actually in the player's channel list
+        // This ensures we get bots from the EXACT same channel instance, not just same name
+        for (auto const& itr : ObjectAccessor::GetPlayers())
         {
             Player* candidate = itr.second;
             if (!candidate->IsInWorld())
@@ -675,13 +676,23 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidateAI || !candidateAI->IsBotAI())
                 continue;
             
-            // Check if the bot is in the exact same channel instance
-            if (candidate->IsInChannel(channel))
+            // Check if the bot is in the exact same channel instance by comparing channel pointers
+            bool botInSameChannel = false;
+            for (Channel* botChannel : candidate->m_channels)
+            {
+                if (botChannel == channel)
+                {
+                    botInSameChannel = true;
+                    break;
+                }
+            }
+            
+            if (botInSameChannel)
             {
                 eligibleBots.push_back(candidate);
                 if(g_DebugEnabled)
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Found bot {} in channel '{}'", 
+                    LOG_INFO("server.loading", "[Ollama Chat] Found bot {} in same channel instance '{}'", 
                             candidate->GetName(), channel->GetName());
                 }
             }
@@ -689,7 +700,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] Found {} bots in channel '{}'", 
+            LOG_INFO("server.loading", "[Ollama Chat] Found {} bots in channel instance '{}'", 
                     eligibleBots.size(), channel->GetName());
         }
     }
@@ -1033,7 +1044,7 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
     if (!channel && bot->GetTeamId() != player->GetTeamId())
         return false;
     
-    // For channels, check if bot is in the channel
+    // For channels, check if bot is in the specific channel instance
     if (channel && !bot->IsInChannel(channel))
         return false;
     
