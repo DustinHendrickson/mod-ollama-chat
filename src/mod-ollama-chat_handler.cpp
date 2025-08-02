@@ -662,26 +662,31 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     channel->GetName(), channel->GetChannelId());
         }
         
-        // Use the exact same logic as Channel::List() to find eligible bots
-        for (Channel::PlayerContainer::const_iterator i = channel->playersStore.begin(); i != channel->playersStore.end(); ++i)
+        // Iterate through all players and check if they're in the channel using Player::IsInChannel()
+        auto const& allPlayers = ObjectAccessor::GetPlayers();
+        for (auto const& itr : allPlayers)
         {
-            // Only include regular player accounts (same filter as Channel::List)
-            if (AccountMgr::IsPlayerAccount(i->second.plrPtr->GetSession()->GetSecurity()))
-            {
-                Player* candidate = i->second.plrPtr;
-                if (!candidate || candidate == player)
-                    continue;
-                    
-                PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
-                if (!candidateAI || !candidateAI->IsBotAI())
-                    continue;
+            Player* candidate = itr.second;
+            if (!candidate || candidate == player)
+                continue;
                 
-                eligibleBots.push_back(candidate);
-                if(g_DebugEnabled)
-                {
-                    LOG_INFO("server.loading", "[Ollama Chat] Found eligible bot {} in channel '{}'", 
-                            candidate->GetName(), channel->GetName());
-                }
+            // Check if this player is actually in the channel using Player::IsInChannel()
+            if (!candidate->IsInChannel(channel))
+                continue;
+                
+            // Only include regular player accounts (same filter as Channel::List)
+            if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
+                continue;
+                    
+            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+            if (!candidateAI || !candidateAI->IsBotAI())
+                continue;
+            
+            eligibleBots.push_back(candidate);
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Found eligible bot {} in channel '{}'", 
+                        candidate->GetName(), channel->GetName());
             }
         }
         
