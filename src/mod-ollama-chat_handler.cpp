@@ -662,37 +662,24 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     channel->GetName(), channel->GetChannelId());
         }
         
-        // Check only bots that are actually in the player's channel list
-        // This ensures we get bots from the EXACT same channel instance, not just same name
-        for (auto const& itr : ObjectAccessor::GetPlayers())
+        // Use the exact same logic as Channel::List() to find eligible bots
+        for (Channel::PlayerContainer::const_iterator i = channel->playersStore.begin(); i != channel->playersStore.end(); ++i)
         {
-            Player* candidate = itr.second;
-            if (!candidate->IsInWorld())
-                continue;
-            if (candidate == player)
-                continue;
+            // Only include regular player accounts (same filter as Channel::List)
+            if (AccountMgr::IsPlayerAccount(i->second.plrPtr->GetSession()->GetSecurity()))
+            {
+                Player* candidate = i->second.plrPtr;
+                if (!candidate || candidate == player)
+                    continue;
+                    
+                PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+                if (!candidateAI || !candidateAI->IsBotAI())
+                    continue;
                 
-            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
-            if (!candidateAI || !candidateAI->IsBotAI())
-                continue;
-            
-            // Check if the bot is in the exact same channel instance by comparing channel pointers
-            bool botInSameChannel = false;
-            for (Channel* botChannel : candidate->m_channels)
-            {
-                if (botChannel == channel)
-                {
-                    botInSameChannel = true;
-                    break;
-                }
-            }
-            
-            if (botInSameChannel)
-            {
                 eligibleBots.push_back(candidate);
                 if(g_DebugEnabled)
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Found bot {} in same channel instance '{}'", 
+                    LOG_INFO("server.loading", "[Ollama Chat] Found eligible bot {} in channel '{}'", 
                             candidate->GetName(), channel->GetName());
                 }
             }
