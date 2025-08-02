@@ -891,7 +891,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     if (cMgr)
                     {
                         Channel* targetChannel = cMgr->GetChannel(channelName, botPtr);
-                        if (targetChannel && targetChannel->IsOn(botPtr->GetGUID()))
+                        if (targetChannel && botPtr->IsInChannel(targetChannel))
                         {
                             targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
                             if(g_DebugEnabled)
