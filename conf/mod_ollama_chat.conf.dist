@@ -197,8 +197,8 @@ OllamaChat.RandomChatterRealPlayerDistance = 40.0
 
 # OllamaChat.RandomChatterBotCommentChance
 #     Description: The percent chance (0-100) that an AI bot will add a comment when random chatter is triggered.
-#     Default:     25
-OllamaChat.RandomChatterBotCommentChance = 25
+#     Default:     5
+OllamaChat.RandomChatterBotCommentChance = 5
 
 # OllamaChat.RandomChatterMaxBotsPerPlayer
 #     Description: The maximum number of AI bots that can trigger per random chatter update when a real player is nearby.
@@ -523,15 +523,15 @@ OllamaChat.EnableGuildRandomChatter = 1
 #     Description: Percentage chance (0-100) for guild bots to comment on guild events.
 #                  This applies to events like level ups, gear acquisition, dungeon completion.
 #                  Lower values = less frequent guild event responses.
-#     Default: 25
-OllamaChat.GuildChatterBotCommentChance = 25
+#     Default: 1
+OllamaChat.GuildChatterBotCommentChance = 1
 
 # OllamaChat.GuildChatterMaxBotsPerEvent
 #     Description: Maximum number of guild bots that can respond to a single guild event.
 #                  Prevents spam when multiple guild bots want to comment on the same event.
 #                  Example: If set to 2, only 2 bots max will respond to a member leveling up.
-#     Default: 2
-OllamaChat.GuildChatterMaxBotsPerEvent = 2
+#     Default: 1
+OllamaChat.GuildChatterMaxBotsPerEvent = 1
 
 # --------------------------------------------
 # GUILD ENVIRONMENT COMMENT TEMPLATES

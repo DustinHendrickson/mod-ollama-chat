@@ -837,7 +837,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         std::string prompt = GenerateBotPrompt(bot, msg, player);
         uint64_t botGuid = bot->GetGUID().GetRawValue();
         
-        std::thread([botGuid, senderGuid, prompt, sourceLocal, channelId = (channel ? channel->GetChannelId() : 0), msg]() {
+        std::thread([botGuid, senderGuid, prompt, sourceLocal, channelId = (channel ? channel->GetChannelId() : 0), channelName = (channel ? channel->GetName() : ""), msg]() {
             try {
                 // Use the QueryManager to submit the query.
                 auto responseFuture = SubmitQuery(prompt);
@@ -884,10 +884,33 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     return;
                 }
                 // Route the response.
-                if (channelId != 0)
+                if (channelId != 0 && !channelName.empty())
                 {
-                    ChatChannelId chanId = static_cast<ChatChannelId>(channelId);
-                    botAI->SayToChannel(response, chanId);
+                    // For channels, use the specific channel by name
+                    ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                    if (cMgr)
+                    {
+                        Channel* targetChannel = cMgr->GetChannel(channelName, botPtr);
+                        if (targetChannel && targetChannel->IsOn(botPtr->GetGUID()))
+                        {
+                            targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
+                            if(g_DebugEnabled)
+                            {
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded in channel {}: {}", 
+                                        botPtr->GetName(), channelName, response);
+                            }
+                        }
+                        else
+                        {
+                            if(g_DebugEnabled)
+                            {
+                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot respond - not in channel {} or channel not found", 
+                                         botPtr->GetName(), channelName);
+                            }
+                            // Fallback to normal bot speech
+                            botAI->Say(response);
+                        }
+                    }
                 }
                 else
                 {
