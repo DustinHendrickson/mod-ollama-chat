@@ -662,7 +662,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     channel->GetName(), channel->GetChannelId());
         }
         
-        // Iterate through all players and check if they're in the channel using Player::IsInChannel()
+        // Iterate through all players and check if they're in the EXACT same channel instance
         auto const& allPlayers = ObjectAccessor::GetPlayers();
         for (auto const& itr : allPlayers)
         {
@@ -670,22 +670,35 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidate || candidate == player)
                 continue;
                 
-            // Check if this player is actually in the channel using Player::IsInChannel()
-            if (!candidate->IsInChannel(channel))
+            // ONLY check exact channel instance - get the channel for the candidate's team
+            ChannelMgr* candidateCMgr = ChannelMgr::forTeam(candidate->GetTeamId());
+            if (!candidateCMgr)
                 continue;
                 
-            // Additional check: Verify the bot is in the EXACT same channel instance
-            // by getting the channel for the bot's team and comparing pointers
-            ChannelMgr* candidateCMgr = ChannelMgr::forTeam(candidate->GetTeamId());
-            if (candidateCMgr)
+            Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
+            if (!candidateChannel || candidateChannel != channel)
             {
-                Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
-                if (!candidateChannel || candidateChannel != channel)
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in same channel instance '{}' - Bot team: {}, Player team: {}, Channel ptr: {} vs {}", 
+                            candidate->GetName(), channel->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(),
+                            (void*)candidateChannel, (void*)channel);
+                }
+                continue;
+            }
+            
+            // Additional team check for cross-faction channels - only allow same faction unless it's a global channel
+            if (candidate->GetTeamId() != player->GetTeamId())
+            {
+                // Allow cross-faction only for specific global channels or if explicitly allowed
+                bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
+                                       channel->GetName().find("LookingForGroup") != std::string::npos);
+                if (!isGlobalChannel)
                 {
                     if(g_DebugEnabled)
                     {
-                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in same channel instance '{}' - skipping", 
-                                candidate->GetName(), channel->GetName());
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} different faction from player - Bot: {}, Player: {}, Channel: '{}'", 
+                                candidate->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(), channel->GetName());
                     }
                     continue;
                 }
@@ -1056,17 +1069,38 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
     // For channels, check if bot is in the specific channel instance
     if (channel)
     {
-        // First check basic channel membership by ID
-        if (!bot->IsInChannel(channel))
+        // ONLY use exact channel instance check - NO Player::IsInChannel() anymore
+        ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
+        if (!candidateCMgr)
             return false;
             
-        // Additional check: Verify the bot is in the EXACT same channel instance
-        ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
-        if (candidateCMgr)
+        Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), bot);
+        if (!candidateChannel || candidateChannel != channel)
         {
-            Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), bot);
-            if (!candidateChannel || candidateChannel != channel)
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Bot {} not in same channel instance '{}' - Bot team: {}, Channel ptr: {} vs {}", 
+                        bot->GetName(), channel->GetName(), (int)bot->GetTeamId(),
+                        (void*)candidateChannel, (void*)channel);
+            }
+            return false;
+        }
+        
+        // Additional team check for cross-faction channels - only allow same faction unless it's a global channel
+        if (bot->GetTeamId() != player->GetTeamId())
+        {
+            // Allow cross-faction only for specific global channels
+            bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
+                                   channel->GetName().find("LookingForGroup") != std::string::npos);
+            if (!isGlobalChannel)
+            {
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Bot {} different faction from player - Bot: {}, Player: {}, Channel: '{}'", 
+                            bot->GetName(), (int)bot->GetTeamId(), (int)player->GetTeamId(), channel->GetName());
+                }
                 return false;
+            }
         }
     }
     
