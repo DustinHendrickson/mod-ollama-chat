@@ -676,7 +676,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
             
             // Check if the bot is in the exact same channel instance
-            if (channel->IsOn(candidate->GetGUID()))
+            if (candidate->IsInChannel(channel))
             {
                 eligibleBots.push_back(candidate);
                 if(g_DebugEnabled)
@@ -1034,7 +1034,7 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
         return false;
     
     // For channels, check if bot is in the channel
-    if (channel && !channel->IsOn(bot->GetGUID()))
+    if (channel && !bot->IsInChannel(channel))
         return false;
     
     bool isInParty = (player->GetGroup() && bot->GetGroup() && (player->GetGroup() == bot->GetGroup()));
