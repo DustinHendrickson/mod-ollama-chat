@@ -674,6 +674,23 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidate->IsInChannel(channel))
                 continue;
                 
+            // Additional check: Verify the bot is in the EXACT same channel instance
+            // by getting the channel for the bot's team and comparing pointers
+            ChannelMgr* candidateCMgr = ChannelMgr::forTeam(candidate->GetTeamId());
+            if (candidateCMgr)
+            {
+                Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
+                if (!candidateChannel || candidateChannel != channel)
+                {
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in same channel instance '{}' - skipping", 
+                                candidate->GetName(), channel->GetName());
+                    }
+                    continue;
+                }
+            }
+                
             // Only include regular player accounts (same filter as Channel::List)
             if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
                 continue;
@@ -1037,8 +1054,21 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
         return false;
     
     // For channels, check if bot is in the specific channel instance
-    if (channel && !bot->IsInChannel(channel))
-        return false;
+    if (channel)
+    {
+        // First check basic channel membership by ID
+        if (!bot->IsInChannel(channel))
+            return false;
+            
+        // Additional check: Verify the bot is in the EXACT same channel instance
+        ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
+        if (candidateCMgr)
+        {
+            Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), bot);
+            if (!candidateChannel || candidateChannel != channel)
+                return false;
+        }
+    }
     
     bool isInParty = (player->GetGroup() && bot->GetGroup() && (player->GetGroup() == bot->GetGroup()));
     float threshold = 0.0f;
