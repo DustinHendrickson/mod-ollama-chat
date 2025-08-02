@@ -655,31 +655,42 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     }
     else if (channel != nullptr)
     {
-        // For channel chat, find all bots that are in the same specific channel
-        ChannelMgr* cMgr = ChannelMgr::forTeam(static_cast<TeamId>(player->GetTeamId()));
-        Channel* senderChannel = cMgr->GetChannel(channel->GetName(), player);
-        if (senderChannel)
+        // For channel chat, find all bots that are in the same channel instance
+        if(g_DebugEnabled)
         {
-            auto const& allPlayers = ObjectAccessor::GetPlayers();
-            for (auto const& itr : allPlayers)
+            LOG_INFO("server.loading", "[Ollama Chat] Processing channel message in '{}' (ID: {})", 
+                    channel->GetName(), channel->GetChannelId());
+        }
+        
+        auto const& allPlayers = ObjectAccessor::GetPlayers();
+        for (auto const& itr : allPlayers)
+        {
+            Player* candidate = itr.second;
+            if (!candidate->IsInWorld())
+                continue;
+            if (candidate == player)
+                continue;
+                
+            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+            if (!candidateAI || !candidateAI->IsBotAI())
+                continue;
+            
+            // Check if the bot is in the exact same channel instance
+            if (candidate->IsInChannel(channel))
             {
-                Player* candidate = itr.second;
-                if (!candidate->IsInWorld())
-                    continue;
-                if (candidate == player)
-                    continue;
-                    
-                PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
-                if (!candidateAI || !candidateAI->IsBotAI())
-                    continue;
-                    
-                ChannelMgr* candidateCM = ChannelMgr::forTeam(static_cast<TeamId>(candidate->GetTeamId()));
-                Channel* candidateChannel = candidateCM->GetChannel(channel->GetName(), candidate);
-                if (candidateChannel && candidateChannel->GetChannelId() == senderChannel->GetChannelId())
+                eligibleBots.push_back(candidate);
+                if(g_DebugEnabled)
                 {
-                    eligibleBots.push_back(candidate);
+                    LOG_INFO("server.loading", "[Ollama Chat] Found bot {} in channel '{}'", 
+                            candidate->GetName(), channel->GetName());
                 }
             }
+        }
+        
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Found {} bots in channel '{}'", 
+                    eligibleBots.size(), channel->GetName());
         }
     }
     else
@@ -886,26 +897,50 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 // Route the response.
                 if (channelId != 0 && !channelName.empty())
                 {
-                    // For channels, use the specific channel by name
+                    // For channels, get the channel instance for the bot's team
                     ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
                     if (cMgr)
                     {
                         Channel* targetChannel = cMgr->GetChannel(channelName, botPtr);
-                        if (targetChannel && botPtr->IsInChannel(targetChannel))
+                        if (targetChannel)
                         {
-                            targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
                             if(g_DebugEnabled)
                             {
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded in channel {}: {}", 
-                                        botPtr->GetName(), channelName, response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} found channel '{}' (ID: {}), checking membership...", 
+                                        botPtr->GetName(), channelName, targetChannel->GetChannelId());
+                            }
+                            
+                            if (botPtr->IsInChannel(targetChannel))
+                            {
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} is confirmed in channel '{}', sending message...", 
+                                            botPtr->GetName(), channelName);
+                                }
+                                targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded in channel {}: {}", 
+                                            botPtr->GetName(), channelName, response);
+                                }
+                            }
+                            else
+                            {
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check", 
+                                             botPtr->GetName(), channelName);
+                                }
+                                // Fallback to normal bot speech
+                                botAI->Say(response);
                             }
                         }
                         else
                         {
                             if(g_DebugEnabled)
                             {
-                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot respond - not in channel {} or channel not found", 
-                                         botPtr->GetName(), channelName);
+                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot find channel '{}' (ID: {}) for team {}", 
+                                         botPtr->GetName(), channelName, channelId, (int)botPtr->GetTeamId());
                             }
                             // Fallback to normal bot speech
                             botAI->Say(response);
