@@ -729,13 +729,19 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 }
             }
             
-            // FINAL SANITY CHECK: Double-verify the bot is actually in the EXACT same channel
-            if (!candidate->IsInChannel(candidateChannel) || candidateChannel != channel)
+            // FINAL SANITY CHECK: CRITICAL - Verify BOTH player and bot are in the EXACT same channel instance
+            // We need to check: 1) Bot is in their channel, 2) Player is in bot's channel, 3) Both channels are identical
+            bool botInChannel = candidate->IsInChannel(candidateChannel);
+            bool playerInBotChannel = player->IsInChannel(candidateChannel);
+            bool channelsIdentical = (candidateChannel == channel);
+            
+            if (!botInChannel || !playerInBotChannel || !channelsIdentical)
             {
                 if(g_DebugEnabled)
                 {
-                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED final channel verification - IsInChannel: {}, ptr match: {}", 
-                            candidate->GetName(), candidate->IsInChannel(candidateChannel), (candidateChannel == channel));
+                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED final channel verification - Bot in channel: {}, Player in bot's channel: {}, Channels identical: {}, Bot channel ptr: {}, Player channel ptr: {}", 
+                            candidate->GetName(), botInChannel, playerInBotChannel, channelsIdentical, 
+                            (void*)candidateChannel, (void*)channel);
                 }
                 continue; // SKIP this bot - FAILED final verification
             }
@@ -744,8 +750,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)
             {
-                LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - ALL CHECKS PASSED", 
-                        candidate->GetName(), channel->GetName());
+                LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - ALL CHECKS PASSED (Bot in channel: {}, Player in bot's channel: {}, Channels identical: {})", 
+                        candidate->GetName(), channel->GetName(), botInChannel, playerInBotChannel, channelsIdentical);
             }
         }
         
