@@ -662,6 +662,16 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     channel->GetName(), channel->GetChannelId());
         }
         
+        // Verify the original channel is valid before proceeding
+        if (!channel)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_ERROR("server.loading", "[Ollama Chat] Channel is null, cannot process channel message");
+            }
+            return;
+        }
+        
         // Iterate through all players and check if they're in the EXACT same channel instance
         auto const& allPlayers = ObjectAccessor::GetPlayers();
         for (auto const& itr : allPlayers)
@@ -670,12 +680,22 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidate || candidate == player)
                 continue;
                 
+            // Skip non-bots early
+            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+            if (!candidateAI || !candidateAI->IsBotAI())
+                continue;
+                
+            // Only include regular player accounts (same filter as Channel::List)
+            if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
+                continue;
+                
             // ONLY check exact channel instance - get the channel for the candidate's team
             ChannelMgr* candidateCMgr = ChannelMgr::forTeam(candidate->GetTeamId());
             if (!candidateCMgr)
                 continue;
                 
             Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
+            // Verify both channels are valid and are the exact same instance
             if (!candidateChannel || candidateChannel != channel)
             {
                 if(g_DebugEnabled)
@@ -703,14 +723,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     continue;
                 }
             }
-                
-            // Only include regular player accounts (same filter as Channel::List)
-            if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
-                continue;
-                    
-            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
-            if (!candidateAI || !candidateAI->IsBotAI())
-                continue;
             
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)
@@ -1069,12 +1081,27 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
     // For channels, check if bot is in the specific channel instance
     if (channel)
     {
+        // Verify the channel is valid before proceeding
+        if (!channel)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_ERROR("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Channel is null");
+            }
+            return false;
+        }
+        
+        // Early security check before expensive channel lookup
+        if (!AccountMgr::IsPlayerAccount(bot->GetSession()->GetSecurity()))
+            return false;
+            
         // ONLY use exact channel instance check - NO Player::IsInChannel() anymore
         ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
         if (!candidateCMgr)
             return false;
             
         Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), bot);
+        // Verify both channels are valid and are the exact same instance
         if (!candidateChannel || candidateChannel != channel)
         {
             if(g_DebugEnabled)
