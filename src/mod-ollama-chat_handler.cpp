@@ -695,16 +695,21 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
                 
             Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
-            // Verify both channels are valid and are the exact same instance
-            if (!candidateChannel || candidateChannel != channel)
+            // ULTIMATE VERIFICATION: channel pointer, ID, and name must ALL match
+            if (!candidateChannel || 
+                candidateChannel != channel ||
+                candidateChannel->GetChannelId() != channel->GetChannelId() ||
+                candidateChannel->GetName() != channel->GetName())
             {
                 if(g_DebugEnabled)
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in same channel instance '{}' - Bot team: {}, Player team: {}, Channel ptr: {} vs {}", 
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} FAILED channel verification '{}' - Bot team: {}, Player team: {}, Channel ptr: {} vs {}, ID: {} vs {}, Name: '{}' vs '{}'", 
                             candidate->GetName(), channel->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(),
-                            (void*)candidateChannel, (void*)channel);
+                            (void*)candidateChannel, (void*)channel,
+                            candidateChannel ? candidateChannel->GetChannelId() : 0, channel->GetChannelId(),
+                            candidateChannel ? candidateChannel->GetName().c_str() : "NULL", channel->GetName().c_str());
                 }
-                continue;
+                continue; // SKIP this bot - FAILED verification
             }
             
             // Additional team check for cross-faction channels - only allow same faction unless it's a global channel
@@ -724,10 +729,22 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 }
             }
             
+            // FINAL SANITY CHECK: Double-verify the bot is actually in the EXACT same channel
+            if (!candidate->IsInChannel(candidateChannel) || candidateChannel != channel)
+            {
+                if(g_DebugEnabled)
+                {
+                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED final channel verification - IsInChannel: {}, ptr match: {}", 
+                            candidate->GetName(), candidate->IsInChannel(candidateChannel), (candidateChannel == channel));
+                }
+                continue; // SKIP this bot - FAILED final verification
+            }
+            
+            // ONLY add bots that passed ALL verifications
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)
             {
-                LOG_INFO("server.loading", "[Ollama Chat] Found eligible bot {} in channel '{}'", 
+                LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - ALL CHECKS PASSED", 
                         candidate->GetName(), channel->GetName());
             }
         }
@@ -763,8 +780,19 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         {
             continue;
         }
-        if (IsBotEligibleForChatChannelLocal(bot, player, sourceLocal, channel, receiver))
+        // For channel messages, bots in eligibleBots have already passed STRICT channel checks
+        // Only run additional eligibility checks for non-channel sources
+        if (channel != nullptr)
+        {
+            // Channel bots have already been verified to be in EXACT same channel instance
             candidateBots.push_back(bot);
+        }
+        else
+        {
+            // For non-channel sources, run the full eligibility check
+            if (IsBotEligibleForChatChannelLocal(bot, player, sourceLocal, channel, receiver))
+                candidateBots.push_back(bot);
+        }
     }
     
     uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
