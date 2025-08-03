@@ -672,7 +672,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             return;
         }
         
-        // Iterate through all players and check if they're in the EXACT same channel instance
+        // For channel chat, simply find all bots in the same zone as the player
         auto const& allPlayers = ObjectAccessor::GetPlayers();
         for (auto const& itr : allPlayers)
         {
@@ -685,73 +685,52 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidateAI || !candidateAI->IsBotAI())
                 continue;
                 
-            // Only include regular player accounts (same filter as Channel::List)
+            // Only include regular player accounts
             if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
                 continue;
-                
-            // ONLY check exact channel instance - get the channel for the candidate's team
-            ChannelMgr* candidateCMgr = ChannelMgr::forTeam(candidate->GetTeamId());
-            if (!candidateCMgr)
-                continue;
-                
-            Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), candidate);
-            // ULTIMATE VERIFICATION: channel pointer, ID, and name must ALL match
-            if (!candidateChannel || 
-                candidateChannel != channel ||
-                candidateChannel->GetChannelId() != channel->GetChannelId() ||
-                candidateChannel->GetName() != channel->GetName())
+            
+            // For local channels (General, Trade, LocalDefense), bot must be in same zone as player
+            bool isLocalChannel = (channel->GetName().find("General -") != std::string::npos || 
+                                  channel->GetName().find("Trade -") != std::string::npos ||
+                                  channel->GetName().find("LocalDefense -") != std::string::npos);
+            
+            if (isLocalChannel)
             {
-                if(g_DebugEnabled)
+                // ZONE CHECK: Bot must be in exact same zone as player
+                if (candidate->GetZoneId() != player->GetZoneId())
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} FAILED channel verification '{}' - Bot team: {}, Player team: {}, Channel ptr: {} vs {}, ID: {} vs {}, Name: '{}' vs '{}'", 
-                            candidate->GetName(), channel->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(),
-                            (void*)candidateChannel, (void*)channel,
-                            candidateChannel ? candidateChannel->GetChannelId() : 0, channel->GetChannelId(),
-                            candidateChannel ? candidateChannel->GetName().c_str() : "NULL", channel->GetName().c_str());
+                    if(g_DebugEnabled)
+                    {
+                        LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED zone check - Bot zone: {}, Player zone: {}, Channel: '{}'", 
+                                candidate->GetName(), candidate->GetZoneId(), player->GetZoneId(), channel->GetName());
+                    }
+                    continue; // SKIP this bot - wrong zone
                 }
-                continue; // SKIP this bot - FAILED verification
             }
             
-            // Additional team check for cross-faction channels - only allow same faction unless it's a global channel
+            // FACTION CHECK: For non-global channels, ensure same faction
             if (candidate->GetTeamId() != player->GetTeamId())
             {
-                // Allow cross-faction only for specific global channels or if explicitly allowed
                 bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
                                        channel->GetName().find("LookingForGroup") != std::string::npos);
                 if (!isGlobalChannel)
                 {
                     if(g_DebugEnabled)
                     {
-                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} different faction from player - Bot: {}, Player: {}, Channel: '{}'", 
+                        LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED faction check - Bot: {}, Player: {}, Channel: '{}'", 
                                 candidate->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(), channel->GetName());
                     }
-                    continue;
+                    continue; // SKIP this bot - wrong faction
                 }
-            }
-            
-            // FINAL SANITY CHECK: CRITICAL - Verify BOTH player and bot are in the EXACT same channel instance
-            // We need to check: 1) Bot is in their channel, 2) Player is in bot's channel, 3) Both channels are identical
-            bool botInChannel = candidate->IsInChannel(candidateChannel);
-            bool playerInBotChannel = player->IsInChannel(candidateChannel);
-            bool channelsIdentical = (candidateChannel == channel);
-            
-            if (!botInChannel || !playerInBotChannel || !channelsIdentical)
-            {
-                if(g_DebugEnabled)
-                {
-                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED final channel verification - Bot in channel: {}, Player in bot's channel: {}, Channels identical: {}, Bot channel ptr: {}, Player channel ptr: {}", 
-                            candidate->GetName(), botInChannel, playerInBotChannel, channelsIdentical, 
-                            (void*)candidateChannel, (void*)channel);
-                }
-                continue; // SKIP this bot - FAILED final verification
             }
             
             // ONLY add bots that passed ALL verifications
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)
             {
-                LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - ALL CHECKS PASSED (Bot in channel: {}, Player in bot's channel: {}, Channels identical: {})", 
-                        candidate->GetName(), channel->GetName(), botInChannel, playerInBotChannel, channelsIdentical);
+                LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - Distance: {:.2f}, Zone match: {}", 
+                        candidate->GetName(), channel->GetName(), 
+                        candidate->GetDistance(player), (candidate->GetZoneId() == player->GetZoneId()));
             }
         }
         
