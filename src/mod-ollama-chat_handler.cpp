@@ -706,10 +706,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             bool isLocalChannel = (channel->GetName().find("General -") != std::string::npos || 
                                   channel->GetName().find("Trade -") != std::string::npos ||
                                   channel->GetName().find("LocalDefense -") != std::string::npos);
-            
-            bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
-                                   channel->GetName().find("LookingForGroup") != std::string::npos);
-            
+        
             // For local channels, bot must be in same zone as player
             if (isLocalChannel)
             {
@@ -996,52 +993,13 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             }
                             else
                             {
-                                // Try to auto-join bot to global channels
-                                bool isGlobalChannel = (channelName.find("World") != std::string::npos || 
-                                                       channelName.find("LookingForGroup") != std::string::npos);
-                                
-                                if (isGlobalChannel)
+                                if(g_DebugEnabled)
                                 {
-                                    if(g_DebugEnabled)
-                                    {
-                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in global channel '{}', attempting to join...", 
+                                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check", 
                                                 botPtr->GetName(), channelName);
-                                    }
-                                    
-                                    // Try to join the bot to the channel
-                                    targetChannel->JoinChannel(botPtr, "");
-                                    
-                                    // Check if join was successful and try to send message
-                                    if (botPtr->IsInChannel(targetChannel))
-                                    {
-                                        if(g_DebugEnabled)
-                                        {
-                                            LOG_INFO("server.loading", "[Ollama Chat] Bot {} successfully joined channel '{}', sending message...", 
-                                                    botPtr->GetName(), channelName);
-                                        }
-                                        targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
-                                    }
-                                    else
-                                    {
-                                        if(g_DebugEnabled)
-                                        {
-                                            LOG_ERROR("server.loading", "[Ollama Chat] Bot {} failed to join channel '{}', using fallback", 
-                                                     botPtr->GetName(), channelName);
-                                        }
-                                        // Fallback to normal bot speech
-                                        botAI->Say(response);
-                                    }
                                 }
-                                else
-                                {
-                                    if(g_DebugEnabled)
-                                    {
-                                        LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check", 
-                                                 botPtr->GetName(), channelName);
-                                    }
-                                    // Fallback to normal bot speech
-                                    botAI->Say(response);
-                                }
+                                // Fallback to normal bot speech
+                                botAI->Say(response);
                             }
                         }
                         else
