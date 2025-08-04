@@ -727,9 +727,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             // FACTION CHECK: For non-global channels, ensure same faction
             if (candidate->GetTeamId() != player->GetTeamId())
             {
-                bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
-                                       channel->GetName().find("LookingForGroup") != std::string::npos);
-                                       
                 if (!isGlobalChannel)
                 {
                     if(g_DebugEnabled)
