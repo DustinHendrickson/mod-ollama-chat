@@ -161,11 +161,6 @@ OllamaChat.SayDistance = 30.0
 #     Default:     100.0
 OllamaChat.YellDistance = 100.0
 
-# OllamaChat.GeneralDistance
-#     Description: The maximum distance (in game units) a bot must be within to reply on a custom (SRC_GENERAL) channel.
-#     Default:     600.0
-OllamaChat.GeneralDistance = 600.0
-
 # --------------------------------------------
 # RANDOM CHATTER SYSTEM
 # --------------------------------------------

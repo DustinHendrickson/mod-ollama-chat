@@ -13,7 +13,6 @@
 // --------------------------------------------
 float      g_SayDistance       = 30.0f;
 float      g_YellDistance      = 100.0f;
-float      g_GeneralDistance   = 600.0f;
 float      g_RandomChatterRealPlayerDistance = 40.0f;
 float      g_EventChatterRealPlayerDistance = 40.0f;
 
@@ -292,7 +291,6 @@ void LoadOllamaChatConfig()
 {
     g_SayDistance                     = sConfigMgr->GetOption<float>("OllamaChat.SayDistance", 30.0f);
     g_YellDistance                    = sConfigMgr->GetOption<float>("OllamaChat.YellDistance", 100.0f);
-    g_GeneralDistance                 = sConfigMgr->GetOption<float>("OllamaChat.GeneralDistance", 600.0f);
     g_PlayerReplyChance               = sConfigMgr->GetOption<uint32_t>("OllamaChat.PlayerReplyChance", 90);
     g_BotReplyChance                  = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotReplyChance", 10);
     g_MaxBotsToPick                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
@@ -452,10 +450,10 @@ void LoadOllamaChatConfig()
 
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
-             "GeneralDistance = {}, PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
+             "PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
              "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
              "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
-             g_Enable, g_SayDistance, g_YellDistance, g_GeneralDistance,
+             g_Enable, g_SayDistance, g_YellDistance,
              g_PlayerReplyChance, g_BotReplyChance, g_MaxBotsToPick,
              g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,

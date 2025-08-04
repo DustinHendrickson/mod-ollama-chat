@@ -802,8 +802,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
             if (!candidate->IsInWorld())
                 continue;
-            if (player->GetDistance(candidate) > g_GeneralDistance)
-                continue;
             if (!sPlayerbotsMgr->GetPlayerbotAI(candidate))
             {
                 realPlayerNearby = true;

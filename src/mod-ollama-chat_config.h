@@ -15,7 +15,6 @@
 // --------------------------------------------
 extern float      g_SayDistance;
 extern float      g_YellDistance;
-extern float      g_GeneralDistance;
 extern float      g_RandomChatterRealPlayerDistance;
 extern float      g_EventChatterRealPlayerDistance;
 

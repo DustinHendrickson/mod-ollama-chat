@@ -490,10 +490,23 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
+            bool IsaGuildComment = false;
+
             if (!candidateComments.empty())
             {
                 uint32_t index = candidateComments.size() == 1 ? 0 : urand(0, candidateComments.size() - 1);
                 environmentInfo = candidateComments[index];
+                if (!candidateComments.empty() && !environmentInfo.empty()) {
+                    // If guildComments was appended, check if environmentInfo is one of them
+                    if (!guildComments.empty()) {
+                        for (const auto& gc : guildComments) {
+                            if (environmentInfo == gc) {
+                                IsaGuildComment = true;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             else
             {
@@ -550,7 +563,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-            std::thread([botGuid, prompt]() {
+            std::thread([botGuid, prompt, IsaGuildComment]() {
                 try {
                     Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
@@ -592,7 +605,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
                             std::string selectedChannel = channels[dist(gen)];
                             
-                            if (selectedChannel == "Guild") {
+                            if (selectedChannel == "Guild" || IsaGuildComment) {
                                 if (g_DebugEnabled)
                                     LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
                                 botAI->SayToGuild(response);
