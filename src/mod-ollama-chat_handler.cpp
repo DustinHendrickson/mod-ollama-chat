@@ -706,6 +706,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             bool isLocalChannel = (channel->GetName().find("General -") != std::string::npos || 
                                   channel->GetName().find("Trade -") != std::string::npos ||
                                   channel->GetName().find("LocalDefense -") != std::string::npos);
+            
+            bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || channel->GetName().find("LookingForGroup") != std::string::npos);
         
             // For local channels, bot must be in same zone as player
             if (isLocalChannel)
