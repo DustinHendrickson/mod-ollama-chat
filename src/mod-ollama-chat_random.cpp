@@ -131,6 +131,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             std::string environmentInfo;
             std::vector<std::string> candidateComments;
+            std::vector<std::string> guildComments;
 
             // Creature
             {
@@ -452,10 +453,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
                 
                 if (hasRealPlayerInGuild)
-                {
-                    // Add guild environment comments
-                    std::vector<std::string> guildComments;
-                    
+                {                    
                     // Guild member comments
                     if (!g_GuildEnvCommentGuildMember.empty())
                     {
