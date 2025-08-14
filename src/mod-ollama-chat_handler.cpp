@@ -1,4 +1,5 @@
 #include "Log.h"
+#include "Language.h"
 #include "Player.h"
 #include "Chat.h"
 #include "Channel.h"
@@ -599,7 +600,7 @@ static std::string GenerateBotGameStateSnapshot(Player* bot)
 }
 
 
-void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32_t /*lang*/, std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel, Player* receiver)
+void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32_t lang, std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel, Player* receiver)
 {
     if (player == nullptr) {
         LOG_ERROR("server.loading", "[Ollama Chat] ProcessChat: player is null");
@@ -608,6 +609,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     if (msg.empty()) {
         return;
     }
+    if (lang == LANG_ADDON) return;
     std::string chanName = (channel != nullptr) ? channel->GetName() : "Unknown";
     uint32_t channelId = (channel != nullptr) ? channel->GetChannelId() : 0;
     std::string receiverName = (receiver != nullptr) ? receiver->GetName() : "None";
