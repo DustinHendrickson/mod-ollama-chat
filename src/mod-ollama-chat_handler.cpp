@@ -620,15 +620,23 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 player->GetName(), msg, (int)sourceLocal, chanName, channelId, receiverName);
     }
 
+
+    auto startsWithWord = [](const std::string& text, const std::string& word) {
+        if (text.size() < word.size()) return false;
+        if (text.compare(0, word.size(), word) != 0) return false;
+        // If exact length match or next char is whitespace/punctuation, it's a word
+        return text.size() == word.size() || !std::isalnum((unsigned char)text[word.size()]);
+    };
+
     std::string trimmedMsg = rtrim(msg);
     for (const std::string& blacklist : g_BlacklistCommands)
     {
-        if (trimmedMsg.find(blacklist) == 0)
+        if (startsWithWord(trimmedMsg, blacklist))
         {
-            if(g_DebugEnabled)
-            {
-                LOG_INFO("server.loading", "[Ollama Chat] Message starts with '{}' (blacklisted). Skipping bot responses.", blacklist);
-            }
+            if (g_DebugEnabled)
+                LOG_INFO("server.loading",
+                         "[Ollama Chat] Message starts with '{}' (blacklisted). Skipping bot responses.",
+                         blacklist);
             return;
         }
     }
