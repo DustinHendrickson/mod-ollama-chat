@@ -163,6 +163,8 @@ extern std::string g_GuildEventTypeGuildJoin;
 extern std::string g_GuildEventTypeGuildLeave;
 extern std::string g_GuildEventTypeGuildPromotion;
 extern std::string g_GuildEventTypeGuildDemotion;
+extern std::string g_GuildEventTypeGuildLogin;
+extern std::string g_GuildEventTypeGuildAchievement;
 
 // --------------------------------------------
 // Bot-Player Sentiment Tracking System

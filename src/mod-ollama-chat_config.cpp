@@ -179,6 +179,8 @@ std::string g_GuildEventTypeGuildJoin = "";
 std::string g_GuildEventTypeGuildLeave = "";
 std::string g_GuildEventTypeGuildPromotion = "";
 std::string g_GuildEventTypeGuildDemotion = "";
+std::string g_GuildEventTypeGuildLogin = "";
+std::string g_GuildEventTypeGuildAchievement = "";
 
 // --------------------------------------------
 // Event Chatter Templates
@@ -444,6 +446,7 @@ void LoadOllamaChatConfig()
     g_GuildEventTypeEpicGear = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeEpicGear", "");
     g_GuildEventTypeRareGear = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeRareGear", "");
     g_GuildEventTypeGuildJoin = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildJoin", "");
+    g_GuildEventTypeGuildLogin = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildLogin", "");
     g_GuildEventTypeGuildLeave = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildLeave", "");
     g_GuildEventTypeGuildPromotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildPromotion", "");
     g_GuildEventTypeGuildDemotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildDemotion", "");

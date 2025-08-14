@@ -220,7 +220,7 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
             PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
             if (!botAI) return;
 
-            if (isGuildEvent && botPtr->GetGuild())
+            if (isGuildEvent && botPtr->GetGuild() && (type == g_GuildEventTypeGuildJoin || type == g_GuildEventTypeGuildLeave || type == g_GuildEventTypeGuildPromotion || type == g_GuildEventTypeGuildDemotion || type == g_GuildEventTypeLevelUp || type == g_GuildEventTypeEpicGear || type == g_GuildEventTypeRareGear || type == g_GuildEventTypeDungeonComplete))
                 botAI->SayToGuild(response);
             else if (botPtr->GetGroup())
                 botAI->SayToParty(response);
@@ -453,6 +453,7 @@ void ChatOnLevelUp::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
 
 ChatOnAchievement::ChatOnAchievement() : PlayerScript("ChatOnAchievement") {}
 
+
 void ChatOnAchievement::OnPlayerCompleteAchievement(Player* player, AchievementEntry const* achievement)
 {
     if (!player || !achievement)
@@ -460,6 +461,13 @@ void ChatOnAchievement::OnPlayerCompleteAchievement(Player* player, AchievementE
         return;
     }
     eventChatter.DispatchGameEvent(player, g_EventTypeAchievement, achievement->name[0]);
+
+    // Guild-specific achievement event for real players only
+    if (player->GetGuild() && g_EnableGuildRandomChatter && !g_GuildEventTypeGuildAchievement.empty())
+    {
+        if (!sPlayerbotsMgr->GetPlayerbotAI(player)) // Only real players
+            eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildAchievement, achievement->name[0]);
+    }
 }
 
 ChatOnGameObjectUse::ChatOnGameObjectUse() : PlayerScript("ChatOnGameObjectUse") {}
@@ -510,5 +518,16 @@ void ChatOnGuildMemberChange::OnGuildMemberRankChange(Player* player, Guild* /*g
         if (!g_GuildEventTypeGuildDemotion.empty())
             eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildDemotion, std::to_string(newRank));
     }
+}
+
+// Add new event for non-bot guild member login
+void ChatOnGuildMemberChange::OnGuildMemberLogin(Player* player, Guild* guild)
+{
+    if (!player || !guild || !g_EnableGuildRandomChatter)
+        return;
+    if (sPlayerbotsMgr->GetPlayerbotAI(player))
+        return; // Only real players
+    if (!g_GuildEventTypeGuildLogin.empty())
+        eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildLogin, guild->GetName());
 }
 
