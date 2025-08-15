@@ -88,6 +88,7 @@ public:
     void OnGuildMemberJoin(Player* player, Guild* guild);
     void OnGuildMemberLeave(Player* player, Guild* guild);
     void OnGuildMemberRankChange(Player* player, Guild* guild, uint8 oldRank, uint8 newRank);
+    void OnGuildMemberLogin(Player* player, Guild* guild);
 };
 
 
