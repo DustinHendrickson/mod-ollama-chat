@@ -34,7 +34,7 @@ std::unordered_map<uint64_t, time_t> nextRandomChatTime;
 
 void OllamaBotRandomChatter::OnUpdate(uint32 diff)
 {
-    if (!g_Enable || !g_EnableRandomChatter)
+    if (!g_Enable)
         return;
 
     if (g_ConversationHistorySaveInterval > 0)
@@ -58,10 +58,15 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
         }
     }
 
+    if (!g_EnableRandomChatter)
+        return;
+
     static uint32_t timer = 0;
     if (timer <= diff)
     {
         timer = 30000;
+        if (g_DebugEnabled)
+            LOG_INFO("server.loading", "[Ollama Chat] RandomChatter tick fired (HandleRandomChatter called)");
         HandleRandomChatter();
     }
     else
@@ -88,31 +93,58 @@ void OllamaBotRandomChatter::HandleRandomChatter()
     for (Player* realPlayer : realPlayers)
     {
         std::vector<Player*> botsInRange;
+        // For each bot, check if it should do random chatter
         for (auto const& itr : allPlayers)
         {
             Player* bot = itr.second;
             PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
             if (!ai) continue;
             if (!bot->IsInWorld() || bot->IsBeingTeleported()) continue;
-            if (bot->GetDistance(realPlayer) > g_RandomChatterRealPlayerDistance) continue;
             if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue;
-            botsInRange.push_back(bot);
-        }
 
-        std::shuffle(botsInRange.begin(), botsInRange.end(), std::mt19937(std::random_device()()));
-
-        uint32_t botsToProcess = std::min((uint32_t)botsInRange.size(), g_RandomChatterMaxBotsPerPlayer);
-        for (uint32_t i = 0; i < botsToProcess; ++i)
-        {
-            Player* bot = botsInRange[i];
-            if (g_DisableRepliesInCombat && bot->IsInCombat())
+            // If bot is in a guild, check if any real player from their guild is online
+            bool hasRealPlayerInGuild = false;
+            Guild* guild = bot->GetGuild();
+            if (guild)
             {
-                continue;
+                for (auto const& pair : ObjectAccessor::GetPlayers())
+                {
+                    Player* player = pair.second;
+                    if (!player || !player->IsInWorld())
+                        continue;
+                    if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                        continue;
+                    if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
+                    {
+                        hasRealPlayerInGuild = true;
+                        break;
+                    }
+                }
             }
 
-            PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
-            uint64_t guid = bot->GetGUID().GetRawValue();
+            // Only allow random chatter if:
+            // - For guild random chatter: hasRealPlayerInGuild
+            // - For other types: must be near a real player (handled in their own logic)
 
+            // For non-guild random chatter, require proximity to a real player
+            bool nearRealPlayer = false;
+            for (Player* realPlayer : realPlayers)
+            {
+                if (bot->GetDistance(realPlayer) <= g_RandomChatterRealPlayerDistance)
+                {
+                    nearRealPlayer = true;
+                    break;
+                }
+            }
+
+            // If not in a guild or no real player in guild, only allow non-guild chatter if near a real player
+            if (!guild || !hasRealPlayerInGuild)
+            {
+                if (!nearRealPlayer)
+                    continue;
+            }
+
+            uint64_t guid = bot->GetGUID().GetRawValue();
             processedBotsThisTick.insert(guid);
 
             time_t now = time(nullptr);
@@ -183,38 +215,293 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
-            // Bag Item
+            // Spell
             {
-                std::vector<Item*> bagItems;
-                for (uint32_t bagSlot = 0; bagSlot < 5; ++bagSlot)
+                struct NamedSpell
                 {
-                    if (Bag* bag = bot->GetBagByPos(bagSlot))
+                    uint32 id;
+                    std::string name;
+                    std::string effect;
+                    std::string cost;
+                };
+                std::vector<NamedSpell> validSpells;
+                for (const auto& spellPair : bot->GetSpellMap())
+                {
+                    uint32 spellId = spellPair.first;
+                    const SpellInfo* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                    if (!spellInfo) continue;
+                    if (spellInfo->Attributes & SPELL_ATTR0_PASSIVE)
+                        continue;
+                    if (spellInfo->SpellFamilyName == SPELLFAMILY_GENERIC)
+                        continue;
+                    if (bot->HasSpellCooldown(spellId))
+                        continue;
+
+                    std::string effectText;
+                    for (int i = 0; i < MAX_SPELL_EFFECTS; ++i)
                     {
-                        for (uint32_t i = 0; i < bag->GetBagSize(); ++i)
-                            if (Item* bagItem = bag->GetItemByPos(i))
-                                bagItems.push_back(bagItem);
+                        if (!spellInfo->Effects[i].IsEffect())
+                            continue;
+                        switch (spellInfo->Effects[i].Effect)
+                        {
+                            case SPELL_EFFECT_SCHOOL_DAMAGE: effectText = "Deals damage"; break;
+                            case SPELL_EFFECT_HEAL: effectText = "Heals the target"; break;
+                            case SPELL_EFFECT_APPLY_AURA: effectText = "Applies an effect"; break;
+                            case SPELL_EFFECT_DISPEL: effectText = "Dispels magic"; break;
+                            case SPELL_EFFECT_THREAT: effectText = "Generates threat"; break;
+                            default: continue;
+                        }
+                        if (!effectText.empty())
+                            break;
                     }
+                    if (effectText.empty())
+                        continue;
+
+                    const char* name = spellInfo->SpellName[0];
+                    if (!name || !*name)
+                        continue;
+
+                    std::string costText;
+                    if (spellInfo->ManaCost || spellInfo->ManaCostPercentage)
+                    {
+                        switch (spellInfo->PowerType)
+                        {
+                            case POWER_MANA: costText = std::to_string(spellInfo->ManaCost) + " mana"; break;
+                            case POWER_RAGE: costText = std::to_string(spellInfo->ManaCost) + " rage"; break;
+                            case POWER_FOCUS: costText = std::to_string(spellInfo->ManaCost) + " focus"; break;
+                            case POWER_ENERGY: costText = std::to_string(spellInfo->ManaCost) + " energy"; break;
+                            case POWER_RUNIC_POWER: costText = std::to_string(spellInfo->ManaCost) + " runic power"; break;
+                            default: costText = std::to_string(spellInfo->ManaCost) + " unknown resource"; break;
+                        }
+                    }
+                    else
+                    {
+                        costText = "no cost";
+                    }
+
+                    validSpells.push_back({spellId, name, effectText, costText});
                 }
-                if (!bagItems.empty())
+
+                if (!validSpells.empty())
                 {
-                    uint32_t bagIdx = bagItems.size() == 1 ? 0 : urand(0, bagItems.size() - 1);
-                    Item* randomBagItem = bagItems[bagIdx];
-
-                    if (!g_EnvCommentBagItem.empty()) {
-                        uint32_t tempIdx = g_EnvCommentBagItem.size() == 1 ? 0 : urand(0, g_EnvCommentBagItem.size() - 1);
-                        std::string templ = g_EnvCommentBagItem[tempIdx];
-                        candidateComments.push_back(SafeFormat(templ, fmt::arg("item_name", randomBagItem->GetTemplate()->Name1)));
-                    }
-
-                    if (!g_EnvCommentBagItemSell.empty()) {
-                        uint32_t tempIdx = g_EnvCommentBagItemSell.size() == 1 ? 0 : urand(0, g_EnvCommentBagItemSell.size() - 1);
-                        std::string templ = g_EnvCommentBagItemSell[tempIdx];
-                        candidateComments.push_back(SafeFormat(templ,
-                            fmt::arg("item_count", randomBagItem->GetCount()),
-                            fmt::arg("item_name", randomBagItem->GetTemplate()->Name1)
+                    uint32_t spellIdx = validSpells.size() == 1 ? 0 : urand(0, validSpells.size() - 1);
+                    const NamedSpell& randomSpell = validSpells[spellIdx];
+                    if (!g_EnvCommentSpell.empty())
+                    {
+                        uint32_t tempIdx = g_EnvCommentSpell.size() == 1 ? 0 : urand(0, g_EnvCommentSpell.size() - 1);
+                        std::string templ = g_EnvCommentSpell[tempIdx];
+                        candidateComments.push_back(SafeFormat(
+                            templ,
+                            fmt::arg("spell_name", randomSpell.name),
+                            fmt::arg("spell_effect", randomSpell.effect),
+                            fmt::arg("spell_cost", randomSpell.cost)
                         ));
                     }
                 }
+            }
+
+            // Quest Area
+            {
+                std::vector<std::string> questAreas;
+                for (auto const& qkv : sObjectMgr->GetQuestTemplates())
+                {
+                    Quest const* qt = qkv.second;
+                    if (!qt) continue;
+                    int32 qlevel = qt->GetQuestLevel();
+                    int32 plevel = bot->GetLevel();
+                    if (qlevel < plevel - 2 || qlevel > plevel + 2)
+                        continue;
+                    uint32 zone = qt->GetZoneOrSort();
+                    if (zone == 0) continue;
+                    if (auto const* area = sAreaTableStore.LookupEntry(zone))
+                    {
+                        if (!g_EnvCommentQuestArea.empty()) {
+                            uint32_t idx = g_EnvCommentQuestArea.size() == 1 ? 0 : urand(0, g_EnvCommentQuestArea.size() - 1);
+                            std::string templ = g_EnvCommentQuestArea[idx];
+                            questAreas.push_back(SafeFormat(templ, fmt::arg("quest_area", area->area_name[LocaleConstant::LOCALE_enUS])));
+                        }
+                    }
+                }
+                if (!questAreas.empty())
+                {
+                    uint32_t qIdx = questAreas.size() == 1 ? 0 : urand(0, questAreas.size() - 1);
+                    candidateComments.push_back(questAreas[qIdx]);
+                }
+            }
+
+            // Vendor
+            {
+                Unit* unit = nullptr;
+                Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
+                Acore::UnitSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, unit, check);
+                Cell::VisitObjects(bot, searcher, g_SayDistance);
+
+                if (unit && unit->GetTypeId() == TYPEID_UNIT)
+                {
+                    Creature* vendor = unit->ToCreature();
+                    if (vendor->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
+                    {
+                        if (!g_EnvCommentVendor.empty()) {
+                            uint32_t idx = g_EnvCommentVendor.size() == 1 ? 0 : urand(0, g_EnvCommentVendor.size() - 1);
+                            std::string templ = g_EnvCommentVendor[idx];
+                            candidateComments.push_back(SafeFormat(templ, fmt::arg("vendor_name", vendor->GetName())));
+                        }
+                    }
+                }
+            }
+
+            // Questgiver
+            {
+                Unit* unit = nullptr;
+                Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
+                Acore::UnitSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, unit, check);
+                Cell::VisitObjects(bot, searcher, g_SayDistance);
+
+                if (unit && unit->GetTypeId() == TYPEID_UNIT)
+                {
+                    Creature* giver = unit->ToCreature();
+                    if (giver->HasNpcFlag(UNIT_NPC_FLAG_QUESTGIVER))
+                    {
+                        auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
+                        int n       = std::distance(bounds.first, bounds.second);
+                        if (!g_EnvCommentQuestgiver.empty()) {
+                            uint32_t idx = g_EnvCommentQuestgiver.size() == 1 ? 0 : urand(0, g_EnvCommentQuestgiver.size() - 1);
+                            std::string templ = g_EnvCommentQuestgiver[idx];
+                            candidateComments.push_back(SafeFormat(templ,
+                                fmt::arg("questgiver_name", giver->GetName()),
+                                fmt::arg("quest_count", n)
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Free bag slots
+            {
+                int freeSlots = 0;
+                for (uint8 i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+                    if (!bot->GetItemByPos(i))
+                        ++freeSlots;
+                for (uint8 b = INVENTORY_SLOT_BAG_START; b < INVENTORY_SLOT_BAG_END; ++b)
+                    if (Bag* bag = bot->GetBagByPos(b))
+                        freeSlots += bag->GetFreeSlots();
+
+                if (!g_EnvCommentBagSlots.empty()) {
+                    uint32_t idx = g_EnvCommentBagSlots.size() == 1 ? 0 : urand(0, g_EnvCommentBagSlots.size() - 1);
+                    std::string templ = g_EnvCommentBagSlots[idx];
+                    candidateComments.push_back(SafeFormat(templ, fmt::arg("bag_slots", freeSlots)));
+                }
+            }
+
+            // Dungeon
+            {
+                if (bot->GetMap() && bot->GetMap()->IsDungeon())
+                {
+                    std::string name = bot->GetMap()->GetMapName();
+                    if (!g_EnvCommentDungeon.empty()) {
+                        uint32_t idx = g_EnvCommentDungeon.size() == 1 ? 0 : urand(0, g_EnvCommentDungeon.size() - 1);
+                        std::string templ = g_EnvCommentDungeon[idx];
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("dungeon_name", name)));
+                    }
+                }
+            }
+
+            // Unfinished Quest
+            {
+                std::vector<std::string> unfinished;
+                for (auto const& qs : bot->getQuestStatusMap())
+                {
+                    if (qs.second.Status == QUEST_STATUS_INCOMPLETE)
+                    {
+                        if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
+                            if (!g_EnvCommentUnfinishedQuest.empty()) {
+                                uint32_t idx = g_EnvCommentUnfinishedQuest.size() == 1 ? 0 : urand(0, g_EnvCommentUnfinishedQuest.size() - 1);
+                                std::string templ = g_EnvCommentUnfinishedQuest[idx];
+                                unfinished.push_back(SafeFormat(templ, fmt::arg("quest_name", qt->GetTitle())));
+                            }
+                    }
+                }
+                if (!unfinished.empty())
+                {
+                    uint32_t uIdx = unfinished.size() == 1 ? 0 : urand(0, unfinished.size() - 1);
+                    candidateComments.push_back(unfinished[uIdx]);
+                }
+            }
+
+            // Guild-specific environment comments (if bot is in a guild with real players)
+            if (g_EnableGuildRandomAmbientChatter && guild && hasRealPlayerInGuild && urand(0, 99) < g_GuildRandomChatterChance)
+            {
+                // Guild member comments
+                if (!g_GuildEnvCommentGuildMember.empty())
+                {
+                    std::string memberName = bot->GetName();
+                    if (!memberName.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildMember.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildMember[idx];
+                        guildComments.push_back(SafeFormat(templ, fmt::arg("member_name", memberName)));
+                    }
+                }
+                // Guild MOTD comments
+                if (!g_GuildEnvCommentGuildMOTD.empty() && !guild->GetMOTD().empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildMOTD.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildMOTD[idx];
+                    guildComments.push_back(SafeFormat(templ, fmt::arg("guild_motd", guild->GetMOTD())));
+                }
+                // Guild bank comments
+                if (!g_GuildEnvCommentGuildBank.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildBank.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildBank[idx];
+                    guildComments.push_back(SafeFormat(templ, 
+                        fmt::arg("bank_gold", guild->GetTotalBankMoney() / 10000)));
+                }
+                // Guild raid comments
+                if (!g_GuildEnvCommentGuildRaid.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildRaid.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildRaid[idx];
+                    guildComments.push_back(templ);
+                }
+                // Guild endgame comments
+                if (!g_GuildEnvCommentGuildEndgame.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildEndgame.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildEndgame[idx];
+                    guildComments.push_back(templ);
+                }
+                // Guild strategy comments
+                if (!g_GuildEnvCommentGuildStrategy.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildStrategy.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildStrategy[idx];
+                    guildComments.push_back(templ);
+                }
+                // Guild group/quest/grind comments
+                if (!g_GuildEnvCommentGuildGroup.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildGroup.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildGroup[idx];
+                    guildComments.push_back(templ);
+                }
+                // Guild PvP comments
+                if (!g_GuildEnvCommentGuildPvP.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildPvP.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildPvP[idx];
+                    guildComments.push_back(templ);
+                }
+                // Guild community/social comments
+                if (!g_GuildEnvCommentGuildCommunity.empty())
+                {
+                    uint32_t idx = urand(0, g_GuildEnvCommentGuildCommunity.size() - 1);
+                    std::string templ = g_GuildEnvCommentGuildCommunity[idx];
+                    guildComments.push_back(templ);
+                }
+                candidateComments.insert(candidateComments.end(), guildComments.begin(), guildComments.end());
+            }
+        }
             }
 
             // Spell

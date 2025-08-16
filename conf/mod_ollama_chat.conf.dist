@@ -690,3 +690,19 @@ OllamaChat.GuildEventTypeGuildDemotion = member got demoted
 #     Example:     "{actor_name} just earned an achievement!"
 #     Default:     member earned achievement
 OllamaChat.GuildEventTypeGuildAchievement = member earned achievement
+
+# OllamaChat.GuildEventTypeLevelUp
+#     Description: Event type for guild member level up announcements.
+#                  Triggered when a guild member levels up.
+#                  Celebrates player progression in the guild.
+#     Example:     "Grats on the level up!"
+#     Default:     member leveled up
+OllamaChat.GuildEventTypeLevelUp = member leveled up
+
+# OllamaChat.GuildEventTypeDungeonComplete
+#     Description: Event type for guild dungeon completion announcements.
+#                  Triggered when a guild group completes a dungeon.
+#                  Recognizes group achievements in PvE content.
+#     Example:     "Dungeon run complete!"
+#     Default:     guild group completed a dungeon
+OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
