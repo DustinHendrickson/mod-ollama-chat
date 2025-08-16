@@ -608,7 +608,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (!botAI) return;
                     if (botPtr->GetGroup())
                         botAI->SayToParty(response);
-                    else if (botPtr->GetGuild() && g_EnableGuildRandomChatter)
+                    else if (botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
                     {
                         // Check if there are real players in the guild
                         bool hasRealPlayerInGuild = false;
