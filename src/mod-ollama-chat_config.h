@@ -144,11 +144,19 @@ extern std::vector<std::string> g_GuildEnvCommentGuildBank;
 extern std::vector<std::string> g_GuildEnvCommentGuildMOTD;
 extern std::vector<std::string> g_GuildEnvCommentGuildInfo;
 extern std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+extern std::vector<std::string> g_GuildEnvCommentGuildRaid;
+extern std::vector<std::string> g_GuildEnvCommentGuildEndgame;
+extern std::vector<std::string> g_GuildEnvCommentGuildStrategy;
+extern std::vector<std::string> g_GuildEnvCommentGuildGroup;
+extern std::vector<std::string> g_GuildEnvCommentGuildPvP;
+extern std::vector<std::string> g_GuildEnvCommentGuildCommunity;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Configuration
 // --------------------------------------------
-extern bool        g_EnableGuildRandomChatter;
+extern bool        g_EnableGuildEventChatter;
+extern bool        g_EnableGuildRandomAmbientChatter;
+extern uint32_t    g_GuildRandomChatterChance;
 extern uint32_t    g_GuildChatterBotCommentChance;
 extern uint32_t    g_GuildChatterMaxBotsPerEvent;
 

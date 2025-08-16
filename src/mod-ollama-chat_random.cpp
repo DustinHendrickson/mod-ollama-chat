@@ -431,7 +431,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             }
 
             // Guild-specific environment comments (if bot is in a guild with real players)
-            if (g_EnableGuildRandomChatter && bot->GetGuild())
+            if (g_EnableGuildRandomAmbientChatter && bot->GetGuild())
             {
                 // Check if there are real players in the guild
                 bool hasRealPlayerInGuild = false;
@@ -441,23 +441,19 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     Player* player = pair.second;
                     if (!player || !player->IsInWorld())
                         continue;
-                        
                     if (sPlayerbotsMgr->GetPlayerbotAI(player))
                         continue;
-                        
                     if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
                     {
                         hasRealPlayerInGuild = true;
                         break;
                     }
                 }
-                
-                if (hasRealPlayerInGuild)
-                {                    
+                if (hasRealPlayerInGuild && urand(0, 99) < g_GuildRandomChatterChance)
+                {
                     // Guild member comments
                     if (!g_GuildEnvCommentGuildMember.empty())
                     {
-                        // Use the bot's own name as a guild member reference
                         std::string memberName = bot->GetName();
                         if (!memberName.empty())
                         {
@@ -466,7 +462,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             guildComments.push_back(SafeFormat(templ, fmt::arg("member_name", memberName)));
                         }
                     }
-
                     // Guild MOTD comments
                     if (!g_GuildEnvCommentGuildMOTD.empty() && !guild->GetMOTD().empty())
                     {
@@ -474,7 +469,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         std::string templ = g_GuildEnvCommentGuildMOTD[idx];
                         guildComments.push_back(SafeFormat(templ, fmt::arg("guild_motd", guild->GetMOTD())));
                     }
-
                     // Guild bank comments
                     if (!g_GuildEnvCommentGuildBank.empty())
                     {
@@ -483,7 +477,48 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         guildComments.push_back(SafeFormat(templ, 
                             fmt::arg("bank_gold", guild->GetTotalBankMoney() / 10000)));
                     }
-                    
+                    // Guild raid comments
+                    if (!g_GuildEnvCommentGuildRaid.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildRaid.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildRaid[idx];
+                        guildComments.push_back(templ);
+                    }
+                    // Guild endgame comments
+                    if (!g_GuildEnvCommentGuildEndgame.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildEndgame.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildEndgame[idx];
+                        guildComments.push_back(templ);
+                    }
+                    // Guild strategy comments
+                    if (!g_GuildEnvCommentGuildStrategy.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildStrategy.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildStrategy[idx];
+                        guildComments.push_back(templ);
+                    }
+                    // Guild group/quest/grind comments
+                    if (!g_GuildEnvCommentGuildGroup.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildGroup.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildGroup[idx];
+                        guildComments.push_back(templ);
+                    }
+                    // Guild PvP comments
+                    if (!g_GuildEnvCommentGuildPvP.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildPvP.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildPvP[idx];
+                        guildComments.push_back(templ);
+                    }
+                    // Guild community/social comments
+                    if (!g_GuildEnvCommentGuildCommunity.empty())
+                    {
+                        uint32_t idx = urand(0, g_GuildEnvCommentGuildCommunity.size() - 1);
+                        std::string templ = g_GuildEnvCommentGuildCommunity[idx];
+                        guildComments.push_back(templ);
+                    }
                     candidateComments.insert(candidateComments.end(), guildComments.begin(), guildComments.end());
                 }
             }

@@ -160,11 +160,19 @@ std::vector<std::string> g_GuildEnvCommentGuildBank;
 std::vector<std::string> g_GuildEnvCommentGuildMOTD;
 std::vector<std::string> g_GuildEnvCommentGuildInfo;
 std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+std::vector<std::string> g_GuildEnvCommentGuildRaid;
+std::vector<std::string> g_GuildEnvCommentGuildEndgame;
+std::vector<std::string> g_GuildEnvCommentGuildStrategy;
+std::vector<std::string> g_GuildEnvCommentGuildGroup;
+std::vector<std::string> g_GuildEnvCommentGuildPvP;
+std::vector<std::string> g_GuildEnvCommentGuildCommunity;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Configuration
 // --------------------------------------------
-bool        g_EnableGuildRandomChatter             = true;
+bool        g_EnableGuildEventChatter             = true;
+bool        g_EnableGuildRandomAmbientChatter      = true;
+uint32_t    g_GuildRandomChatterChance             = 10;
 uint32_t    g_GuildChatterBotCommentChance          = 25;
 uint32_t    g_GuildChatterMaxBotsPerEvent           = 2;
 
@@ -323,6 +331,9 @@ void LoadOllamaChatConfig()
     g_RandomChatterBotCommentChance   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterBotCommentChance", 25);
     g_RandomChatterMaxBotsPerPlayer   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterMaxBotsPerPlayer", 2);
 
+    g_EnableGuildRandomAmbientChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildRandomAmbientChatter", true);
+    g_GuildRandomChatterChance        = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildRandomChatterChance", 10);
+
     g_EventChatterRealPlayerDistance = sConfigMgr->GetOption<float>("OllamaChat.EventChatterRealPlayerDistance", 40.0f);
     g_EventChatterBotCommentChance   = sConfigMgr->GetOption<uint32_t>("OllamaChat.EventChatterBotCommentChance", 15);
     g_EventChatterBotSelfCommentChance = sConfigMgr->GetOption<uint32_t>("OllamaChat.EventChatterBotSelfCommentChance", 5);
@@ -434,9 +445,15 @@ void LoadOllamaChatConfig()
     g_GuildEnvCommentGuildMOTD = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildMOTD", { "" });
     g_GuildEnvCommentGuildInfo = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildInfo", { "" });
     g_GuildEnvCommentGuildOnlineMembers = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildOnlineMembers", { "" });
+    g_GuildEnvCommentGuildRaid = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildRaid", { "" });
+    g_GuildEnvCommentGuildEndgame = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildEndgame", { "" });
+    g_GuildEnvCommentGuildStrategy = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildStrategy", { "" });
+    g_GuildEnvCommentGuildGroup = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildGroup", { "" });
+    g_GuildEnvCommentGuildPvP = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildPvP", { "" });
+    g_GuildEnvCommentGuildCommunity = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildCommunity", { "" });
 
     // Guild-specific configuration
-    g_EnableGuildRandomChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildRandomChatter", true);
+    g_EnableGuildEventChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildEventChatter", true);
     g_GuildChatterBotCommentChance = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildChatterBotCommentChance", 25);
     g_GuildChatterMaxBotsPerEvent = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildChatterMaxBotsPerEvent", 2);
 

@@ -35,24 +35,33 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
     bool hasNearbyRealPlayer = false;
     bool isGuildEvent = false;
 
-    // Check if this is a guild event (level up, gear, etc.)
-    if (source->GetGuild() && g_EnableGuildRandomChatter)
-    {
-        // Check if there are real players in the guild
-        Guild* guild = source->GetGuild();
-        for (auto const& pair : ObjectAccessor::GetPlayers())
-        {
-            Player* player = pair.second;
-            if (!player || !player->IsInWorld())
-                continue;
-                
-            if (sPlayerbotsMgr->GetPlayerbotAI(player))
-                continue;
-                
-            if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
-            {
-                isGuildEvent = true;
-                break;
+    // Only set isGuildEvent for specific event types
+    if (source->GetGuild() && g_EnableGuildEventChatter) {
+        // List of event types that are considered guild events
+        if (
+            type == g_GuildEventTypeGuildJoin ||
+            type == g_GuildEventTypeGuildLeave ||
+            type == g_GuildEventTypeGuildPromotion ||
+            type == g_GuildEventTypeGuildDemotion ||
+            type == g_GuildEventTypeLevelUp ||
+            type == g_GuildEventTypeEpicGear ||
+            type == g_GuildEventTypeRareGear ||
+            type == g_GuildEventTypeDungeonComplete ||
+            type == g_GuildEventTypeGuildAchievement ||
+            type == g_GuildEventTypeGuildLogin
+        ) {
+            // Check if there are real players in the guild
+            Guild* guild = source->GetGuild();
+            for (auto const& pair : ObjectAccessor::GetPlayers()) {
+                Player* player = pair.second;
+                if (!player || !player->IsInWorld())
+                    continue;
+                if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                    continue;
+                if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId()) {
+                    isGuildEvent = true;
+                    break;
+                }
             }
         }
     }
@@ -220,7 +229,7 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
             PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
             if (!botAI) return;
 
-            if (isGuildEvent && botPtr->GetGuild() && (type == g_GuildEventTypeGuildJoin || type == g_GuildEventTypeGuildLeave || type == g_GuildEventTypeGuildPromotion || type == g_GuildEventTypeGuildDemotion || type == g_GuildEventTypeLevelUp || type == g_GuildEventTypeEpicGear || type == g_GuildEventTypeRareGear || type == g_GuildEventTypeDungeonComplete))
+            if (isGuildEvent && botPtr->GetGuild())
                 botAI->SayToGuild(response);
             else if (botPtr->GetGroup())
                 botAI->SayToParty(response);
@@ -335,7 +344,7 @@ void ChatOnLoot::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /*count
     }
     
     // Guild-specific gear events
-    if (player->GetGuild() && g_EnableGuildRandomChatter)
+    if (player->GetGuild() && g_EnableGuildEventChatter)
     {
         if (item->GetTemplate()->Quality == ITEM_QUALITY_EPIC && !g_GuildEventTypeEpicGear.empty())
         {
@@ -375,7 +384,7 @@ void ChatOnQuest::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     eventChatter.DispatchGameEvent(player, g_EventTypeCompletedQuest, quest->GetTitle());
     
     // Guild-specific dungeon completion events
-    if (player->GetGuild() && g_EnableGuildRandomChatter && !g_GuildEventTypeDungeonComplete.empty())
+    if (player->GetGuild() && g_EnableGuildEventChatter && !g_GuildEventTypeDungeonComplete.empty())
     {
         // Check if this is a dungeon quest
         if (player->GetMap() && player->GetMap()->IsDungeon())
@@ -445,7 +454,7 @@ void ChatOnLevelUp::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     eventChatter.DispatchGameEvent(player, g_EventTypeLeveledUp, std::to_string(player->GetLevel()));
     
     // Guild-specific level up events
-    if (player->GetGuild() && g_EnableGuildRandomChatter && !g_GuildEventTypeLevelUp.empty())
+    if (player->GetGuild() && g_EnableGuildEventChatter && !g_GuildEventTypeLevelUp.empty())
     {
         eventChatter.DispatchGameEvent(player, g_GuildEventTypeLevelUp, std::to_string(player->GetLevel()));
     }
@@ -463,7 +472,7 @@ void ChatOnAchievement::OnPlayerCompleteAchievement(Player* player, AchievementE
     eventChatter.DispatchGameEvent(player, g_EventTypeAchievement, achievement->name[0]);
 
     // Guild-specific achievement event for real players only
-    if (player->GetGuild() && g_EnableGuildRandomChatter && !g_GuildEventTypeGuildAchievement.empty())
+    if (player->GetGuild() && g_EnableGuildEventChatter && !g_GuildEventTypeGuildAchievement.empty())
     {
         if (!sPlayerbotsMgr->GetPlayerbotAI(player)) // Only real players
             eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildAchievement, achievement->name[0]);
@@ -485,7 +494,7 @@ ChatOnGuildMemberChange::ChatOnGuildMemberChange() : PlayerScript("ChatOnGuildMe
 
 void ChatOnGuildMemberChange::OnGuildMemberJoin(Player* player, Guild* /*guild*/)
 {
-    if (!player || !player->GetGuild() || !g_EnableGuildRandomChatter)
+    if (!player || !player->GetGuild() || !g_EnableGuildEventChatter)
         return;
         
     if (!g_GuildEventTypeGuildJoin.empty())
@@ -494,7 +503,7 @@ void ChatOnGuildMemberChange::OnGuildMemberJoin(Player* player, Guild* /*guild*/
 
 void ChatOnGuildMemberChange::OnGuildMemberLeave(Player* player, Guild* guild)
 {
-    if (!player || !guild || !g_EnableGuildRandomChatter)
+    if (!player || !guild || !g_EnableGuildEventChatter)
         return;
         
     if (!g_GuildEventTypeGuildLeave.empty())
@@ -503,7 +512,7 @@ void ChatOnGuildMemberChange::OnGuildMemberLeave(Player* player, Guild* guild)
 
 void ChatOnGuildMemberChange::OnGuildMemberRankChange(Player* player, Guild* /*guild*/, uint8 /*oldRank*/, uint8 newRank)
 {
-    if (!player || !player->GetGuild() || !g_EnableGuildRandomChatter)
+    if (!player || !player->GetGuild() || !g_EnableGuildEventChatter)
         return;
         
     if (newRank < player->GetGuild()->GetMember(player->GetGUID())->GetRankId())
@@ -523,7 +532,7 @@ void ChatOnGuildMemberChange::OnGuildMemberRankChange(Player* player, Guild* /*g
 // Add new event for non-bot guild member login
 void ChatOnGuildMemberChange::OnGuildMemberLogin(Player* player, Guild* guild)
 {
-    if (!player || !guild || !g_EnableGuildRandomChatter)
+    if (!player || !guild || !g_EnableGuildEventChatter)
         return;
     if (sPlayerbotsMgr->GetPlayerbotAI(player))
         return; // Only real players
