@@ -190,6 +190,18 @@ OllamaChat.MaxRandomInterval = 180
 #     Default:     40
 OllamaChat.RandomChatterRealPlayerDistance = 40.0
 
+# OllamaChat.RandomChatterBotCommentChance
+#     Description: The percent chance (0-100) that an AI bot will add a comment when random chatter is triggered.
+#     Default:     5
+OllamaChat.RandomChatterBotCommentChance = 5
+
+# OllamaChat.RandomChatterMaxBotsPerPlayer
+#     Description: The maximum number of AI bots that can trigger per random chatter update when a real player is nearby.
+#                  This limits how many bots can respond at once to avoid spam.
+#                   Each bot can only process once per tick, no duplicates if multiple real players are close.
+#     Default:     2
+OllamaChat.RandomChatterMaxBotsPerPlayer = 2
+
 # OllamaChat.RandomChatterPromptTemplate
 #   Description: The template string for random bot chatter prompts.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {environment_info}
@@ -418,91 +430,91 @@ OllamaChat.EnvCommentUnfinishedQuest = Say the name of and talk about your un-fi
 #     Used in: Event-based chat prompts. Example: "Kurim defeated Hogger."
 #     Default:     defeated
 OllamaChat.EventTypeDefeated = defeated
-OllamaChat.EventTypeDefeated_Chance = 0.05
+OllamaChat.EventTypeDefeated_Chance = 1
 
 # OllamaChat.EventTypeDefeatedPlayer
 #     Description: The event type string for when a player defeats another player (PvP kill).
 #     Used in: Event-based chat prompts for PvP kills.
 #     Default:     defeated player
 OllamaChat.EventTypeDefeatedPlayer = defeated player
-OllamaChat.EventTypeDefeatedPlayer_Chance = 0.10
+OllamaChat.EventTypeDefeatedPlayer_Chance = 10
 
 # OllamaChat.EventTypePetDefeated
 #     Description: The event type string for when a player's pet defeats a creature.
 #     Used in: Event-based chat prompts.
 #     Default:     pet defeated
 OllamaChat.EventTypePetDefeated = pet defeated
-OllamaChat.EventTypePetDefeated_Chance = 0.02
+OllamaChat.EventTypePetDefeated_Chance = 2
 
 # OllamaChat.EventTypeGotItem
 #     Description: The event type string for when a player obtains a rare or higher quality item.
 #     Used in: Event-based chat when a player gets a notable item.
 #     Default:     got item
 OllamaChat.EventTypeGotItem = got item
-OllamaChat.EventTypeGotItem_Chance = 0.65
+OllamaChat.EventTypeGotItem_Chance = 65
 
 # OllamaChat.EventTypeDied
 #     Description: The event type string for when a player dies.
 #     Used in: Event-based chat when a player death occurs.
 #     Default:     died
 OllamaChat.EventTypeDied = died
-OllamaChat.EventTypeDied_Chance = 0.18
+OllamaChat.EventTypeDied_Chance = 18
 
 # OllamaChat.EventTypeCompletedQuest
 #     Description: The event type string for when a player completes a quest.
 #     Used in: Event-based chat when a quest is completed.
 #     Default:     completed quest
 OllamaChat.EventTypeCompletedQuest = completed quest
-OllamaChat.EventTypeCompletedQuest_Chance = 0.35
+OllamaChat.EventTypeCompletedQuest_Chance = 35
 
 # OllamaChat.EventTypeLearnedSpell
 #     Description: The event type string for when a player learns a new spell.
 #     Used in: Event-based chat for spell learning.
 #     Default:     learned spell
 OllamaChat.EventTypeLearnedSpell = learned spell
-OllamaChat.EventTypeLearnedSpell_Chance = 0.05
+OllamaChat.EventTypeLearnedSpell_Chance = 2
 
 # OllamaChat.EventTypeRequestedDuel
 #     Description: The event type string for when a player requests a duel.
 #     Used in: Event-based chat on duel request.
 #     Default:     requested to duel
 OllamaChat.EventTypeRequestedDuel = requested to duel
-OllamaChat.EventTypeRequestedDuel_Chance = 0.08
+OllamaChat.EventTypeRequestedDuel_Chance = 28
 
 # OllamaChat.EventTypeStartedDueling
 #     Description: The event type string for when a duel starts between players.
 #     Used in: Event-based chat when a duel begins.
 #     Default:     started dueling
 OllamaChat.EventTypeStartedDueling = started dueling
-OllamaChat.EventTypeStartedDueling_Chance = 0.10
+OllamaChat.EventTypeStartedDueling_Chance = 10
 
 # OllamaChat.EventTypeWonDuel
 #     Description: The event type string for when a player wins a duel.
 #     Used in: Event-based chat for duel win.
 #     Default:     won duel against
 OllamaChat.EventTypeWonDuel = won duel against
-OllamaChat.EventTypeWonDuel_Chance = 0.12
+OllamaChat.EventTypeWonDuel_Chance = 85
 
 # OllamaChat.EventTypeLeveledUp
 #     Description: The event type string for when a player levels up.
 #     Used in: Event-based chat on level up.
 #     Default:     leveled up
 OllamaChat.EventTypeLeveledUp = leveled up
-OllamaChat.EventTypeLeveledUp_Chance = 0.75
+OllamaChat.EventTypeLeveledUp_Chance = 75
 
 # OllamaChat.EventTypeAchievement
 #     Description: The event type string for when a player earns an achievement.
 #     Used in: Event-based chat for achievements.
 #     Default:     earned achievement
 OllamaChat.EventTypeAchievement = earned achievement
-OllamaChat.EventTypeAchievement_Chance = 0.75
+OllamaChat.EventTypeAchievement_Chance = 75
 
 # OllamaChat.EventTypeUsedObject
 #     Description: The event type string for when a player uses a game object.
 #     Used in: Event-based chat when using objects in the world.
 #     Default:     used object
 OllamaChat.EventTypeUsedObject = used object
-OllamaChat.EventTypeUsedObject_Chance = 0.10
+OllamaChat.EventTypeUsedObject_Chance = 10
 
 # OllamaChat.EventCooldownTime
 #     Description: The cooldown time (in seconds) for bots to respond to an event.
@@ -534,8 +546,8 @@ OllamaChat.EnableGuildEventChatter = 1
 #     Description: Percentage chance (0-100) for guild bots to comment on guild events.
 #                  This applies to events like level ups, gear acquisition, dungeon completion.
 #                  Lower values = less frequent guild event responses.
-#     Default: 25
-OllamaChat.GuildChatterBotCommentChance = 25
+#     Default: 65
+OllamaChat.GuildChatterBotCommentChance = 65
 
 # OllamaChat.GuildChatterMaxBotsPerEvent
 #     Description: Maximum number of guild bots that can respond to a single guild event.
@@ -640,7 +652,7 @@ OllamaChat.GuildEnvCommentGuildCommunity = Guild community is the best part of t
 #     Example:     "Grats on the epic loot!"
 #     Default:     guild member got epic gear
 OllamaChat.GuildEventTypeEpicGear = guild member got epic gear
-OllamaChat.GuildEventTypeEpicGear_Chance = 0.15
+OllamaChat.GuildEventTypeEpicGear_Chance = 95
 
 # OllamaChat.GuildEventTypeRareGear
 #     Description: Event type for guild rare gear acquisition announcements.
@@ -649,7 +661,7 @@ OllamaChat.GuildEventTypeEpicGear_Chance = 0.15
 #     Example:     "Nice blue gear upgrade!"
 #     Default:     guild member got rare gear
 OllamaChat.GuildEventTypeRareGear = guild member got rare gear
-OllamaChat.GuildEventTypeRareGear_Chance = 0.10
+OllamaChat.GuildEventTypeRareGear_Chance = 65
 
 # OllamaChat.GuildEventTypeGuildJoin
 #     Description: Event type for guild member join announcements.
@@ -658,7 +670,7 @@ OllamaChat.GuildEventTypeRareGear_Chance = 0.10
 #     Example:     "Welcome to the guild!"
 #     Default:     member joined guild
 OllamaChat.GuildEventTypeGuildJoin = member joined guild
-OllamaChat.GuildEventTypeGuildJoin_Chance = 0.12
+OllamaChat.GuildEventTypeGuildJoin_Chance = 12
 
 # OllamaChat.GuildEventTypeGuildLogin
 #     Description: Event type for guild member login announcements.
@@ -667,7 +679,7 @@ OllamaChat.GuildEventTypeGuildJoin_Chance = 0.12
 #     Example:     "{actor_name} has logged in to the guild!"
 #     Default:     member logged in
 OllamaChat.GuildEventTypeGuildLogin = member logged in
-OllamaChat.GuildEventTypeGuildLogin_Chance = 0.08
+OllamaChat.GuildEventTypeGuildLogin_Chance = 85
 
 # OllamaChat.GuildEventTypeGuildLeave
 #     Description: Event type for guild member leave announcements.
@@ -676,7 +688,7 @@ OllamaChat.GuildEventTypeGuildLogin_Chance = 0.08
 #     Example:     "Sad to see them go."
 #     Default:     member left guild
 OllamaChat.GuildEventTypeGuildLeave = member left guild
-OllamaChat.GuildEventTypeGuildLeave_Chance = 0.05
+OllamaChat.GuildEventTypeGuildLeave_Chance = 85
 
 # OllamaChat.GuildEventTypeGuildPromotion
 #     Description: Event type for guild member promotion announcements.
@@ -685,7 +697,7 @@ OllamaChat.GuildEventTypeGuildLeave_Chance = 0.05
 #     Example:     "Congrats on the promotion!"
 #     Default:     member got promoted
 OllamaChat.GuildEventTypeGuildPromotion = member got promoted
-OllamaChat.GuildEventTypeGuildPromotion_Chance = 0.10
+OllamaChat.GuildEventTypeGuildPromotion_Chance = 25
 
 # OllamaChat.GuildEventTypeGuildDemotion
 #     Description: Event type for guild member demotion announcements.
@@ -694,7 +706,7 @@ OllamaChat.GuildEventTypeGuildPromotion_Chance = 0.10
 #     Example:     "Rank changes happen."
 #     Default:     member got demoted
 OllamaChat.GuildEventTypeGuildDemotion = member got demoted
-OllamaChat.GuildEventTypeGuildDemotion_Chance = 0.05
+OllamaChat.GuildEventTypeGuildDemotion_Chance = 5
 
 # OllamaChat.GuildEventTypeGuildAchievement
 #     Description: Event type for guild member achievement announcements.
@@ -703,7 +715,7 @@ OllamaChat.GuildEventTypeGuildDemotion_Chance = 0.05
 #     Example:     "{actor_name} just earned an achievement!"
 #     Default:     member earned achievement
 OllamaChat.GuildEventTypeGuildAchievement = member earned achievement
-OllamaChat.GuildEventTypeGuildAchievement_Chance = 0.18
+OllamaChat.GuildEventTypeGuildAchievement_Chance = 85
 
 # OllamaChat.GuildEventTypeLevelUp
 #     Description: Event type for guild member level up announcements.
@@ -712,7 +724,7 @@ OllamaChat.GuildEventTypeGuildAchievement_Chance = 0.18
 #     Example:     "Grats on the level up!"
 #     Default:     member leveled up
 OllamaChat.GuildEventTypeLevelUp = member leveled up
-OllamaChat.GuildEventTypeLevelUp_Chance = 0.20
+OllamaChat.GuildEventTypeLevelUp_Chance = 95
 
 # OllamaChat.GuildEventTypeDungeonComplete
 #     Description: Event type for guild dungeon completion announcements.
@@ -721,4 +733,4 @@ OllamaChat.GuildEventTypeLevelUp_Chance = 0.20
 #     Example:     "Dungeon run complete!"
 #     Default:     guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
-OllamaChat.GuildEventTypeDungeonComplete_Chance = 0.15
+OllamaChat.GuildEventTypeDungeonComplete_Chance = 85

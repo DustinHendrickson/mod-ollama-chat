@@ -219,7 +219,7 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
         eventChance = g_GuildEventTypeDungeonComplete_Chance;
     }
 
-    if (urand(0, 100) > eventChance * 100) {
+    if (urand(0, 100) > eventChance) {
         return;
     }
 
