@@ -236,7 +236,7 @@ extern std::string g_EventTypeAchievement;        // "earned achievement"
 extern std::string g_EventTypeUsedObject;         // "used object"
 
 // Event Cooldown
-extern float g_EventCooldownTime;
+extern uint32_t g_EventCooldownTime;
 
 // --------------------------------------------
 // Loader Functions

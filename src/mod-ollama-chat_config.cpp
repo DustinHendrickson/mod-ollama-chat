@@ -234,6 +234,9 @@ float g_GuildEventTypeGuildAchievement_Chance = 0.0f;
 float g_GuildEventTypeLevelUp_Chance = 0.0f;
 float g_GuildEventTypeDungeonComplete_Chance = 0.0f;
 
+// Event Cooldown
+uint32_t g_EventCooldownTime = 10;
+
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
 {

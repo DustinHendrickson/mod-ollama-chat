@@ -822,7 +822,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             chance = 0;
     }
     
-        std::vector<Player*> finalCandidates;
+    std::vector<Player*> finalCandidates;
     
     // For whispers, handle directly - there should only be one receiver bot
     if (sourceLocal == SRC_WHISPER_LOCAL)
