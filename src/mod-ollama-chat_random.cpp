@@ -173,7 +173,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 Cell::VisitObjects(bot, creatureSearcher, g_SayDistance);
                 if (unitInRange && unitInRange->GetTypeId() == TYPEID_UNIT)
                     if (!g_EnvCommentCreature.empty()) {
-                        std::string templ = SplitString(g_EnvCommentCreature, '|');
+                        std::string templ = g_EnvCommentCreature[0]; // Use the first string from the vector
+                        templ = SplitString(templ, '|')[0]; // Ensure SplitString is used correctly
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("creature_name", unitInRange->ToCreature()->GetName())));
                     }
             }
@@ -187,7 +188,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (goInRange)
                 {
                     if (!g_EnvCommentGameObject.empty()) {
-                        std::string templ = SplitString(g_EnvCommentGameObject, '|');
+                        std::string templ = g_EnvCommentGameObject[0]; // Use the first string from the vector
+                        templ = SplitString(templ, '|')[0]; // Ensure SplitString is used correctly
                         std::string gameObjectName = goInRange->GetName();
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("object_name", gameObjectName)));
                     }
@@ -206,7 +208,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     uint32_t eqIdx = equippedItems.size() == 1 ? 0 : urand(0, equippedItems.size() - 1);
                     Item* randomEquipped = equippedItems[eqIdx];
                     if (!g_EnvCommentEquippedItem.empty()) {
-                        std::string templ = SplitString(g_EnvCommentEquippedItem, '|');
+                        std::string templ = g_EnvCommentEquippedItem[0]; // Use the first string from the vector
+                        templ = SplitString(templ, '|')[0]; // Ensure SplitString is used correctly
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("item_name", randomEquipped->GetTemplate()->Name1)));
                     }
                 }
@@ -225,9 +228,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 for (const auto& spellPair : bot->GetSpellMap())
                 {
                     uint32 spellId = spellPair.first;
-                    const SpellInfo* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                    if (!spellInfo) continue;
-                    if (spellInfo->Attributes & SPELL_ATTR0_PASSIVE)
                         continue;
                     if (spellInfo->SpellFamilyName == SPELLFAMILY_GENERIC)
                         continue;
