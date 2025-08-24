@@ -22,6 +22,8 @@ float      g_EventChatterRealPlayerDistance = 40.0f;
 uint32_t   g_PlayerReplyChance = 90;
 uint32_t   g_BotReplyChance    = 10;
 uint32_t   g_MaxBotsToPick     = 2;
+uint32_t   g_RandomChatterBotCommentChance   = 5;
+uint32_t   g_RandomChatterMaxBotsPerPlayer   = 2;
 uint32_t   g_EventChatterBotCommentChance    = 15;
 uint32_t   g_EventChatterBotSelfCommentChance = 5;
 uint32_t   g_EventChatterMaxBotsPerPlayer    = 2;
@@ -136,34 +138,34 @@ std::vector<std::string> g_BlacklistCommands = {
 // --------------------------------------------
 // Environment/Contextual Random Chatter Templates
 // --------------------------------------------
-std::string g_EnvCommentCreature;
-std::string g_EnvCommentGameObject;
-std::string g_EnvCommentEquippedItem;
-std::string g_EnvCommentBagItem;
-std::string g_EnvCommentBagItemSell;
-std::string g_EnvCommentSpell;
-std::string g_EnvCommentQuestArea;
-std::string g_EnvCommentVendor;
-std::string g_EnvCommentQuestgiver;
-std::string g_EnvCommentBagSlots;
-std::string g_EnvCommentDungeon;
-std::string g_EnvCommentUnfinishedQuest;
+std::vector<std::string> g_EnvCommentCreature;
+std::vector<std::string> g_EnvCommentGameObject;
+std::vector<std::string> g_EnvCommentEquippedItem;
+std::vector<std::string> g_EnvCommentBagItem;
+std::vector<std::string> g_EnvCommentBagItemSell;
+std::vector<std::string> g_EnvCommentSpell;
+std::vector<std::string> g_EnvCommentQuestArea;
+std::vector<std::string> g_EnvCommentVendor;
+std::vector<std::string> g_EnvCommentQuestgiver;
+std::vector<std::string> g_EnvCommentBagSlots;
+std::vector<std::string> g_EnvCommentDungeon;
+std::vector<std::string> g_EnvCommentUnfinishedQuest;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Templates
 // --------------------------------------------
-std::string g_GuildEnvCommentGuildMember;
-std::string g_GuildEnvCommentGuildRank;
-std::string g_GuildEnvCommentGuildBank;
-std::string g_GuildEnvCommentGuildMOTD;
-std::string g_GuildEnvCommentGuildInfo;
-std::string g_GuildEnvCommentGuildOnlineMembers;
-std::string g_GuildEnvCommentGuildRaid;
-std::string g_GuildEnvCommentGuildEndgame;
-std::string g_GuildEnvCommentGuildStrategy;
-std::string g_GuildEnvCommentGuildGroup;
-std::string g_GuildEnvCommentGuildPvP;
-std::string g_GuildEnvCommentGuildCommunity;
+std::vector<std::string> g_GuildEnvCommentGuildMember;
+std::vector<std::string> g_GuildEnvCommentGuildRank;
+std::vector<std::string> g_GuildEnvCommentGuildBank;
+std::vector<std::string> g_GuildEnvCommentGuildMOTD;
+std::vector<std::string> g_GuildEnvCommentGuildInfo;
+std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+std::vector<std::string> g_GuildEnvCommentGuildRaid;
+std::vector<std::string> g_GuildEnvCommentGuildEndgame;
+std::vector<std::string> g_GuildEnvCommentGuildStrategy;
+std::vector<std::string> g_GuildEnvCommentGuildGroup;
+std::vector<std::string> g_GuildEnvCommentGuildPvP;
+std::vector<std::string> g_GuildEnvCommentGuildCommunity;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Configuration
@@ -236,7 +238,7 @@ float g_GuildEventTypeDungeonComplete_Chance = 0.0f;
 uint32_t g_EventCooldownTime = 10;
 
 
-static std::string SplitString(const std::string& str, char delim)
+static std::vector<std::string> SplitString(const std::string& str, char delim)
 {
     std::vector<std::string> tokens;
     std::stringstream ss(str);
@@ -249,15 +251,7 @@ static std::string SplitString(const std::string& str, char delim)
         if (start != std::string::npos && end != std::string::npos)
             tokens.push_back(token.substr(start, end - start + 1));
     }
-
-    if (!tokens.empty())
-    {
-        // Return a random segment from the tokens
-        size_t randomIndex = rand() % tokens.size();
-        return tokens[randomIndex];
-    }
-
-    return ""; // Return an empty string if no tokens are found
+    return tokens;
 }
 
 // Load Bot Personalities from Database
@@ -364,6 +358,8 @@ void LoadOllamaChatConfig()
     g_MinRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MinRandomInterval", 45);
     g_MaxRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxRandomInterval", 180);
     g_RandomChatterRealPlayerDistance = sConfigMgr->GetOption<float>("OllamaChat.RandomChatterRealPlayerDistance", 40.0f);
+    g_RandomChatterBotCommentChance   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterBotCommentChance", 25);
+    g_RandomChatterMaxBotsPerPlayer   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterMaxBotsPerPlayer", 2);
 
     g_EnableGuildRandomAmbientChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildRandomAmbientChatter", true);
     g_GuildRandomChatterChance        = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildRandomChatterChance", 10);
@@ -426,15 +422,10 @@ void LoadOllamaChatConfig()
     std::string extraBlacklist = sConfigMgr->GetOption<std::string>("OllamaChat.BlacklistCommands", "");
     if (!extraBlacklist.empty())
     {
-        std::istringstream ss(extraBlacklist);
-        std::string cmd;
-        while (std::getline(ss, cmd, ','))
+        std::vector<std::string> extraList = SplitString(extraBlacklist, ',');
+        for (const auto& cmd : extraList)
         {
-            // Trim whitespace from the command
-            size_t start = cmd.find_first_not_of(" \t");
-            size_t end = cmd.find_last_not_of(" \t");
-            if (start != std::string::npos && end != std::string::npos)
-                g_BlacklistCommands.push_back(cmd.substr(start, end - start + 1));
+            g_BlacklistCommands.push_back(cmd);
         }
     }
 
@@ -451,45 +442,45 @@ void LoadOllamaChatConfig()
         std::string val = sConfigMgr->GetOption<std::string>(key, "");
         std::vector<std::string> result;
         std::istringstream iss(val);
-        std::string line;
-        while (std::getline(iss, line)) {
-            // Trim whitespace (both ends)
-            size_t start = line.find_first_not_of(" \t\r\n");
-            size_t end = line.find_last_not_of(" \t\r\n");
+        std::string token;
+        while (std::getline(iss, token, '|')) { // Split by '|'
+            // Trim whitespace from token
+            size_t start = token.find_first_not_of(" \t\r\n");
+            size_t end = token.find_last_not_of(" \t\r\n");
             if (start != std::string::npos && end != std::string::npos)
-                result.push_back(line.substr(start, end - start + 1));
+                result.push_back(token.substr(start, end - start + 1));
         }
         if (result.empty() && !defaults.empty())
             return defaults;
         return result;
     };
 
-    g_EnvCommentCreature        = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentCreature", "");
-    g_EnvCommentGameObject      = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentGameObject", "");
-    g_EnvCommentEquippedItem    = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentEquippedItem", "");
-    g_EnvCommentBagItem         = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentBagItem", "");
-    g_EnvCommentBagItemSell     = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentBagItemSell", "");
-    g_EnvCommentSpell           = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentSpell", "");
-    g_EnvCommentQuestArea       = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentQuestArea", "");
-    g_EnvCommentVendor          = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentVendor", "");
-    g_EnvCommentQuestgiver      = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentQuestgiver", "");
-    g_EnvCommentBagSlots        = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentBagSlots", "");
-    g_EnvCommentDungeon         = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentDungeon", "");
-    g_EnvCommentUnfinishedQuest = sConfigMgr->GetOption<std::string>("OllamaChat.EnvCommentUnfinishedQuest", "");
+    g_EnvCommentCreature        = LoadEnvCommentVector("OllamaChat.EnvCommentCreature", { "" });
+    g_EnvCommentGameObject      = LoadEnvCommentVector("OllamaChat.EnvCommentGameObject", { "" });
+    g_EnvCommentEquippedItem    = LoadEnvCommentVector("OllamaChat.EnvCommentEquippedItem", { "" });
+    g_EnvCommentBagItem         = LoadEnvCommentVector("OllamaChat.EnvCommentBagItem", { "" });
+    g_EnvCommentBagItemSell     = LoadEnvCommentVector("OllamaChat.EnvCommentBagItemSell", { "" });
+    g_EnvCommentSpell           = LoadEnvCommentVector("OllamaChat.EnvCommentSpell", { "" });
+    g_EnvCommentQuestArea       = LoadEnvCommentVector("OllamaChat.EnvCommentQuestArea", { "" });
+    g_EnvCommentVendor          = LoadEnvCommentVector("OllamaChat.EnvCommentVendor", { "" });
+    g_EnvCommentQuestgiver      = LoadEnvCommentVector("OllamaChat.EnvCommentQuestgiver", { "" });
+    g_EnvCommentBagSlots        = LoadEnvCommentVector("OllamaChat.EnvCommentBagSlots", { "" });
+    g_EnvCommentDungeon         = LoadEnvCommentVector("OllamaChat.EnvCommentDungeon", { "" });
+    g_EnvCommentUnfinishedQuest = LoadEnvCommentVector("OllamaChat.EnvCommentUnfinishedQuest", { "" });
 
     // Guild-specific random chatter templates
-    g_GuildEnvCommentGuildMember = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildMember", "");
-    g_GuildEnvCommentGuildRank = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildRank", "");
-    g_GuildEnvCommentGuildBank = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildBank", "");
-    g_GuildEnvCommentGuildMOTD = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildMOTD", "");
-    g_GuildEnvCommentGuildInfo = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildInfo", "");
-    g_GuildEnvCommentGuildOnlineMembers = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildOnlineMembers", "");
-    g_GuildEnvCommentGuildRaid = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildRaid", "");
-    g_GuildEnvCommentGuildEndgame = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildEndgame", "");
-    g_GuildEnvCommentGuildStrategy = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildStrategy", "");
-    g_GuildEnvCommentGuildGroup = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildGroup", "");
-    g_GuildEnvCommentGuildPvP = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildPvP", "");
-    g_GuildEnvCommentGuildCommunity = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEnvCommentGuildCommunity", "");
+    g_GuildEnvCommentGuildMember = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildMember", { "" });
+    g_GuildEnvCommentGuildRank = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildRank", { "" });
+    g_GuildEnvCommentGuildBank = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildBank", { "" });
+    g_GuildEnvCommentGuildMOTD = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildMOTD", { "" });
+    g_GuildEnvCommentGuildInfo = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildInfo", { "" });
+    g_GuildEnvCommentGuildOnlineMembers = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildOnlineMembers", { "" });
+    g_GuildEnvCommentGuildRaid = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildRaid", { "" });
+    g_GuildEnvCommentGuildEndgame = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildEndgame", { "" });
+    g_GuildEnvCommentGuildStrategy = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildStrategy", { "" });
+    g_GuildEnvCommentGuildGroup = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildGroup", { "" });
+    g_GuildEnvCommentGuildPvP = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildPvP", { "" });
+    g_GuildEnvCommentGuildCommunity = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildCommunity", { "" });
 
     // Guild-specific configuration
     g_EnableGuildEventChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildEventChatter", true);
@@ -542,12 +533,12 @@ void LoadOllamaChatConfig()
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
              "PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
              "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
-             "MaxConcurrentQueries = {}. Extra blacklist commands: {}",
+             "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
              g_Enable, g_SayDistance, g_YellDistance,
              g_PlayerReplyChance, g_BotReplyChance, g_MaxBotsToPick,
              g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,
-             g_MaxConcurrentQueries, extraBlacklist);
+             g_RandomChatterBotCommentChance, g_MaxConcurrentQueries, extraBlacklist);
 }
 
 void LoadPersonalityTemplatesFromDB()

@@ -25,6 +25,7 @@ extern uint32_t   g_PlayerReplyChance;
 extern uint32_t   g_BotReplyChance;
 extern uint32_t   g_MaxBotsToPick;
 extern uint32_t   g_RandomChatterBotCommentChance;
+extern uint32_t   g_RandomChatterMaxBotsPerPlayer;
 extern uint32_t   g_EventChatterBotCommentChance;
 extern uint32_t   g_EventChatterBotSelfCommentChance;
 extern uint32_t   g_EventChatterMaxBotsPerPlayer;
@@ -121,34 +122,34 @@ extern bool g_ThinkModeEnableForModule;
 // --------------------------------------------
 // Environment/Contextual Random Chatter Templates
 // --------------------------------------------
-extern std::string g_EnvCommentCreature;
-extern std::string g_EnvCommentGameObject;
-extern std::string g_EnvCommentEquippedItem;
-extern std::string g_EnvCommentBagItem;
-extern std::string g_EnvCommentBagItemSell;
-extern std::string g_EnvCommentSpell;
-extern std::string g_EnvCommentQuestArea;
-extern std::string g_EnvCommentVendor;
-extern std::string g_EnvCommentQuestgiver;
-extern std::string g_EnvCommentBagSlots;
-extern std::string g_EnvCommentDungeon;
-extern std::string g_EnvCommentUnfinishedQuest;
+extern std::vector<std::string> g_EnvCommentCreature;
+extern std::vector<std::string> g_EnvCommentGameObject;
+extern std::vector<std::string> g_EnvCommentEquippedItem;
+extern std::vector<std::string> g_EnvCommentBagItem;
+extern std::vector<std::string> g_EnvCommentBagItemSell;
+extern std::vector<std::string> g_EnvCommentSpell;
+extern std::vector<std::string> g_EnvCommentQuestArea;
+extern std::vector<std::string> g_EnvCommentVendor;
+extern std::vector<std::string> g_EnvCommentQuestgiver;
+extern std::vector<std::string> g_EnvCommentBagSlots;
+extern std::vector<std::string> g_EnvCommentDungeon;
+extern std::vector<std::string> g_EnvCommentUnfinishedQuest;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Templates
 // --------------------------------------------
-extern std::string g_GuildEnvCommentGuildMember;
-extern std::string g_GuildEnvCommentGuildRank;
-extern std::string g_GuildEnvCommentGuildBank;
-extern std::string g_GuildEnvCommentGuildMOTD;
-extern std::string g_GuildEnvCommentGuildInfo;
-extern std::string g_GuildEnvCommentGuildOnlineMembers;
-extern std::string g_GuildEnvCommentGuildRaid;
-extern std::string g_GuildEnvCommentGuildEndgame;
-extern std::string g_GuildEnvCommentGuildStrategy;
-extern std::string g_GuildEnvCommentGuildGroup;
-extern std::string g_GuildEnvCommentGuildPvP;
-extern std::string g_GuildEnvCommentGuildCommunity;
+extern std::vector<std::string> g_GuildEnvCommentGuildMember;
+extern std::vector<std::string> g_GuildEnvCommentGuildRank;
+extern std::vector<std::string> g_GuildEnvCommentGuildBank;
+extern std::vector<std::string> g_GuildEnvCommentGuildMOTD;
+extern std::vector<std::string> g_GuildEnvCommentGuildInfo;
+extern std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+extern std::vector<std::string> g_GuildEnvCommentGuildRaid;
+extern std::vector<std::string> g_GuildEnvCommentGuildEndgame;
+extern std::vector<std::string> g_GuildEnvCommentGuildStrategy;
+extern std::vector<std::string> g_GuildEnvCommentGuildGroup;
+extern std::vector<std::string> g_GuildEnvCommentGuildPvP;
+extern std::vector<std::string> g_GuildEnvCommentGuildCommunity;
 
 // --------------------------------------------
 // Guild-Specific Random Chatter Configuration
