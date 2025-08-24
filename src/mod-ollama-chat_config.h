@@ -25,7 +25,6 @@ extern uint32_t   g_PlayerReplyChance;
 extern uint32_t   g_BotReplyChance;
 extern uint32_t   g_MaxBotsToPick;
 extern uint32_t   g_RandomChatterBotCommentChance;
-extern uint32_t   g_RandomChatterMaxBotsPerPlayer;
 extern uint32_t   g_EventChatterBotCommentChance;
 extern uint32_t   g_EventChatterBotSelfCommentChance;
 extern uint32_t   g_EventChatterMaxBotsPerPlayer;

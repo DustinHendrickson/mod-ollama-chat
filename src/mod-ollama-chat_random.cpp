@@ -173,8 +173,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 Cell::VisitObjects(bot, creatureSearcher, g_SayDistance);
                 if (unitInRange && unitInRange->GetTypeId() == TYPEID_UNIT)
                     if (!g_EnvCommentCreature.empty()) {
-                        uint32_t idx = g_EnvCommentCreature.size() == 1 ? 0 : urand(0, g_EnvCommentCreature.size() - 1);
-                        std::string templ = g_EnvCommentCreature[idx];
+                        std::string templ = SplitString(g_EnvCommentCreature, '|');
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("creature_name", unitInRange->ToCreature()->GetName())));
                     }
             }
@@ -188,8 +187,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (goInRange)
                 {
                     if (!g_EnvCommentGameObject.empty()) {
-                        uint32_t idx = g_EnvCommentGameObject.size() == 1 ? 0 : urand(0, g_EnvCommentGameObject.size() - 1);
-                        std::string templ = g_EnvCommentGameObject[idx];
+                        std::string templ = SplitString(g_EnvCommentGameObject, '|');
                         std::string gameObjectName = goInRange->GetName();
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("object_name", gameObjectName)));
                     }
@@ -208,8 +206,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     uint32_t eqIdx = equippedItems.size() == 1 ? 0 : urand(0, equippedItems.size() - 1);
                     Item* randomEquipped = equippedItems[eqIdx];
                     if (!g_EnvCommentEquippedItem.empty()) {
-                        uint32_t tempIdx = g_EnvCommentEquippedItem.size() == 1 ? 0 : urand(0, g_EnvCommentEquippedItem.size() - 1);
-                        std::string templ = g_EnvCommentEquippedItem[tempIdx];
+                        std::string templ = SplitString(g_EnvCommentEquippedItem, '|');
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("item_name", randomEquipped->GetTemplate()->Name1)));
                     }
                 }
@@ -288,8 +285,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     const NamedSpell& randomSpell = validSpells[spellIdx];
                     if (!g_EnvCommentSpell.empty())
                     {
-                        uint32_t tempIdx = g_EnvCommentSpell.size() == 1 ? 0 : urand(0, g_EnvCommentSpell.size() - 1);
-                        std::string templ = g_EnvCommentSpell[tempIdx];
+                        std::string templ = SplitString(g_EnvCommentSpell, '|');
                         candidateComments.push_back(SafeFormat(
                             templ,
                             fmt::arg("spell_name", randomSpell.name),
@@ -316,8 +312,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (auto const* area = sAreaTableStore.LookupEntry(zone))
                     {
                         if (!g_EnvCommentQuestArea.empty()) {
-                            uint32_t idx = g_EnvCommentQuestArea.size() == 1 ? 0 : urand(0, g_EnvCommentQuestArea.size() - 1);
-                            std::string templ = g_EnvCommentQuestArea[idx];
+                            std::string templ = SplitString(g_EnvCommentQuestArea, '|');
                             questAreas.push_back(SafeFormat(templ, fmt::arg("quest_area", area->area_name[LocaleConstant::LOCALE_enUS])));
                         }
                     }
@@ -342,8 +337,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (vendor->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
                     {
                         if (!g_EnvCommentVendor.empty()) {
-                            uint32_t idx = g_EnvCommentVendor.size() == 1 ? 0 : urand(0, g_EnvCommentVendor.size() - 1);
-                            std::string templ = g_EnvCommentVendor[idx];
+                            std::string templ = SplitString(g_EnvCommentVendor, '|');
                             candidateComments.push_back(SafeFormat(templ, fmt::arg("vendor_name", vendor->GetName())));
                         }
                     }
@@ -365,12 +359,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
                         int n       = std::distance(bounds.first, bounds.second);
                         if (!g_EnvCommentQuestgiver.empty()) {
-                            uint32_t idx = g_EnvCommentQuestgiver.size() == 1 ? 0 : urand(0, g_EnvCommentQuestgiver.size() - 1);
-                            std::string templ = g_EnvCommentQuestgiver[idx];
+                            std::string templ = SplitString(g_EnvCommentQuestgiver, '|');
                             candidateComments.push_back(SafeFormat(templ,
                                 fmt::arg("questgiver_name", giver->GetName()),
-                                fmt::arg("quest_count", n)
-                            ));
+                                fmt::arg("quest_count", n)));
                         }
                     }
                 }
@@ -387,8 +379,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         freeSlots += bag->GetFreeSlots();
 
                 if (!g_EnvCommentBagSlots.empty()) {
-                    uint32_t idx = g_EnvCommentBagSlots.size() == 1 ? 0 : urand(0, g_EnvCommentBagSlots.size() - 1);
-                    std::string templ = g_EnvCommentBagSlots[idx];
+                    std::string templ = SplitString(g_EnvCommentBagSlots, '|');
                     candidateComments.push_back(SafeFormat(templ, fmt::arg("bag_slots", freeSlots)));
                 }
             }
@@ -399,8 +390,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 {
                     std::string name = bot->GetMap()->GetMapName();
                     if (!g_EnvCommentDungeon.empty()) {
-                        uint32_t idx = g_EnvCommentDungeon.size() == 1 ? 0 : urand(0, g_EnvCommentDungeon.size() - 1);
-                        std::string templ = g_EnvCommentDungeon[idx];
+                        std::string templ = SplitString(g_EnvCommentDungeon, '|');
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("dungeon_name", name)));
                     }
                 }
@@ -415,8 +405,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     {
                         if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
                             if (!g_EnvCommentUnfinishedQuest.empty()) {
-                                uint32_t idx = g_EnvCommentUnfinishedQuest.size() == 1 ? 0 : urand(0, g_EnvCommentUnfinishedQuest.size() - 1);
-                                std::string templ = g_EnvCommentUnfinishedQuest[idx];
+                                std::string templ = SplitString(g_EnvCommentUnfinishedQuest, '|');
                                 unfinished.push_back(SafeFormat(templ, fmt::arg("quest_name", qt->GetTitle())));
                             }
                     }
@@ -501,8 +490,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     const NamedSpell& randomSpell = validSpells[spellIdx];
                     if (!g_EnvCommentSpell.empty())
                     {
-                        uint32_t tempIdx = g_EnvCommentSpell.size() == 1 ? 0 : urand(0, g_EnvCommentSpell.size() - 1);
-                        std::string templ = g_EnvCommentSpell[tempIdx];
+                        std::string templ = SplitString(g_EnvCommentSpell, '|');
                         candidateComments.push_back(SafeFormat(
                             templ,
                             fmt::arg("spell_name", randomSpell.name),
@@ -529,8 +517,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (auto const* area = sAreaTableStore.LookupEntry(zone))
                     {
                         if (!g_EnvCommentQuestArea.empty()) {
-                            uint32_t idx = g_EnvCommentQuestArea.size() == 1 ? 0 : urand(0, g_EnvCommentQuestArea.size() - 1);
-                            std::string templ = g_EnvCommentQuestArea[idx];
+                            std::string templ = SplitString(g_EnvCommentQuestArea, '|');
                             questAreas.push_back(SafeFormat(templ, fmt::arg("quest_area", area->area_name[LocaleConstant::LOCALE_enUS])));
                         }
                     }
@@ -555,8 +542,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (vendor->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
                     {
                         if (!g_EnvCommentVendor.empty()) {
-                            uint32_t idx = g_EnvCommentVendor.size() == 1 ? 0 : urand(0, g_EnvCommentVendor.size() - 1);
-                            std::string templ = g_EnvCommentVendor[idx];
+                            std::string templ = SplitString(g_EnvCommentVendor, '|');
                             candidateComments.push_back(SafeFormat(templ, fmt::arg("vendor_name", vendor->GetName())));
                         }
                     }
@@ -578,12 +564,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
                         int n       = std::distance(bounds.first, bounds.second);
                         if (!g_EnvCommentQuestgiver.empty()) {
-                            uint32_t idx = g_EnvCommentQuestgiver.size() == 1 ? 0 : urand(0, g_EnvCommentQuestgiver.size() - 1);
-                            std::string templ = g_EnvCommentQuestgiver[idx];
+                            std::string templ = SplitString(g_EnvCommentQuestgiver, '|');
                             candidateComments.push_back(SafeFormat(templ,
                                 fmt::arg("questgiver_name", giver->GetName()),
-                                fmt::arg("quest_count", n)
-                            ));
+                                fmt::arg("quest_count", n)));
                         }
                     }
                 }
@@ -600,8 +584,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         freeSlots += bag->GetFreeSlots();
 
                 if (!g_EnvCommentBagSlots.empty()) {
-                    uint32_t idx = g_EnvCommentBagSlots.size() == 1 ? 0 : urand(0, g_EnvCommentBagSlots.size() - 1);
-                    std::string templ = g_EnvCommentBagSlots[idx];
+                    std::string templ = SplitString(g_EnvCommentBagSlots, '|');
                     candidateComments.push_back(SafeFormat(templ, fmt::arg("bag_slots", freeSlots)));
                 }
             }
@@ -612,8 +595,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 {
                     std::string name = bot->GetMap()->GetMapName();
                     if (!g_EnvCommentDungeon.empty()) {
-                        uint32_t idx = g_EnvCommentDungeon.size() == 1 ? 0 : urand(0, g_EnvCommentDungeon.size() - 1);
-                        std::string templ = g_EnvCommentDungeon[idx];
+                        std::string templ = SplitString(g_EnvCommentDungeon, '|');
                         candidateComments.push_back(SafeFormat(templ, fmt::arg("dungeon_name", name)));
                     }
                 }
@@ -628,8 +610,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     {
                         if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
                             if (!g_EnvCommentUnfinishedQuest.empty()) {
-                                uint32_t idx = g_EnvCommentUnfinishedQuest.size() == 1 ? 0 : urand(0, g_EnvCommentUnfinishedQuest.size() - 1);
-                                std::string templ = g_EnvCommentUnfinishedQuest[idx];
+                                std::string templ = SplitString(g_EnvCommentUnfinishedQuest, '|');
                                 unfinished.push_back(SafeFormat(templ, fmt::arg("quest_name", qt->GetTitle())));
                             }
                     }
@@ -668,66 +649,56 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         std::string memberName = bot->GetName();
                         if (!memberName.empty())
                         {
-                            uint32_t idx = urand(0, g_GuildEnvCommentGuildMember.size() - 1);
-                            std::string templ = g_GuildEnvCommentGuildMember[idx];
+                            std::string templ = SplitString(g_GuildEnvCommentGuildMember, '|');
                             guildComments.push_back(SafeFormat(templ, fmt::arg("member_name", memberName)));
                         }
                     }
                     // Guild MOTD comments
                     if (!g_GuildEnvCommentGuildMOTD.empty() && !guild->GetMOTD().empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildMOTD.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildMOTD[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildMOTD, '|');
                         guildComments.push_back(SafeFormat(templ, fmt::arg("guild_motd", guild->GetMOTD())));
                     }
                     // Guild bank comments
                     if (!g_GuildEnvCommentGuildBank.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildBank.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildBank[idx];
-                        guildComments.push_back(SafeFormat(templ, 
-                            fmt::arg("bank_gold", guild->GetTotalBankMoney() / 10000)));
+                        std::string templ = SplitString(g_GuildEnvCommentGuildBank, '|');
+                        guildComments.push_back(SafeFormat(templ, fmt::arg("bank_gold", guild->GetTotalBankMoney() / 10000)));
                     }
                     // Guild raid comments
                     if (!g_GuildEnvCommentGuildRaid.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildRaid.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildRaid[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildRaid, '|');
                         guildComments.push_back(templ);
                     }
                     // Guild endgame comments
                     if (!g_GuildEnvCommentGuildEndgame.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildEndgame.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildEndgame[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildEndgame, '|');
                         guildComments.push_back(templ);
                     }
                     // Guild strategy comments
                     if (!g_GuildEnvCommentGuildStrategy.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildStrategy.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildStrategy[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildStrategy, '|');
                         guildComments.push_back(templ);
                     }
                     // Guild group/quest/grind comments
                     if (!g_GuildEnvCommentGuildGroup.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildGroup.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildGroup[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildGroup, '|');
                         guildComments.push_back(templ);
                     }
                     // Guild PvP comments
                     if (!g_GuildEnvCommentGuildPvP.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildPvP.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildPvP[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildPvP, '|');
                         guildComments.push_back(templ);
                     }
                     // Guild community/social comments
                     if (!g_GuildEnvCommentGuildCommunity.empty())
                     {
-                        uint32_t idx = urand(0, g_GuildEnvCommentGuildCommunity.size() - 1);
-                        std::string templ = g_GuildEnvCommentGuildCommunity[idx];
+                        std::string templ = SplitString(g_GuildEnvCommentGuildCommunity, '|');
                         guildComments.push_back(templ);
                     }
                     candidateComments.insert(candidateComments.end(), guildComments.begin(), guildComments.end());
@@ -799,25 +770,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 return prompt;
 
             }();
-
-            // Split the prompt into segments using | as the delimiter
-            std::vector<std::string> promptSegments = SplitString(prompt, '|');
-
-            // Select a random segment if there are multiple
-            std::string selectedSegment;
-            if (!promptSegments.empty()) {
-                size_t randomIndex = urand(0, promptSegments.size() - 1);
-                selectedSegment = promptSegments[randomIndex];
-            } else {
-                selectedSegment = prompt; // Fallback to the original prompt if no segments found
-            }
-
-            if (g_DebugEnabled) {
-                LOG_INFO("server.loading", "[Ollama Chat] Selected Segment: {}", selectedSegment);
-            }
-
-            // Use the selected segment as the prompt
-            prompt = selectedSegment;
 
             if(g_DebugEnabled)
             {

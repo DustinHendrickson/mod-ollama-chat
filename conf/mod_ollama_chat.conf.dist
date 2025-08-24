@@ -190,18 +190,6 @@ OllamaChat.MaxRandomInterval = 180
 #     Default:     40
 OllamaChat.RandomChatterRealPlayerDistance = 40.0
 
-# OllamaChat.RandomChatterBotCommentChance
-#     Description: The percent chance (0-100) that an AI bot will add a comment when random chatter is triggered.
-#     Default:     5
-OllamaChat.RandomChatterBotCommentChance = 5
-
-# OllamaChat.RandomChatterMaxBotsPerPlayer
-#     Description: The maximum number of AI bots that can trigger per random chatter update when a real player is nearby.
-#                  This limits how many bots can respond at once to avoid spam.
-#                   Each bot can only process once per tick, no duplicates if multiple real players are close.
-#     Default:     2
-OllamaChat.RandomChatterMaxBotsPerPlayer = 2
-
 # OllamaChat.RandomChatterPromptTemplate
 #   Description: The template string for random bot chatter prompts.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {environment_info}
