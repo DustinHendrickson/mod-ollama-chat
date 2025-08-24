@@ -18,8 +18,11 @@
 #include <thread>
 #include <random>
 #include <fmt/core.h>
+#include <unordered_map>
+#include <chrono>
 
 static OllamaBotEventChatter eventChatter;
+static std::unordered_map<Player*, std::chrono::steady_clock::time_point> botEventCooldowns;
 
 void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, std::string detail)
 {
@@ -148,6 +151,81 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
                     LOG_INFO("server.loading", "[OllamaChat] Nearby player {} within {:.1f} yards", player->GetName(), maxDist);
             }
         }
+    }
+
+    // Check cooldown for bots
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = candidateBots.begin(); it != candidateBots.end(); ) {
+        Player* bot = *it;
+        auto lastEventTime = botEventCooldowns[bot]; // Track last event time for any event
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastEventTime).count() < g_EventCooldownTime) {
+            it = candidateBots.erase(it); // Remove bot if still in cooldown
+        } else {
+            botEventCooldowns[bot] = now; // Update last event time
+            ++it;
+        }
+    }
+
+    // Check event-specific chance
+    float eventChance = 0.0f;
+    if (type == g_EventTypeLearnedSpell) {
+        eventChance = g_EventTypeLearnedSpell_Chance;
+    } else if (type == g_EventTypeDefeated) {
+        eventChance = g_EventTypeDefeated_Chance;
+    } else if (type == g_EventTypeDefeatedPlayer) {
+        eventChance = g_EventTypeDefeatedPlayer_Chance;
+    } else if (type == g_EventTypePetDefeated) {
+        eventChance = g_EventTypePetDefeated_Chance;
+    } else if (type == g_EventTypeGotItem) {
+        eventChance = g_EventTypeGotItem_Chance;
+    } else if (type == g_EventTypeDied) {
+        eventChance = g_EventTypeDied_Chance;
+    } else if (type == g_EventTypeCompletedQuest) {
+        eventChance = g_EventTypeCompletedQuest_Chance;
+    } else if (type == g_EventTypeRequestedDuel) {
+        eventChance = g_EventTypeRequestedDuel_Chance;
+    } else if (type == g_EventTypeStartedDueling) {
+        eventChance = g_EventTypeStartedDueling_Chance;
+    } else if (type == g_EventTypeWonDuel) {
+        eventChance = g_EventTypeWonDuel_Chance;
+    } else if (type == g_EventTypeLeveledUp) {
+        eventChance = g_EventTypeLeveledUp_Chance;
+    } else if (type == g_EventTypeAchievement) {
+        eventChance = g_EventTypeAchievement_Chance;
+    } else if (type == g_EventTypeUsedObject) {
+        eventChance = g_EventTypeUsedObject_Chance;
+    }
+
+    // Add chance checks for all GuildEventType entries
+    if (type == g_GuildEventTypeEpicGear) {
+        eventChance = g_GuildEventTypeEpicGear_Chance;
+    } else if (type == g_GuildEventTypeRareGear) {
+        eventChance = g_GuildEventTypeRareGear_Chance;
+    } else if (type == g_GuildEventTypeGuildJoin) {
+        eventChance = g_GuildEventTypeGuildJoin_Chance;
+    } else if (type == g_GuildEventTypeGuildLogin) {
+        eventChance = g_GuildEventTypeGuildLogin_Chance;
+    } else if (type == g_GuildEventTypeGuildLeave) {
+        eventChance = g_GuildEventTypeGuildLeave_Chance;
+    } else if (type == g_GuildEventTypeGuildPromotion) {
+        eventChance = g_GuildEventTypeGuildPromotion_Chance;
+    } else if (type == g_GuildEventTypeGuildDemotion) {
+        eventChance = g_GuildEventTypeGuildDemotion_Chance;
+    } else if (type == g_GuildEventTypeGuildAchievement) {
+        eventChance = g_GuildEventTypeGuildAchievement_Chance;
+    } else if (type == g_GuildEventTypeLevelUp) {
+        eventChance = g_GuildEventTypeLevelUp_Chance;
+    } else if (type == g_GuildEventTypeDungeonComplete) {
+        eventChance = g_GuildEventTypeDungeonComplete_Chance;
+    }
+
+    if (urand(0, 100) > eventChance * 100) {
+        return;
+    }
+
+    // Update cooldowns
+    for (Player* bot : candidateBots) {
+        botEventCooldowns[bot] = now;
     }
 
     uint32_t responses = 0;
