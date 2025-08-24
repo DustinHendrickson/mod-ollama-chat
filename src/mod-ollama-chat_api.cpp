@@ -137,6 +137,10 @@ std::string QueryOllamaAPI(const std::string& prompt)
         return "Failed to reach Ollama AI.";
     }
 
+    if (g_DebugEnabled) {
+        LOG_INFO("server.loading", "[Ollama Chat] Raw response: {}", responseBuffer);
+    }
+
     std::stringstream ss(responseBuffer);
     std::string line;
     std::ostringstream extractedResponse;
