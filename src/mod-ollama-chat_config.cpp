@@ -426,10 +426,15 @@ void LoadOllamaChatConfig()
     std::string extraBlacklist = sConfigMgr->GetOption<std::string>("OllamaChat.BlacklistCommands", "");
     if (!extraBlacklist.empty())
     {
-        std::vector<std::string> extraList = SplitString(extraBlacklist, ',');
-        for (const auto& cmd : extraList)
+        std::istringstream ss(extraBlacklist);
+        std::string cmd;
+        while (std::getline(ss, cmd, ','))
         {
-            g_BlacklistCommands.push_back(cmd);
+            // Trim whitespace from the command
+            size_t start = cmd.find_first_not_of(" \t");
+            size_t end = cmd.find_last_not_of(" \t");
+            if (start != std::string::npos && end != std::string::npos)
+                g_BlacklistCommands.push_back(cmd.substr(start, end - start + 1));
         }
     }
 
