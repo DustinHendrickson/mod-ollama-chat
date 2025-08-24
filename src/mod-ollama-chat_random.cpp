@@ -800,6 +800,25 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             }();
 
+            // Split the prompt into segments using | as the delimiter
+            std::vector<std::string> promptSegments = SplitString(prompt, '|');
+
+            // Select a random segment if there are multiple
+            std::string selectedSegment;
+            if (!promptSegments.empty()) {
+                size_t randomIndex = urand(0, promptSegments.size() - 1);
+                selectedSegment = promptSegments[randomIndex];
+            } else {
+                selectedSegment = prompt; // Fallback to the original prompt if no segments found
+            }
+
+            if (g_DebugEnabled) {
+                LOG_INFO("server.loading", "[Ollama Chat] Selected Segment: {}", selectedSegment);
+            }
+
+            // Use the selected segment as the prompt
+            prompt = selectedSegment;
+
             if(g_DebugEnabled)
             {
                 LOG_INFO("server.loading", "[Ollama Chat] Random Message Prompt: {} ", prompt);
