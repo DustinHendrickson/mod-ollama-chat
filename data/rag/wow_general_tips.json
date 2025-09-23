@@ -1,0 +1,107 @@
+[
+  {
+    "id": "general_leveling_guide",
+    "title": "Leveling Strategies",
+    "content": "Efficient leveling involves questing in appropriate level zones, using rest bonuses, and grouping when possible. Follow zone storylines for better experience. Use flight paths to travel efficiently. Complete dungeons for bonus experience. Leveling speed depends on playstyle and available time. Some classes level faster than others due to mechanics.",
+    "keywords": ["leveling", "questing", "rest_bonus", "grouping", "dungeons", "experience"],
+    "tags": ["general", "leveling", "progression", "efficiency"]
+  },
+  {
+    "id": "general_gold_making",
+    "title": "Gold Making Methods",
+    "content": "Gold can be made through professions, auction house trading, farming rare mobs, completing quests, and running dungeons. Blacksmithing and enchanting are profitable. Understanding market demand is key. Some methods require significant time investment. Gold is used for mounts, repairs, and training.",
+    "keywords": ["gold_making", "professions", "auction_house", "farming", "trading", "market"],
+    "tags": ["general", "economy", "gold", "professions"]
+  },
+  {
+    "id": "general_ui_customization",
+    "title": "Interface Customization",
+    "content": "The UI can be customized extensively. Move frames, change sizes, add custom addons. Key bindings improve efficiency. Action bars can be configured for different situations. Understanding the interface is crucial for effective play. Many players use custom UI setups for optimal performance.",
+    "keywords": ["ui_customization", "frames", "addons", "key_bindings", "action_bars", "efficiency"],
+    "tags": ["general", "interface", "customization", "addons"]
+  },
+  {
+    "id": "general_addons",
+    "title": "Essential Addons",
+    "content": "Popular addons include Deadly Boss Mods for raid encounters, QuestHelper for navigation, Gatherer for resource tracking, and Auctioneer for auction house management. Addons enhance gameplay but must be kept updated. Some addons provide quality of life improvements. Choosing the right addons depends on playstyle.",
+    "keywords": ["addons", "deadly_boss_mods", "questhelper", "gatherer", "auctioneer", "quality_of_life"],
+    "tags": ["general", "addons", "tools", "enhancement"]
+  },
+  {
+    "id": "general_server_population",
+    "title": "Server Types and Population",
+    "content": "Servers have different populations and rulesets. PvP servers allow open world combat, PvE servers restrict PvP. High population servers have active economies, low population servers have empty cities. Server type affects gameplay experience. Choosing the right server is important for enjoyment.",
+    "keywords": ["server_population", "pvp_servers", "pve_servers", "economy", "rulesets", "experience"],
+    "tags": ["general", "servers", "population", "rules"]
+  },
+  {
+    "id": "general_character_creation",
+    "title": "Character Creation Tips",
+    "content": "Choose race/class combinations that fit your playstyle. Some races provide better starting zones or racial abilities. Consider faction balance on your server. Think about long-term goals when creating characters. Server transfers allow changing servers later. Character names must be unique.",
+    "keywords": ["character_creation", "race", "class", "playstyle", "faction_balance", "server_transfer"],
+    "tags": ["general", "character", "creation", "planning"]
+  },
+  {
+    "id": "general_time_management",
+    "title": "In-Game Time Management",
+    "content": "World of Warcraft has a day/night cycle that affects gameplay. Some quests or events only occur at certain times. Daily quests reset daily. Raid lockouts reset weekly. Understanding game time helps with planning. Real-world time affects in-game events and resets.",
+    "keywords": ["time_management", "day_night_cycle", "daily_quests", "raid_lockouts", "resets", "planning"],
+    "tags": ["general", "time", "planning", "resets"]
+  },
+  {
+    "id": "general_communication",
+    "title": "Communication and Community",
+    "content": "Use guild chat, general chat, and trade chat for communication. Voice chat enhances coordination. Good communication is essential for group content. Community websites provide additional information. Building relationships leads to better gameplay experiences. Respect other players and follow chat etiquette.",
+    "keywords": ["communication", "guild_chat", "voice_chat", "coordination", "community", "etiquette"],
+    "tags": ["general", "communication", "community", "social"]
+  },
+  {
+    "id": "general_gear_optimization",
+    "title": "Gear Optimization",
+    "content": "Stat priority depends on class and spec. Use gear comparison tools. Enchantments and gems improve gear significantly. Don't neglect off-hand items. Reforging allows stat conversion. Understanding your class guides optimal gearing decisions. Regular gear upgrades improve performance.",
+    "keywords": ["gear_optimization", "stat_priority", "enchantments", "gems", "reforging", "performance"],
+    "tags": ["general", "gear", "optimization", "stats"]
+  },
+  {
+    "id": "general_playstyle_adaptation",
+    "title": "Adapting Playstyles",
+    "content": "Different content requires different approaches. Solo play, group play, PvP, raiding all have different strategies. Be flexible and learn from experiences. Try different roles and activities. Understanding various playstyles enriches the game experience. Don't limit yourself to one type of content.",
+    "keywords": ["playstyle_adaptation", "solo_play", "group_play", "pvp", "raiding", "flexibility"],
+    "tags": ["general", "playstyle", "adaptation", "variety"]
+  },
+  {
+    "id": "general_burnout_prevention",
+    "title": "Avoiding Burnout",
+    "content": "Take breaks when feeling frustrated. Set realistic goals. Don't feel obligated to do everything. Enjoy the journey, not just endgame. Play at your own pace. Balance gaming with real life. Burnout prevention leads to longer enjoyment of the game.",
+    "keywords": ["burnout_prevention", "breaks", "goals", "balance", "pace", "enjoyment"],
+    "tags": ["general", "health", "balance", "wellness"]
+  },
+  {
+    "id": "general_patch_changes",
+    "title": "Understanding Patches",
+    "content": "Game updates change mechanics and balance. Stay informed about upcoming changes. Some patches buff, others nerf. Class balance shifts over time. Understanding patch notes helps adapt strategies. Patches can significantly affect gameplay and require relearning.",
+    "keywords": ["patch_changes", "updates", "balance", "buffs", "nerfs", "adaptation"],
+    "tags": ["general", "patches", "updates", "balance"]
+  },
+  {
+    "id": "general_achievement_hunting",
+    "title": "Achievement Collecting",
+    "content": "Achievements provide goals and rewards. Some are easy, others very challenging. Achievement hunting adds replayability. Meta achievements combine multiple goals. Titles and mounts from achievements. Achievement points provide bragging rights. Collecting achievements extends game longevity.",
+    "keywords": ["achievement_hunting", "goals", "rewards", "meta_achievements", "titles", "replayability"],
+    "tags": ["general", "achievements", "goals", "collection"]
+  },
+  {
+    "id": "general_alt_management",
+    "title": "Managing Multiple Characters",
+    "content": "Alts provide different experiences and utility. Bank alts for storage, profession alts for crafting. Level alts for achievements or fun. Server transfers move characters. Managing alts requires organization. Multiple characters enhance gameplay variety and utility.",
+    "keywords": ["alt_management", "bank_alts", "profession_alts", "server_transfers", "organization", "variety"],
+    "tags": ["general", "alts", "management", "utility"]
+  },
+  {
+    "id": "general_endgame_content",
+    "title": "Endgame Content Overview",
+    "content": "Endgame includes raiding, PvP, achievements, professions, and reputation grinds. Different players prefer different activities. Endgame provides the most challenging content. Requires good gear and coordination. Endgame content evolves with expansions. Finding enjoyable endgame activities is key to long-term play.",
+    "keywords": ["endgame_content", "raiding", "pvp", "achievements", "reputation", "challenging"],
+    "tags": ["general", "endgame", "content", "variety"]
+  }
+]

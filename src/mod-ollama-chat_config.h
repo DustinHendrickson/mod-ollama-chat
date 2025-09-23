@@ -217,6 +217,18 @@ extern std::mutex g_SentimentMutex;
 extern time_t g_LastSentimentSaveTime;
 
 // --------------------------------------------
+// RAG (Retrieval-Augmented Generation) System
+// --------------------------------------------
+extern bool        g_EnableRAG;                          // Enable/disable RAG feature
+extern std::string g_RAGDataPath;                        // Path to RAG data files
+extern uint32_t    g_RAGMaxRetrievedItems;               // Max items to retrieve
+extern float       g_RAGSimilarityThreshold;             // Similarity threshold for retrieval
+extern std::string g_RAGPromptTemplate;                  // Template for RAG info in prompts
+
+class OllamaRAGSystem;
+extern OllamaRAGSystem* g_RAGSystem;                     // Global RAG system instance
+
+// --------------------------------------------
 // Event Chatter: Event Type Strings
 // These control the event type string sent to eventChatter for world event prompts.
 // Values are loaded from conf (see mod_ollama_chat.conf.dist)
@@ -254,6 +266,7 @@ class OllamaChatConfigWorldScript : public WorldScript
 public:
     OllamaChatConfigWorldScript();
     void OnStartup() override;
+    void OnShutdown() override;
 };
 
 #endif // MOD_OLLAMA_CHAT_CONFIG_H

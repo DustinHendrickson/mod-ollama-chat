@@ -1,0 +1,107 @@
+[
+  {
+    "id": "quest_class_stories",
+    "title": "Class-Specific Storylines",
+    "content": "Each class has unique quests that tell their story. Paladins have the Silver Hand storyline, warlocks have demonic pacts, hunters have beast mastery. Class quests provide unique items and abilities. They often involve important lore figures. Completing class quests enhances understanding of class identity and provides powerful rewards.",
+    "keywords": ["class_stories", "paladin", "warlock", "hunter", "silver_hand", "lore", "identity"],
+    "tags": ["quests", "story", "class", "lore"]
+  },
+  {
+    "id": "quest_zone_storylines",
+    "title": "Zone Story Arcs",
+    "content": "Each zone has a main storyline that guides players through the area. Examples include the Defias Brotherhood in Westfall, the Scourge invasion in the Plaguelands, or the silithid threat in Silithus. Zone stories connect to larger world events. Following zone storylines provides better loot and understanding of the world.",
+    "keywords": ["zone_storylines", "defias_brotherhood", "scourge", "silithid", "world_events", "loot"],
+    "tags": ["quests", "story", "zones", "progression"]
+  },
+  {
+    "id": "quest_reputation_grinds",
+    "title": "Reputation Quest Hubs",
+    "content": "Many factions have extensive quest lines for reputation. The Cenarion Circle in Silithus, the Argent Dawn in the Plaguelands, the Thorium Brotherhood in Searing Gorge. Reputation quests often involve grinding specific activities. High reputation unlocks better rewards and access to exclusive content.",
+    "keywords": ["reputation_quests", "cenarion_circle", "argent_dawn", "thorium_brotherhood", "grinding"],
+    "tags": ["quests", "reputation", "grinding", "rewards"]
+  },
+  {
+    "id": "quest_dungeon_quests",
+    "title": "Dungeon and Raid Quests",
+    "content": "Many dungeons and raids have associated quests. Blackrock Depths has the Dark Iron dwarves storyline, Stratholme has the Scourge invasion quests. Dungeon quests often provide attunement or access to harder content. They explain the dungeon's lore and provide additional rewards beyond boss loot.",
+    "keywords": ["dungeon_quests", "blackrock_depths", "stratholme", "attunement", "lore", "rewards"],
+    "tags": ["quests", "dungeons", "raids", "lore"]
+  },
+  {
+    "id": "quest_world_events",
+    "title": "World Event Quests",
+    "content": "Major world events have extensive quest lines. The Ahn'Qiraj War Effort required collecting resources across Azeroth. The Scourge Invasion had defense quests in major cities. World event quests involve massive coordination and provide unique rewards. They create memorable experiences for the entire playerbase.",
+    "keywords": ["world_event_quests", "ahnqiraj", "scourge_invasion", "coordination", "memorable"],
+    "tags": ["quests", "events", "world", "coordination"]
+  },
+  {
+    "id": "quest_epic_questlines",
+    "title": "Epic Quest Chains",
+    "content": "Some quests form long, involved storylines. The Warlock artifact quests, the Paladin epic mounts, the Hunter epic bow quests. Epic quests often span multiple zones and require significant time investment. They provide the most powerful and unique rewards in the game.",
+    "keywords": ["epic_questlines", "warlock_artifacts", "paladin_mounts", "hunter_bow", "investment"],
+    "tags": ["quests", "epic", "storylines", "rewards"]
+  },
+  {
+    "id": "quest_profession_quests",
+    "title": "Profession Quest Lines",
+    "content": "Professions have quests that advance their story. Blacksmithing has the Dark Iron quests, alchemy has the Elixir of Vigor, fishing has the Nat Pagle quests. Profession quests provide recipes, tools, and understanding of the profession's lore. They often require gathering rare materials or completing difficult tasks.",
+    "keywords": ["profession_quests", "blacksmithing", "alchemy", "fishing", "recipes", "tools"],
+    "tags": ["quests", "professions", "lore", "recipes"]
+  },
+  {
+    "id": "quest_faction_conflicts",
+    "title": "Faction Conflict Quests",
+    "content": "Quests that involve Alliance vs Horde conflicts. The battle for Ashenvale, the wars in the Plaguelands, the Stromgarde conflicts. These quests provide context for world PvP and create stakes for faction loyalty. They often involve attacking enemy cities or defending territory.",
+    "keywords": ["faction_conflicts", "alliance", "horde", "ashenvale", "plaguelands", "stromgarde"],
+    "tags": ["quests", "factions", "conflicts", "pvp"]
+  },
+  {
+    "id": "quest_lore_quests",
+    "title": "Lore-Revealing Quests",
+    "content": "Quests that reveal important Warcraft lore. The story of Medivh and the Dark Portal, the fall of Quel'Thalas, the corruption of the orcs. These quests often involve reading books, speaking to NPCs, or exploring ancient ruins. They enhance understanding of the game's rich history and mythology.",
+    "keywords": ["lore_quests", "medivh", "dark_portal", "quelthalas", "orcs", "history"],
+    "tags": ["quests", "lore", "story", "history"]
+  },
+  {
+    "id": "quest_escort_quests",
+    "title": "Escort and Protection Quests",
+    "content": "Quests where players must escort NPCs to destinations while protecting them from enemies. Examples include escorting the druid to Moonglade or protecting the caravan in Thousand Needles. Escort quests can be challenging due to mob aggro and pathing issues. They often provide good rewards for successful completion.",
+    "keywords": ["escort_quests", "protection", "druid", "caravan", "challenging", "rewards"],
+    "tags": ["quests", "escort", "protection", "challenging"]
+  },
+  {
+    "id": "quest_collection_quests",
+    "title": "Collection and Gathering Quests",
+    "content": "Quests that require collecting specific items. Gathering rare herbs, killing specific mobs for drops, finding hidden objects. Examples include the collection quests in Un'Goro Crater or the breadcrumb quests in zones. These quests teach exploration and efficient farming techniques.",
+    "keywords": ["collection_quests", "gathering", "herbs", "drops", "exploration", "farming"],
+    "tags": ["quests", "collection", "gathering", "exploration"]
+  },
+  {
+    "id": "quest_timed_quests",
+    "title": "Timed and Race Quests",
+    "content": "Quests with time limits or racing elements. Racing against other players, completing objectives before time runs out. Examples include the race to the finish in certain zones or timed defense quests. These quests require speed and efficiency. They often provide bonus rewards for fast completion.",
+    "keywords": ["timed_quests", "racing", "speed", "efficiency", "bonus_rewards", "defense"],
+    "tags": ["quests", "timed", "racing", "speed"]
+  },
+  {
+    "id": "quest_group_quests",
+    "title": "Group and Raid Quests",
+    "content": "Quests designed for groups or raids. The Molten Core attunement quests, the Ahn'Qiraj opening quests. These quests require coordination and often involve difficult combat. They provide access to endgame content and powerful rewards. Group quests teach teamwork and strategy.",
+    "keywords": ["group_quests", "raid_quests", "molten_core", "ahnqiraj", "coordination", "teamwork"],
+    "tags": ["quests", "group", "raid", "coordination"]
+  },
+  {
+    "id": "quest_repeatable_quests",
+    "title": "Repeatable and Daily Quests",
+    "content": "Quests that can be completed multiple times. Daily quests for reputation, repeatable quests for gold or items. Examples include the Cenarion Circle dailies or the fishing daily quests. Repeatable quests provide ongoing activities and rewards. They help with gearing and reputation grinding.",
+    "keywords": ["repeatable_quests", "daily_quests", "cenarion_circle", "fishing", "ongoing", "grinding"],
+    "tags": ["quests", "repeatable", "daily", "grinding"]
+  },
+  {
+    "id": "quest_hidden_quests",
+    "title": "Hidden and Secret Quests",
+    "content": "Quests not obviously marked on the map. Hidden quests require exploration, talking to specific NPCs, or discovering secret areas. Examples include the quest for the Green Hills of Stranglethorn pages or the hidden quests in Blackrock Mountain. Finding hidden quests provides satisfaction and unique rewards.",
+    "keywords": ["hidden_quests", "secret_quests", "exploration", "green_hills", "blackrock_mountain", "satisfaction"],
+    "tags": ["quests", "hidden", "secret", "exploration"]
+  }
+]

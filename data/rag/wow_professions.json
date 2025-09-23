@@ -1,0 +1,79 @@
+[
+  {
+    "id": "profession_alchemy",
+    "title": "Alchemy Profession",
+    "content": "Alchemy is a primary profession in World of Warcraft that allows players to create potions, elixirs, flasks, and transmutation recipes. Key skills include creating healing potions, mana potions, combat elixirs, and guardian elixirs. Master Alchemists can create powerful flasks that provide major stat bonuses. Alchemy requires herbs gathered by Herbalism and is essential for raiding and PvP.",
+    "keywords": ["alchemy", "potions", "elixirs", "flasks", "herbs", "transmutation"],
+    "tags": ["profession", "crafting", "consumables", "raiding"]
+  },
+  {
+    "id": "profession_blacksmithing",
+    "title": "Blacksmithing Profession",
+    "content": "Blacksmithing is a primary profession focused on creating weapons, armor, and tools from metal ores. Blacksmiths can craft swords, axes, maces, plate armor, shields, and various tools. Specializations include Armorsmithing and Weaponsmithing. High-level blacksmiths create epic weapons and armor sets essential for end-game content.",
+    "keywords": ["blacksmithing", "weapons", "armor", "plate", "tools", "metal", "ore"],
+    "tags": ["profession", "crafting", "weapons", "armor", "raiding"]
+  },
+  {
+    "id": "profession_enchanting",
+    "title": "Enchanting Profession",
+    "content": "Enchanting allows players to disenchant magical items to extract dusts, essences, and shards, then use these materials to create enchantments for weapons and armor. Popular enchants include spell power, attack power, critical strike, and stamina bonuses. Enchanting provides essential item enhancements for all classes and is highly profitable on the auction house.",
+    "keywords": ["enchanting", "disenchant", "dust", "essences", "shards", "enchants"],
+    "tags": ["profession", "crafting", "enhancements", "auction_house"]
+  },
+  {
+    "id": "profession_engineering",
+    "title": "Engineering Profession",
+    "content": "Engineering is a versatile profession that creates guns, explosives, mechanical devices, and various gadgets. Engineers can build scopes for ranged weapons, explosives for mining, repair bots, and flying machines. Specializations include Goblin and Gnomish engineering, each offering unique recipes. Engineering provides unique items not available through other professions.",
+    "keywords": ["engineering", "guns", "explosives", "gadgets", "scopes", "repair_bots"],
+    "tags": ["profession", "crafting", "devices", "specialized"]
+  },
+  {
+    "id": "profession_herbalism",
+    "title": "Herbalism Profession",
+    "content": "Herbalism is a gathering profession that allows players to collect herbs from the world for use in Alchemy and Inscription. Common herbs include Peacebloom, Silverleaf, Briarthorn, and more rare ones like Felweed and Netherbloom. Herbalists can find herb nodes while traveling and track them on the minimap. It's often paired with Alchemy for self-sufficiency.",
+    "keywords": ["herbalism", "herbs", "gathering", "peacebloom", "silverleaf", "briarthorn"],
+    "tags": ["profession", "gathering", "materials", "alchemy"]
+  },
+  {
+    "id": "profession_inscription",
+    "title": "Inscription Profession",
+    "content": "Inscription creates scrolls, glyphs, vellums, and off-hand books using pigments made from herbs. Inscribers can create glyphs that modify spell effects, research tomes for faster leveling, and Darkmoon cards for unique effects. It's a scribe profession that provides essential spell modifications and cosmetic items.",
+    "keywords": ["inscription", "glyphs", "scrolls", "pigments", "research", "darkmoon_cards"],
+    "tags": ["profession", "crafting", "spell_mods", "cosmetic"]
+  },
+  {
+    "id": "profession_jewelcrafting",
+    "title": "Jewelcrafting Profession",
+    "content": "Jewelcrafting creates rings, necklaces, gems, and figurines using gems and metals. Jewelcrafters can cut gems to add socket bonuses, create epic jewelry with powerful stats, and craft trinkets. Specializations include gem cutting and metalworking. It's highly valuable for creating high-end gear and auction house profits.",
+    "keywords": ["jewelcrafting", "gems", "rings", "necklaces", "sockets", "jewelry"],
+    "tags": ["profession", "crafting", "jewelry", "sockets", "valuable"]
+  },
+  {
+    "id": "profession_leatherworking",
+    "title": "Leatherworking Profession",
+    "content": "Leatherworking creates leather and mail armor, bags, and other leather goods using leather from skinning. Leatherworkers can craft armor sets, specialty bags, and drums. Specializations include Dragonscale, Elemental, and Tribal leatherworking, each with unique recipes. Essential for leather-wearing classes and provides good armor options.",
+    "keywords": ["leatherworking", "leather", "armor", "bags", "drums", "mail"],
+    "tags": ["profession", "crafting", "armor", "bags", "leather_classes"]
+  },
+  {
+    "id": "profession_mining",
+    "title": "Mining Profession",
+    "content": "Mining is a gathering profession that collects ores and stones from mineral nodes for use in Blacksmithing, Engineering, and Jewelcrafting. Miners can find copper, tin, iron, gold, and rare ores like adamantite and fel iron. Mining provides essential materials for crafting professions and can be combined with Engineering for explosives to find more nodes.",
+    "keywords": ["mining", "ores", "stones", "copper", "iron", "gold", "adamantite"],
+    "tags": ["profession", "gathering", "materials", "crafting"]
+  },
+  {
+    "id": "profession_skinning",
+    "title": "Skinning Profession",
+    "content": "Skinning allows players to skin dead animal and humanoid corpses for leather and hides used in Leatherworking. Skinners can gather light leather, medium leather, heavy leather, and rare hides. It's often paired with Leatherworking for self-sufficiency and provides materials for armor crafting. Skinning is essential for leather-based professions.",
+    "keywords": ["skinning", "leather", "hides", "corpses", "light_leather", "medium_leather"],
+    "tags": ["profession", "gathering", "materials", "leatherworking"]
+  },
+  {
+    "id": "profession_tailoring",
+    "title": "Tailoring Profession",
+    "content": "Tailoring creates cloth armor, bags, shirts, and other cloth goods using cloth from tailors or drops. Tailors can craft robes, cloaks, bags, and specialty items. Specializations include Mooncloth, Shadoweave, and Spellfire tailoring, each with unique recipes. Essential for cloth-wearing classes like mages, priests, and warlocks.",
+    "keywords": ["tailoring", "cloth", "armor", "bags", "robes", "cloaks"],
+    "tags": ["profession", "crafting", "armor", "bags", "cloth_classes"]
+  }
+]

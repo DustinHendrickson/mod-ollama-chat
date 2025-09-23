@@ -1,0 +1,107 @@
+[
+  {
+    "id": "item_tier_sets",
+    "title": "Tier Sets",
+    "content": "Tier sets are high-level armor sets obtained from raid bosses. Each tier provides significant stat bonuses when multiple pieces are equipped. Tier 1 (Molten Core), Tier 2 (Blackwing Lair), Tier 3 (Ahn'Qiraj), Tier 4 (Naxxramas), Tier 5 (The Burning Crusade raids). Tier sets are highly sought after for their power and prestige. Many players collect complete sets for achievements and bragging rights.",
+    "keywords": ["tier_sets", "raid_armor", "set_bonuses", "molten_core", "blackwing_lair", "ahnqiraj", "naxxramas"],
+    "tags": ["items", "equipment", "raid", "tier"]
+  },
+  {
+    "id": "item_legendary_weapons",
+    "title": "Legendary Weapons",
+    "content": "Legendary weapons are the most powerful items in the game, requiring extensive quests and rare materials to obtain. Examples include Sulfuras (Ragnaros), Thunderfury (Thunderaan), and Atiesh (Medivh). These weapons have unique appearances, powerful stats, and often special abilities. Obtaining a legendary weapon is a major accomplishment that requires dedication and coordination with other players.",
+    "keywords": ["legendary_weapons", "sulfuras", "thunderfury", "atiesh", "quests", "rare"],
+    "tags": ["items", "weapons", "legendary", "rare"]
+  },
+  {
+    "id": "item_profession_tools",
+    "title": "Profession Tools",
+    "content": "Profession tools enhance crafting success rates and provide bonuses to created items. Blacksmiths use hammers and anvils, leatherworkers use knives and sewing kits, alchemists use mortars and pestles. Higher quality tools provide better bonuses. Some tools are bind-on-equip and can be upgraded. Having good tools is essential for professional crafters who want to create high-quality items.",
+    "keywords": ["profession_tools", "crafting", "blacksmithing", "leatherworking", "alchemy", "bonuses"],
+    "tags": ["items", "professions", "tools", "crafting"]
+  },
+  {
+    "id": "item_mounts_collection",
+    "title": "Mount Collection",
+    "content": "World of Warcraft features hundreds of mounts with unique appearances and abilities. Rare mounts like the Ashes of Al'ar (Phoenix), Swift Zulian Tiger, or Deathcharger's Reins are highly prized. Some mounts are obtained through achievements, others through rare drops or expensive purchases. Mount collecting is a popular pastime. Epic flying mounts become available at level 70 with the appropriate riding skill.",
+    "keywords": ["mounts", "collection", "ashes_of_alar", "swift_zulian_tiger", "deathchargers_reins", "flying"],
+    "tags": ["items", "mounts", "collection", "rare"]
+  },
+  {
+    "id": "item_enchants",
+    "title": "Weapon and Armor Enchants",
+    "content": "Enchants add magical properties to weapons and armor. Enchanters can create enchant scrolls or apply enchants directly. Popular weapon enchants include Crusader (paladins), Fiery Weapon, or Soulfrost. Armor enchants provide stats like +strength, +agility, or +spell power. Enchanting requires materials and skill. Good enchants can significantly improve gear performance.",
+    "keywords": ["enchants", "enchanting", "weapons", "armor", "crusader", "fiery_weapon", "soulfrost"],
+    "tags": ["items", "enchants", "enchanting", "improvement"]
+  },
+  {
+    "id": "item_gems",
+    "title": "Socketed Gems",
+    "content": "Many high-level items have sockets that can hold gems to provide stat bonuses. Gem colors match socket colors for bonuses: red for strength/crit, yellow for intellect/hit, blue for spirit/mp5, meta gems for special effects. Jewelcrafters create gems from minerals. Gemming properly is crucial for optimizing character stats. Different specs require different gem priorities.",
+    "keywords": ["gems", "sockets", "jewelcrafting", "red_gems", "yellow_gems", "blue_gems", "meta_gems"],
+    "tags": ["items", "gems", "jewelcrafting", "optimization"]
+  },
+  {
+    "id": "item_consumables",
+    "title": "Consumable Items",
+    "content": "Consumables are items that provide temporary benefits when used. Food provides stat buffs, potions restore health/mana or provide temporary boosts, elixirs give longer-lasting buffs, flasks provide raid buffs. Alchemists and cooks create many consumables. Using proper consumables before encounters is essential for raid and dungeon performance. Some consumables are very rare and expensive.",
+    "keywords": ["consumables", "food", "potions", "elixirs", "flasks", "buffs", "temporary"],
+    "tags": ["items", "consumables", "buffs", "performance"]
+  },
+  {
+    "id": "item_trade_goods",
+    "title": "Trade Goods and Materials",
+    "content": "Trade goods are materials used in professions. Cloth from humanoids, ore from mining nodes, leather from beasts, herbs from gathering. These materials are bought and sold on the auction house. Prices fluctuate based on demand. Professional players make gold by farming and selling materials. Understanding market values is important for both crafting and trading professions.",
+    "keywords": ["trade_goods", "materials", "cloth", "ore", "leather", "herbs", "auction_house"],
+    "tags": ["items", "materials", "trading", "economy"]
+  },
+  {
+    "id": "item_keys",
+    "title": "Dungeon and Raid Keys",
+    "content": "Keys are special items that allow access to locked areas or higher difficulty content. Examples include the Key to the City (Karazhan), Reservoir Key (Serpentshrine Cavern), or Medallion of Karabor (Auchindoun). Some keys are obtained through quests, others from rare drops. Keys often require attunement processes. Having the right keys is necessary for accessing certain content.",
+    "keywords": ["keys", "attunement", "karazhan", "serpentshrine", "auchindoun", "access"],
+    "tags": ["items", "keys", "access", "attunement"]
+  },
+  {
+    "id": "item_containers",
+    "title": "Special Containers",
+    "content": "Special containers hold unique items or provide access to rare rewards. Examples include the Cache of the Legion (Karazhan), the Bag of Fishing Treasures, or the Disgusting Oozeling Jar. Some containers are obtained from bosses, others from achievements or rare vendors. Opening containers provides excitement and potential valuable loot. Many players collect containers for their contents.",
+    "keywords": ["containers", "cache_of_the_legion", "bag_of_fishing_treasures", "oozeling_jar", "loot"],
+    "tags": ["items", "containers", "loot", "collection"]
+  },
+  {
+    "id": "item_tabards",
+    "title": "Guild and Faction Tabards",
+    "content": "Tabards are cosmetic chest pieces that display guild or faction affiliation. Guild tabards show guild name and colors, faction tabards show allegiance to Horde/Alliance. Tabards are obtained through reputation grinds or purchases. Wearing tabards can affect gameplay in certain areas. Some tabards provide special abilities or are required for specific content.",
+    "keywords": ["tabards", "guild", "faction", "horde", "alliance", "cosmetic", "reputation"],
+    "tags": ["items", "cosmetic", "guild", "faction"]
+  },
+  {
+    "id": "item_pvp_gear",
+    "title": "PvP Equipment",
+    "content": "PvP gear is specialized equipment for player vs player combat. Honor gear from battlegrounds, arena gear from rated matches. PvP sets provide resilience and PvP-specific stats. Weapons like the Grand Marshal's or High Warlord's sets are prestigious. PvP gear often has unique appearances. Players can mix PvP and PvE gear for hybrid builds.",
+    "keywords": ["pvp_gear", "honor", "arena", "resilience", "grand_marshal", "high_warlord"],
+    "tags": ["items", "pvp", "equipment", "combat"]
+  },
+  {
+    "id": "item_quest_rewards",
+    "title": "Quest Reward Items",
+    "content": "Many quests reward unique items that tell stories or provide character development. Examples include the Corrupted Ashbringer, the Silver Hand, or the Scarlet Crusade Tabard. Quest rewards often have lore significance and unique appearances. Some quest items are essential for class stories. Collecting quest rewards helps players experience the game's narrative.",
+    "keywords": ["quest_rewards", "ashbringer", "silver_hand", "scarlet_crusade", "lore", "narrative"],
+    "tags": ["items", "quests", "lore", "story"]
+  },
+  {
+    "id": "item_cosmetic",
+    "title": "Cosmetic Items",
+    "content": "Cosmetic items provide visual customization without affecting stats. Transmog allows changing armor appearances, illusions change weapon visuals, toys provide fun effects. Many cosmetic items are obtained through achievements or rare drops. Players collect cosmetics for personalization. Some cosmetics are very rare and valuable on the auction house.",
+    "keywords": ["cosmetic", "transmog", "illusions", "toys", "appearance", "personalization"],
+    "tags": ["items", "cosmetic", "appearance", "collection"]
+  },
+  {
+    "id": "item_relics",
+    "title": "Relics and Artifacts",
+    "content": "Relics are special items that provide bonuses to certain classes. Librams for paladins, idols for druids, totems for shamans. Relics are equipped in off-hand slots and provide unique bonuses. Some relics are very rare and powerful. Relics often have lore connections to class stories. Obtaining powerful relics is a goal for many players.",
+    "keywords": ["relics", "artifacts", "librams", "idols", "totems", "offhand", "bonuses"],
+    "tags": ["items", "relics", "class", "bonuses"]
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "wow_classes_warrior",
+    "title": "Warrior Class",
+    "content": "Warriors are versatile melee fighters who excel in both damage dealing and tanking. They have three specializations: Arms (melee DPS), Fury (two-handed weapon DPS), and Protection (tanking). Warriors use rage as their resource and can charge into battle, use defensive stances, and provide strong physical damage. They are essential for tanking dungeons and raids.",
+    "keywords": ["warrior", "tank", "dps", "melee", "rage", "arms", "fury", "protection"],
+    "tags": ["class", "melee", "tank", "dps", "versatile"]
+  },
+  {
+    "id": "wow_classes_paladin",
+    "title": "Paladin Class",
+    "content": "Paladins are holy warriors who combine melee combat with divine magic. They can be healers (Holy), melee DPS (Retribution), or tanks (Protection). Paladins use mana for spells and holy power for special abilities. They have strong utility with blessings, auras, and can protect allies with divine shields. Paladins are highly valued for their healing and tanking in groups.",
+    "keywords": ["paladin", "healer", "tank", "dps", "holy", "retribution", "protection", "divine"],
+    "tags": ["class", "hybrid", "healer", "tank", "dps"]
+  },
+  {
+    "id": "wow_classes_hunter",
+    "title": "Hunter Class",
+    "content": "Hunters are ranged DPS specialists who use bows, guns, or crossbows to deal damage from afar. They have pets that fight alongside them and can track enemies, trap them, and provide utility. Hunters excel at solo play and can handle multiple targets effectively. They use focus as their resource and have strong survival abilities.",
+    "keywords": ["hunter", "ranged", "dps", "pets", "tracking", "traps", "focus"],
+    "tags": ["class", "ranged", "dps", "pets", "utility"]
+  },
+  {
+    "id": "wow_classes_rogue",
+    "title": "Rogue Class",
+    "content": "Rogues are stealthy melee DPS specialists who excel at burst damage and controlling the battlefield. They can stealth, pick locks, and assassinate targets. Rogues have high mobility with abilities like sprint and vanish. They use energy as their resource and combo points to unleash powerful finishing moves. Rogues are deadly in PvP and excel at controlling fights.",
+    "keywords": ["rogue", "stealth", "melee", "dps", "burst", "energy", "combo_points"],
+    "tags": ["class", "melee", "dps", "stealth", "control"]
+  },
+  {
+    "id": "wow_classes_priest",
+    "title": "Priest Class",
+    "content": "Priests are versatile spellcasters who can be healers (Holy/Discpline) or ranged DPS (Shadow). They use holy magic for healing and shadow magic for damage. Priests have strong utility with mind control, fear, and resurrection. They can provide mana to others and have powerful area healing abilities. Priests are essential for keeping groups alive in tough encounters.",
+    "keywords": ["priest", "healer", "dps", "holy", "shadow", "utility", "resurrection"],
+    "tags": ["class", "caster", "healer", "dps", "utility"]
+  },
+  {
+    "id": "wow_classes_shaman",
+    "title": "Shaman Class",
+    "content": "Shamans are elemental spellcasters who can be healers (Restoration), melee DPS (Enhancement), or ranged DPS (Elemental). They call upon the power of elements and spirits. Shamans have totems that provide group buffs and can weapon imbue for different effects. They excel at area damage and healing, making them valuable in groups and raids.",
+    "keywords": ["shaman", "healer", "dps", "elemental", "totems", "spirits", "enhancement"],
+    "tags": ["class", "hybrid", "healer", "dps", "elemental"]
+  },
+  {
+    "id": "wow_classes_mage",
+    "title": "Mage Class",
+    "content": "Mages are powerful ranged spellcasters who deal massive damage with fire, frost, and arcane magic. They can polymorph enemies, teleport, and create portals. Mages have strong crowd control and can burst down targets quickly. They use mana as their resource and have abilities to conserve mana. Mages are glass cannons - high damage but low survivability.",
+    "keywords": ["mage", "ranged", "dps", "fire", "frost", "arcane", "polymorph", "teleport"],
+    "tags": ["class", "caster", "ranged", "dps", "control"]
+  },
+  {
+    "id": "wow_classes_warlock",
+    "title": "Warlock Class",
+    "content": "Warlocks are dark spellcasters who make pacts with demons to gain power. They summon demonic pets and use curses, drains, and destructive spells. Warlocks can create soulstones, healthstones, and spellstones. They excel at sustained damage over time and have strong crowd control. Warlocks use mana and have demonic resources through their pacts.",
+    "keywords": ["warlock", "caster", "dps", "demons", "pets", "curses", "soulstone"],
+    "tags": ["class", "caster", "dps", "demonic", "control"]
+  },
+  {
+    "id": "wow_classes_druid",
+    "title": "Druid Class",
+    "content": "Druids are shapeshifting spellcasters who can be healers (Restoration), melee DPS (Feral), ranged DPS (Balance), or tanks (Guardian). They can transform into various animal forms for different roles. Druids have strong utility with crowd control, healing, and mobility. They are highly versatile and can adapt to different group needs.",
+    "keywords": ["druid", "shapeshift", "healer", "tank", "dps", "feral", "balance", "restoration"],
+    "tags": ["class", "hybrid", "versatile", "shapeshift"]
+  },
+  {
+    "id": "wow_classes_death_knight",
+    "title": "Death Knight Class",
+    "content": "Death Knights are undead warriors raised by the Lich King, available starting in Wrath of the Lich King. They are powerful tanks (Blood) or DPS (Frost/Unholy) with rune-based abilities. Death Knights have strong survivability and can raise ghouls to assist in combat. They use runes and runic power as resources and have anti-magic abilities.",
+    "keywords": ["death_knight", "undead", "tank", "dps", "runes", "runic_power", "blood", "frost", "unholy"],
+    "tags": ["class", "melee", "tank", "dps", "undead"]
+  },
+  {
+    "id": "wow_factions_alliance",
+    "title": "Alliance Faction",
+    "content": "The Alliance is one of the two major factions in Azeroth, consisting of noble and honorable races united against the Horde. Member races include Humans, Dwarves, Gnomes, Night Elves, and Draenei. The Alliance values honor, tradition, and protecting Azeroth from threats. Their capital cities include Stormwind, Ironforge, Darnassus, and the Exodar. Alliance players work together to maintain peace and order.",
+    "keywords": ["alliance", "faction", "honor", "tradition", "humans", "dwarves", "gnomes", "night_elves", "draenei"],
+    "tags": ["faction", "alliance", "races", "cities"]
+  },
+  {
+    "id": "wow_factions_horde",
+    "title": "Horde Faction",
+    "content": "The Horde is a powerful faction of warrior races who fight for survival and strength. Member races include Orcs, Trolls, Tauren, Undead (Forsaken), and Blood Elves. The Horde values strength, honor in battle, and protecting their way of life. Their capital cities include Orgrimmar, Thunder Bluff, Undercity, and Silvermoon City. Horde players are fierce warriors who respect strength and combat prowess.",
+    "keywords": ["horde", "faction", "strength", "warriors", "orcs", "trolls", "tauren", "undead", "blood_elves"],
+    "tags": ["faction", "horde", "races", "cities"]
+  }
+]

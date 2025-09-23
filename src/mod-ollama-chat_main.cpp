@@ -3,6 +3,7 @@
 #include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_events.h"
 #include "mod-ollama-chat_command.h"
+#include "mod-ollama-chat_rag.h"
 #include "Log.h"
 
 void Addmod_ollama_chatScripts()

@@ -47,7 +47,7 @@ OllamaChat.Model = llama3.2:1b
 #     |     50     |   ~35–38      | Slightly longer reply            |
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
-OllamaChat.NumPredict = 40
+OllamaChat.NumPredict = 100
 
 # OllamaChat.Temperature
 #     Description: Controls the "creativity" or randomness of the model’s output.
@@ -734,3 +734,39 @@ OllamaChat.GuildEventTypeLevelUp_Chance = 95
 #     Default:     guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete_Chance = 85
+
+# --------------------------------------------
+# RAG (Retrieval-Augmented Generation) SYSTEM
+# --------------------------------------------
+
+# OllamaChat.EnableRAG
+#     Description: Enable or disable the RAG (Retrieval-Augmented Generation) feature.
+#                  When enabled, the bot will analyze player messages and retrieve relevant information
+#                  from JSON knowledge base files to provide more accurate and detailed responses.
+#     Default:     0 (false)
+OllamaChat.EnableRAG = 0
+
+# OllamaChat.RAGDataPath
+#     Description: Path to the directory containing RAG JSON data files.
+#                  This should be a relative path from the module's data directory.
+#                  The system will load all .json files from this directory.
+#     Default:     rag/
+OllamaChat.RAGDataPath = rag/
+
+# OllamaChat.RAGMaxRetrievedItems
+#     Description: Maximum number of relevant information items to retrieve and include in the prompt.
+#                  Higher values provide more context but may exceed token limits.
+#     Default:     3
+OllamaChat.RAGMaxRetrievedItems = 3
+
+# OllamaChat.RAGSimilarityThreshold
+#     Description: Minimum similarity score (0.0-1.0) required for information to be considered relevant.
+#                  Lower values will include more information but may be less accurate.
+#                  Higher values will be more precise but may miss relevant information.
+#     Default:     0.3
+OllamaChat.RAGSimilarityThreshold = 0.3
+
+# OllamaChat.RAGPromptTemplate
+#     Description: Template for including RAG information in bot prompts.
+#     Placeholders (named): {rag_info}
+OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this information to provide accurate and detailed responses when applicable."

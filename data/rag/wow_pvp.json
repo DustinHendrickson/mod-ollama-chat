@@ -1,0 +1,107 @@
+[
+  {
+    "id": "pvp_battlegrounds",
+    "title": "Battlegrounds",
+    "content": "Battlegrounds are instanced PvP areas where teams compete for objectives. Warsong Gulch (capture the flag), Arathi Basin (resource control), Alterac Valley (massive battle with multiple objectives). Players earn honor points for victories and can purchase PvP gear. Battlegrounds require teamwork and strategy. Winning battlegrounds provides marks of honor used for epic gear.",
+    "keywords": ["battlegrounds", "warsong_gulch", "arathi_basin", "alterac_valley", "honor", "marks"],
+    "tags": ["pvp", "battlegrounds", "teamwork", "honor"]
+  },
+  {
+    "id": "pvp_arenas",
+    "title": "Arena Combat",
+    "content": "Arena combat pits small teams (2v2, 3v3, 5v5) against each other in fast-paced matches. Players earn arena points for victories, which are used to purchase rated gear. Arena requires high skill and coordination. Top arena players compete in tournaments and earn titles. Arena gear is among the best available for PvP.",
+    "keywords": ["arena", "2v2", "3v3", "5v5", "arena_points", "rated_gear", "tournaments"],
+    "tags": ["pvp", "arena", "skill", "competition"]
+  },
+  {
+    "id": "pvp_world_pvp",
+    "title": "World PvP",
+    "content": "World PvP occurs in the open world where players can attack each other. Popular spots include Tarren Mill vs Southshore, The Crossroads vs The Bulwark, or the Gurubashi Arena. World PvP requires awareness and can be very rewarding. Some world PvP areas have special rules or objectives. World PvP creates memorable moments and rivalries.",
+    "keywords": ["world_pvp", "tarren_mill", "crossroads", "gurubashi", "awareness", "rivalries"],
+    "tags": ["pvp", "world", "open_world", "rivalries"]
+  },
+  {
+    "id": "pvp_ranks",
+    "title": "PvP Ranks and Titles",
+    "content": "Players earn ranks through PvP victories, from 1 to 14. Higher ranks provide better gear and titles like 'Sergeant', 'Knight-Captain', 'Grand Marshal' (Alliance) or 'Grunt', 'Blood Guard', 'High Warlord' (Horde). Rank 14 requires extensive grinding. Titles are prestigious and show PvP dedication. Some ranks unlock special mounts or items.",
+    "keywords": ["pvp_ranks", "titles", "grand_marshal", "high_warlord", "grinding", "prestige"],
+    "tags": ["pvp", "ranks", "titles", "prestige"]
+  },
+  {
+    "id": "pvp_gear_progression",
+    "title": "PvP Gear Progression",
+    "content": "PvP gear is obtained through honor and arena points. Low-level PvP gear from battleground marks, higher level gear from honor purchases, top-tier gear from arena points. PvP sets provide resilience and PvP power. Players can mix PvP and PvE gear for hybrid builds. Good PvP gear is essential for competitive play.",
+    "keywords": ["pvp_gear", "honor", "arena_points", "resilience", "hybrid_builds", "competitive"],
+    "tags": ["pvp", "gear", "progression", "equipment"]
+  },
+  {
+    "id": "pvp_faction_conflicts",
+    "title": "Faction Conflicts",
+    "content": "Major faction conflicts drive PvP activity. The longstanding Alliance vs Horde war, the battle for Azeroth, conflicts with the Scourge or Burning Legion. These conflicts provide context for PvP battles and create stakes. Understanding faction lore enhances PvP experiences. Major conflicts often have world events and special PvP content.",
+    "keywords": ["faction_conflicts", "alliance", "horde", "scourge", "burning_legion", "lore"],
+    "tags": ["pvp", "factions", "conflicts", "lore"]
+  },
+  {
+    "id": "pvp_strategies",
+    "title": "PvP Strategies and Tactics",
+    "content": "Successful PvP requires different strategies than PvE. Focus on crowd control, burst damage, and survivability. Know class matchups and counters. Use terrain and positioning. Coordinate with team members. PvP often involves trading cooldowns and managing resources. Adapting to different situations is key to victory.",
+    "keywords": ["pvp_strategies", "crowd_control", "burst_damage", "matchups", "coordination", "cooldowns"],
+    "tags": ["pvp", "strategies", "tactics", "skill"]
+  },
+  {
+    "id": "pvp_honor_system",
+    "title": "Honor System",
+    "content": "The honor system rewards PvP participation. Honor points are earned from killing enemy players and winning objectives. Honor decays weekly and resets seasonally. Honor is used to purchase PvP gear and weapons. The honor grind requires consistent PvP activity. Honor rankings show the top PvP players each season.",
+    "keywords": ["honor_system", "honor_points", "decay", "rankings", "seasonal", "grind"],
+    "tags": ["pvp", "honor", "system", "rewards"]
+  },
+  {
+    "id": "pvp_ganking",
+    "title": "Ganking and Ambush Tactics",
+    "content": "Ganking involves high-level players attacking lower-level players. This controversial tactic is common in world PvP. Players use stealth, speed, and surprise to ambush enemies. Ganking can be frustrating but is part of the PvP experience. Some areas are notorious for ganking. Players learn to be aware and prepared.",
+    "keywords": ["ganking", "ambush", "stealth", "surprise", "controversial", "awareness"],
+    "tags": ["pvp", "tactics", "ganking", "controversy"]
+  },
+  {
+    "id": "pvp_objectives",
+    "title": "Battleground Objectives",
+    "content": "Each battleground has specific objectives to complete. Warsong Gulch: capture enemy flag and return to base. Arathi Basin: control resource nodes. Alterac Valley: destroy enemy towers and generals. Eye of the Storm: control the central flag. Understanding objectives is crucial for victory. Teams coordinate to achieve goals efficiently.",
+    "keywords": ["battleground_objectives", "capture_flag", "resource_nodes", "towers", "coordination"],
+    "tags": ["pvp", "objectives", "battlegrounds", "strategy"]
+  },
+  {
+    "id": "pvp_team_composition",
+    "title": "Team Composition",
+    "content": "Good team composition is essential for PvP success. Balance healers, tanks, and damage dealers. Include crowd control and utility classes. Different compositions work for different battlegrounds. Arena teams are built around synergies and counters. Understanding class roles helps build better teams. Communication about composition improves performance.",
+    "keywords": ["team_composition", "healers", "tanks", "damage", "crowd_control", "synergies"],
+    "tags": ["pvp", "teams", "composition", "strategy"]
+  },
+  {
+    "id": "pvp_gear_specialization",
+    "title": "PvP vs PvE Gear",
+    "content": "PvP gear focuses on resilience and PvP power, while PvE gear focuses on raw damage/healing. Players choose based on playstyle. Hybrid gear mixes both. PvP gear often has unique appearances. Some players prefer pure PvP or PvE progression. Gear choice affects performance in different content types.",
+    "keywords": ["pvp_gear", "pve_gear", "resilience", "hybrid", "playstyle", "performance"],
+    "tags": ["pvp", "gear", "specialization", "choice"]
+  },
+  {
+    "id": "pvp_psychology",
+    "title": "PvP Psychology and Mindset",
+    "content": "PvP requires mental toughness and adaptability. Dealing with losses, managing tilt, staying focused. Understanding opponent psychology. Using mind games and deception. PvP is as much mental as physical. Developing the right mindset leads to better performance. Learning from defeats is crucial for improvement.",
+    "keywords": ["pvp_psychology", "mindset", "tilt", "adaptability", "mind_games", "improvement"],
+    "tags": ["pvp", "psychology", "mindset", "mental"]
+  },
+  {
+    "id": "pvp_community",
+    "title": "PvP Community and Culture",
+    "content": "PvP has a strong community with rivalries, friendships, and traditions. Top players become celebrities. PvP guilds focus on competition. Community events and tournaments. Toxic behavior exists but good sportsmanship is valued. PvP community creates lasting bonds and memorable experiences. Being part of PvP community enhances enjoyment.",
+    "keywords": ["pvp_community", "rivalries", "tournaments", "sportsmanship", "bonds", "culture"],
+    "tags": ["pvp", "community", "culture", "social"]
+  },
+  {
+    "id": "pvp_rewards",
+    "title": "PvP Rewards and Incentives",
+    "content": "PvP offers various rewards beyond gear. Titles, mounts, achievements, special tabards. Seasonal rewards for top performers. Unique PvP items and cosmetics. Rewards motivate participation and competition. Some rewards are very rare and prestigious. PvP rewards system encourages continued engagement and improvement.",
+    "keywords": ["pvp_rewards", "titles", "mounts", "achievements", "seasonal", "prestigious"],
+    "tags": ["pvp", "rewards", "incentives", "motivation"]
+  }
+]
