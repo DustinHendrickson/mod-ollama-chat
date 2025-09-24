@@ -1318,7 +1318,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
 
     // Add RAG information to the prompt if available
     if (!ragInfo.empty()) {
-        prompt = ragInfo + "\n\n" + prompt;
+        prompt += ragInfo + "\n";
     }
 
     if(g_EnableChatBotSnapshotTemplate)
