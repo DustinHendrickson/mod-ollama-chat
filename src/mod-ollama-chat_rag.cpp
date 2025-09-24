@@ -23,9 +23,8 @@ bool OllamaRAGSystem::Initialize()
     m_ragEntries.clear();
     m_vocabulary.clear();
 
-    // Build the full path to the RAG data directory
-    std::string modulePath = "./modules/mod-ollama-chat/data/";
-    std::string fullPath = modulePath + g_RAGDataPath;
+    // Use the configured RAG data path directly
+    std::string fullPath = g_RAGDataPath;
 
     if (!LoadRAGDataFromDirectory(fullPath)) {
         LOG_ERROR("server.loading", "[Ollama Chat RAG] Failed to load RAG data from directory: {}", fullPath);
