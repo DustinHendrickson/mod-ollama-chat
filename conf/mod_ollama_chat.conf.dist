@@ -771,8 +771,9 @@ OllamaChat.RAGMaxRetrievedItems = 3
 #     Description: Minimum similarity score (0.0-1.0) required for information to be considered relevant.
 #                  Lower values will include more information but may be less accurate.
 #                  Higher values will be more precise but may miss relevant information.
-#     Default:     0.3
-OllamaChat.RAGSimilarityThreshold = 0.3
+#                  Recommended range: 0.15-0.25 for good balance of relevance and coverage.
+#     Default:     0.2
+OllamaChat.RAGSimilarityThreshold = 0.2
 
 # OllamaChat.RAGPromptTemplate
 #     Description: Template for including RAG information in bot prompts.
