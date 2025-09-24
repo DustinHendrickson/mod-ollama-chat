@@ -58,6 +58,7 @@ bool        g_EnableRandomChatter             = true;
 bool        g_EnableEventChatter              = true;
 bool        g_EnableRPPersonalities           = false;
 bool        g_DebugEnabled                    = false;
+bool        g_DebugShowFullPrompt             = false;
 
 // --------------------------------------------
 // Think Mode Support
@@ -367,6 +368,7 @@ void LoadOllamaChatConfig()
     g_EnableEventChatter              = sConfigMgr->GetOption<bool>("OllamaChat.EnableEventChatter", true);
 
     g_DebugEnabled                    = sConfigMgr->GetOption<bool>("OllamaChat.DebugEnabled", false);
+    g_DebugShowFullPrompt             = sConfigMgr->GetOption<bool>("OllamaChat.DebugShowFullPrompt", false);
 
     g_MinRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MinRandomInterval", 45);
     g_MaxRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxRandomInterval", 180);

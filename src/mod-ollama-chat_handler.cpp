@@ -1319,5 +1319,10 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
         prompt += GenerateBotGameStateSnapshot(bot);
     }
 
+    // Debug logging for full prompt including RAG information
+    if (g_DebugEnabled && g_DebugShowFullPrompt) {
+        LOG_INFO("server.loading", "[Ollama Chat] Full prompt sent to bot {} for player {}: {}", botName, playerName, prompt);
+    }
+
     return prompt;
 }

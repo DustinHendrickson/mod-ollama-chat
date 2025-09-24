@@ -59,6 +59,7 @@ extern bool        g_EnableRandomChatter;
 extern bool        g_EnableEventChatter;
 extern bool        g_EnableRPPersonalities;
 extern bool        g_DebugEnabled;
+extern bool        g_DebugShowFullPrompt;
 
 // --------------------------------------------
 // Random Chatter Timing

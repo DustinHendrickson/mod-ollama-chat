@@ -20,6 +20,14 @@ OllamaChat.Enable = 1
 #     Default:     0 (false)
 OllamaChat.DebugEnabled = 0
 
+# OllamaChat.DebugShowFullPrompt
+#     Description: When enabled (1), logs the complete prompt sent to the Ollama API including RAG information.
+#                  This is useful for debugging what information the RAG system provides to bots.
+#                  Only active when OllamaChat.DebugEnabled is also enabled.
+#                  When disabled (0), only standard logging is used.
+#     Default:     0 (false)
+OllamaChat.DebugShowFullPrompt = 0
+
 # --------------------------------------------
 # OLLAMA LLM CONNECTION AND INFERENCE
 # --------------------------------------------
