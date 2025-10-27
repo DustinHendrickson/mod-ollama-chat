@@ -144,6 +144,35 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     continue;
             }
 
+            // Apply party restriction for random chatter
+            if (g_RestrictBotsToPartyMembers)
+            {
+                Group* botGroup = bot->GetGroup();
+                if (!botGroup || botGroup->isRaidGroup() && !botGroup->isBGGroup())
+                {
+                    // Bot is not in a valid party, skip
+                    continue;
+                }
+                
+                // Check if there's at least one real player in the group
+                bool hasRealPlayerInParty = false;
+                for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
+                {
+                    Player* member = ref->GetSource();
+                    if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
+                    {
+                        hasRealPlayerInParty = true;
+                        break;
+                    }
+                }
+                
+                if (!hasRealPlayerInParty)
+                {
+                    // No real players in party, skip
+                    continue;
+                }
+            }
+
             uint64_t guid = bot->GetGUID().GetRawValue();
             processedBotsThisTick.insert(guid);
 

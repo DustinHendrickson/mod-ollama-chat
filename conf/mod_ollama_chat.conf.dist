@@ -169,6 +169,12 @@ OllamaChat.SayDistance = 30.0
 #     Default:     100.0
 OllamaChat.YellDistance = 100.0
 
+# OllamaChat.RestrictBotsToPartyMembers
+#     Description: When enabled (1), bots will only respond to real player messages/events when they are in the same non-raid party.
+#                  Bot-to-bot communication within parties is still allowed. This helps reduce spam while maintaining party functionality.
+#     Default:     0 (false)
+OllamaChat.RestrictBotsToPartyMembers = 0
+
 # --------------------------------------------
 # RANDOM CHATTER SYSTEM
 # --------------------------------------------

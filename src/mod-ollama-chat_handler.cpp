@@ -787,6 +787,49 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         {
             continue;
         }
+        
+        // Apply party restriction only for real player messages
+        if (!senderIsBot && g_RestrictBotsToPartyMembers)
+        {
+            Group* botGroup = bot->GetGroup();
+            Group* playerGroup = player->GetGroup();
+            
+            // Both must be in a group
+            if (!botGroup || !playerGroup)
+            {
+                continue;
+            }
+            
+            // Must be the same group
+            if (botGroup != playerGroup)
+            {
+                continue;
+            }
+            
+            // Group must not be a raid (battleground raids are allowed)
+            if (botGroup->isRaidGroup() && !botGroup->isBGGroup())
+            {
+                continue;
+            }
+            
+            // At least one real player must be in the group (should be true since player is real)
+            bool hasRealPlayer = false;
+            for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
+                {
+                    hasRealPlayer = true;
+                    break;
+                }
+            }
+            
+            if (!hasRealPlayer)
+            {
+                continue;
+            }
+        }
+        
         // For channel messages, bots in eligibleBots have already passed STRICT channel checks
         // Only run additional eligibility checks for non-channel sources
         if (channel != nullptr)

@@ -46,6 +46,9 @@
 - **Event-Based Chatter:**  
   Player bots now comment on key in-game events such as quest completion, rare loot, deaths, PvP kills, leveling up, duels, learning spells, and achievements. Remarks are context-aware, immersive, and personality-driven, making the world feel much more alive.
 
+- **Party-Only Bot Responses:**  
+  When enabled, bots will only respond to real player messages and events when they are in the same non-raid party. This helps reduce chat spam while maintaining full bot-to-bot communication within parties for immersive group interactions.
+
 - **Think Mode Support:**  
   Bots can leverage LLM models that have reasoning/think modes. Enable internal reasoning for models that support it by setting `OllamaChat.ThinkModeEnableForModule = 1` in **mod-ollama-chat.conf**. When enabled, the API request includes the `think` flag and the bot omits all `thinking` responses from its final reply.
 
@@ -97,7 +100,7 @@
 ## How It Works
 
 1. **Chat Filtering and Triggering**  
-   When a player (or bot) sends a chat message, the module checks the message’s type, distance, and if it starts with any configured blacklist command prefix. Only eligible messages in range and not matching the blacklist will trigger a bot response.
+   When a player (or bot) sends a chat message, the module checks the message's type, distance, and if it starts with any configured blacklist command prefix. If party restrictions are enabled, only bots in the same non-raid party as the real player can respond. Only eligible messages in range and not matching the blacklist will trigger a bot response.
 
 2. **Bot Selection**  
    The system gathers all bots within the relevant distance, determines eligibility based on player/bot reply chance, and caps responses per message using `MaxBotsToPick` and related settings.

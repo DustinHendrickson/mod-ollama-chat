@@ -252,6 +252,11 @@ extern std::string g_EventTypeUsedObject;         // "used object"
 extern uint32_t g_EventCooldownTime;
 
 // --------------------------------------------
+// Party Restriction Settings
+// --------------------------------------------
+extern bool g_RestrictBotsToPartyMembers;
+
+// --------------------------------------------
 // Loader Functions
 // --------------------------------------------
 void LoadOllamaChatConfig();

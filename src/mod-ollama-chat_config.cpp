@@ -251,6 +251,11 @@ int g_GuildEventTypeDungeonComplete_Chance = 0;
 // Event Cooldown
 uint32_t g_EventCooldownTime = 10;
 
+// --------------------------------------------
+// Party Restriction Settings
+// --------------------------------------------
+bool g_RestrictBotsToPartyMembers = false;
+
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
 {
@@ -550,6 +555,9 @@ void LoadOllamaChatConfig()
 
     // Cooldown time for events
     g_EventCooldownTime = sConfigMgr->GetOption<uint32_t>("OllamaChat.EventCooldownTime", 10);
+
+    // Party restriction settings
+    g_RestrictBotsToPartyMembers = sConfigMgr->GetOption<bool>("OllamaChat.RestrictBotsToPartyMembers", false);
 
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "

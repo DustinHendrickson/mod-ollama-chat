@@ -24,6 +24,46 @@
 static OllamaBotEventChatter eventChatter;
 static std::unordered_map<Player*, std::chrono::steady_clock::time_point> botEventCooldowns;
 
+// Helper function to check if a bot is allowed to respond in restricted mode
+static bool IsBotAllowedForRestrictedMode(Player* bot, Player* source)
+{
+    if (!g_RestrictBotsToPartyMembers)
+        return true;
+        
+    if (!bot || !source)
+        return false;
+        
+    // Get groups for both bot and source
+    Group* botGroup = bot->GetGroup();
+    Group* sourceGroup = source->GetGroup();
+    
+    // Both must be in a group
+    if (!botGroup || !sourceGroup)
+        return false;
+        
+    // Must be the same group
+    if (botGroup != sourceGroup)
+        return false;
+        
+    // Group must not be a raid (battleground raids are allowed)
+    if (botGroup->isRaidGroup() && !botGroup->isBGGroup())
+        return false;
+        
+    // At least one real player must be in the group
+    bool hasRealPlayer = false;
+    for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
+        {
+            hasRealPlayer = true;
+            break;
+        }
+    }
+    
+    return hasRealPlayer;
+}
+
 void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, std::string detail)
 {
     if (!g_Enable || !g_EnableEventChatter)
@@ -157,6 +197,13 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
     auto now = std::chrono::steady_clock::now();
     for (auto it = candidateBots.begin(); it != candidateBots.end(); ) {
         Player* bot = *it;
+        
+        // Apply party restriction only for real player events
+        if (!isSourceBot && !IsBotAllowedForRestrictedMode(bot, source)) {
+            it = candidateBots.erase(it);
+            continue;
+        }
+        
         auto lastEventTime = botEventCooldowns[bot]; // Track last event time for any event
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastEventTime).count() < g_EventCooldownTime) {
             it = candidateBots.erase(it); // Remove bot if still in cooldown
