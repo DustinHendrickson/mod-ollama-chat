@@ -842,8 +842,30 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (hasRealPlayerInGuild)
                         {
-                            // For bots in guilds with real players, randomly choose between guild, general, or say
-                            std::vector<std::string> channels = {"Guild", "General", "Say"};
+                            // Check if there are real players nearby for non-guild channels
+                            bool hasNearbyRealPlayer = false;
+                            for (auto const& pair : ObjectAccessor::GetPlayers())
+                            {
+                                Player* player = pair.second;
+                                if (!player || !player->IsInWorld())
+                                    continue;
+                                if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                                    continue;
+                                if (botPtr->GetDistance(player) <= g_RandomChatterRealPlayerDistance)
+                                {
+                                    hasNearbyRealPlayer = true;
+                                    break;
+                                }
+                            }
+                            
+                            // For bots in guilds with real players, randomly choose between available channels
+                            std::vector<std::string> channels = {"Guild"};
+                            if (hasNearbyRealPlayer)
+                            {
+                                channels.push_back("General");
+                                channels.push_back("Say");
+                            }
+                            
                             std::random_device rd;
                             std::mt19937 gen(rd());
                             std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
