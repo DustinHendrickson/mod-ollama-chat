@@ -421,7 +421,6 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
     std::ostringstream spellSummary;
     for (const auto& [spellName, spellData] : uniqueSpells)
     {
-        uint32 spellId = std::get<0>(spellData);
         uint32 rank = std::get<1>(spellData);
         const std::string& costText = std::get<2>(spellData);
         
@@ -454,7 +453,6 @@ std::vector<std::string> ChatHandler_GetGroupStatus(Player* bot)
                             ", Level: " + std::to_string(attacker->GetLevel()) + ", HP: " + std::to_string(attacker->GetHealth()) +
                             "/" + std::to_string(attacker->GetMaxHealth()) + ")]";
         }
-        PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(member);
         std::string className = FormatPlayerClass(member->getClass());
         std::string raceName = FormatPlayerRace(member->getRace());
         info.push_back(
@@ -1422,6 +1420,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
         fmt::arg("bot_level", botLevel),
         fmt::arg("bot_class", botClass),
         fmt::arg("bot_personality", personalityPrompt),
+        fmt::arg("bot_personality_name", personality),
         fmt::arg("player_level", playerLevel),
         fmt::arg("player_class", playerClass),
         fmt::arg("player_name", playerName),

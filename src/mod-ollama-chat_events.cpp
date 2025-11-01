@@ -417,6 +417,7 @@ std::string OllamaBotEventChatter::BuildPrompt(Player* bot, std::string promptTe
         fmt::arg("bot_zone", botZoneName),
         fmt::arg("bot_map", botMapName),
         fmt::arg("bot_personality", personalityPrompt),
+        fmt::arg("bot_personality_name", personality),
         fmt::arg("event_type", eventType),
         fmt::arg("event_detail", eventDetail),
         fmt::arg("actor_name", actorName),

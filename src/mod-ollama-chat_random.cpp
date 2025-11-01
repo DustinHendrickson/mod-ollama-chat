@@ -822,6 +822,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     fmt::arg("bot_zone", botZoneName),
                     fmt::arg("bot_map", botMapName),
                     fmt::arg("bot_personality", personalityPrompt),
+                    fmt::arg("bot_personality_name", personality),
                     fmt::arg("environment_info", environmentInfo)
                 );
 
