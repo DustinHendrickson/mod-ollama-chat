@@ -148,7 +148,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (g_RestrictBotsToPartyMembers)
             {
                 Group* botGroup = bot->GetGroup();
-                if (!botGroup || botGroup->isRaidGroup() && !botGroup->isBGGroup())
+                if (!botGroup || (botGroup->isRaidGroup() && !botGroup->isBGGroup()))
                 {
                     // Bot is not in a valid party, skip
                     continue;

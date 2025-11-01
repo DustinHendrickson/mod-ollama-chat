@@ -53,6 +53,44 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
                                              ChatChannelSourceLocal source, Channel* channel = nullptr, Player* receiver = nullptr);
 static std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* player);
 
+// Helper function to format class name for any player
+static std::string FormatPlayerClass(uint8_t classId)
+{
+    switch (classId)
+    {
+        case CLASS_WARRIOR:      return "Warrior";
+        case CLASS_PALADIN:      return "Paladin";
+        case CLASS_HUNTER:       return "Hunter";
+        case CLASS_ROGUE:        return "Rogue";
+        case CLASS_PRIEST:       return "Priest";
+        case CLASS_DEATH_KNIGHT: return "Death Knight";
+        case CLASS_SHAMAN:       return "Shaman";
+        case CLASS_MAGE:         return "Mage";
+        case CLASS_WARLOCK:      return "Warlock";
+        case CLASS_DRUID:        return "Druid";
+        default:                 return "Unknown";
+    }
+}
+
+// Helper function to format race name for any player
+static std::string FormatPlayerRace(uint8_t raceId)
+{
+    switch (raceId)
+    {
+        case RACE_HUMAN:         return "Human";
+        case RACE_ORC:           return "Orc";
+        case RACE_DWARF:         return "Dwarf";
+        case RACE_NIGHTELF:      return "Night Elf";
+        case RACE_UNDEAD_PLAYER: return "Undead";
+        case RACE_TAUREN:        return "Tauren";
+        case RACE_GNOME:         return "Gnome";
+        case RACE_TROLL:         return "Troll";
+        case RACE_BLOODELF:      return "Blood Elf";
+        case RACE_DRAENEI:       return "Draenei";
+        default:                 return "Unknown";
+    }
+}
+
 const char* ChatChannelSourceLocalStr[] =
 {
     "Undefined",
@@ -320,7 +358,9 @@ std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::stri
 // --- Helper: Spells ---
 std::string ChatHandler_GetBotSpellInfo(Player* bot)
 {
-    std::ostringstream spellSummary;
+    // Map to store highest rank of each spell: spell name -> (spellId, rank, description, costText)
+    std::map<std::string, std::tuple<uint32, uint32, std::string, std::string>> uniqueSpells;
+    
     for (const auto& spellPair : bot->GetSpellMap())
     {
         uint32 spellId = spellPair.first;
@@ -331,27 +371,25 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
             continue;
         if (bot->HasSpellCooldown(spellId))
             continue;
-        std::string effectText;
-        for (int i = 0; i < MAX_SPELL_EFFECTS; ++i)
-        {
-            if (!spellInfo->Effects[i].IsEffect())
-                continue;
-            switch (spellInfo->Effects[i].Effect)
-            {
-                case SPELL_EFFECT_SCHOOL_DAMAGE: effectText = "Deals damage"; break;
-                case SPELL_EFFECT_HEAL: effectText = "Heals the target"; break;
-                case SPELL_EFFECT_APPLY_AURA: effectText = "Applies an aura"; break;
-                case SPELL_EFFECT_DISPEL: effectText = "Dispels magic"; break;
-                case SPELL_EFFECT_THREAT: effectText = "Generates threat"; break;
-                default: continue;
-            }
-            break;
-        }
-        if (effectText.empty())
+        
+        // Get the spell description
+        const char* description = spellInfo->Description[0];
+        if (!description || !*description)
             continue;
+        
+        std::string spellDescription = description;
+        // Clean up the description - remove excessive whitespace and limit length
+        spellDescription.erase(0, spellDescription.find_first_not_of(" \t\n\r"));
+        spellDescription.erase(spellDescription.find_last_not_of(" \t\n\r") + 1);
+        if (spellDescription.length() > 100)
+        {
+            spellDescription = spellDescription.substr(0, 97) + "...";
+        }
+        
         const char* name = spellInfo->SpellName[0];
         if (!name || !*name)
             continue;
+        
         std::string costText;
         if (spellInfo->ManaCost || spellInfo->ManaCostPercentage)
         {
@@ -369,7 +407,45 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
         {
             costText = "no cost";
         }
-        spellSummary << "**" << name << "** (ID: " << spellId << ") - " << effectText << ", Costs " << costText << ".\n";
+        
+        // Get base spell name (without rank)
+        std::string spellName = name;
+        uint32 rank = spellInfo->GetRank();
+        
+        // Check if we already have this spell, and if so, only keep the highest rank
+        auto it = uniqueSpells.find(spellName);
+        if (it == uniqueSpells.end())
+        {
+            // First time seeing this spell
+            uniqueSpells[spellName] = std::make_tuple(spellId, rank, spellDescription, costText);
+        }
+        else
+        {
+            // We've seen this spell before, check if this is a higher rank
+            uint32 existingRank = std::get<1>(it->second);
+            if (rank > existingRank)
+            {
+                // Replace with higher rank
+                uniqueSpells[spellName] = std::make_tuple(spellId, rank, spellDescription, costText);
+            }
+        }
+    }
+    
+    // Build the output string from unique spells
+    std::ostringstream spellSummary;
+    for (const auto& [spellName, spellData] : uniqueSpells)
+    {
+        uint32 spellId = std::get<0>(spellData);
+        uint32 rank = std::get<1>(spellData);
+        const std::string& spellDescription = std::get<2>(spellData);
+        const std::string& costText = std::get<3>(spellData);
+        
+        spellSummary << "**" << spellName << "**";
+        if (rank > 0)
+        {
+            spellSummary << " (Rank " << rank << ")";
+        }
+        spellSummary << ": " << spellDescription << " (Costs " << costText << ")\n";
     }
     return spellSummary.str();
 }
@@ -394,8 +470,8 @@ std::vector<std::string> ChatHandler_GetGroupStatus(Player* bot)
                             "/" + std::to_string(attacker->GetMaxHealth()) + ")]";
         }
         PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(member);
-        std::string className = ai ? ai->GetChatHelper()->FormatClass(member->getClass()) : "Unknown";
-        std::string raceName = ai ? ai->GetChatHelper()->FormatRace(member->getRace()) : "Unknown";
+        std::string className = FormatPlayerClass(member->getClass());
+        std::string raceName = FormatPlayerRace(member->getRace());
         info.push_back(
             member->GetName() +
             " (Level: " + std::to_string(member->GetLevel()) +
@@ -424,9 +500,8 @@ std::vector<std::string> ChatHandler_GetVisiblePlayers(Player* bot, float radius
         if (!bot->IsWithinLOS(player->GetPositionX(), player->GetPositionY(), player->GetPositionZ())) continue;
         float dist = bot->GetDistance(player);
         std::string faction = (player->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde");
-        PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(player);
-        std::string className = ai ? ai->GetChatHelper()->FormatClass(player->getClass()) : "Unknown";
-        std::string raceName = ai ? ai->GetChatHelper()->FormatRace(player->getRace()) : "Unknown";
+        std::string className = FormatPlayerClass(player->getClass());
+        std::string raceName = FormatPlayerRace(player->getRace());
         players.push_back(
             "Player: " + player->GetName() +
             " (Level: " + std::to_string(player->GetLevel()) +
@@ -573,7 +648,19 @@ static std::string GenerateBotGameStateSnapshot(Player* bot)
                 ObjectMgr::GetLocaleString(locale->Title, locIdx, title);
         }
 
-        quests += "Quest \"" + title + "\" status " + std::to_string(qsd.Status) + "\n";
+        // Convert quest status to readable string
+        std::string statusText;
+        switch (qsd.Status)
+        {
+            case QUEST_STATUS_NONE:       statusText = "not started"; break;
+            case QUEST_STATUS_COMPLETE:   statusText = "complete (ready to turn in)"; break;
+            case QUEST_STATUS_INCOMPLETE: statusText = "in progress"; break;
+            case QUEST_STATUS_FAILED:     statusText = "failed"; break;
+            case QUEST_STATUS_REWARDED:   statusText = "completed and rewarded"; break;
+            default:                      statusText = "unknown"; break;
+        }
+
+        quests += "Quest \"" + title + "\" is " + statusText + "\n";
     }
 
     std::string los;
