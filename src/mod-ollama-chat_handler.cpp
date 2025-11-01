@@ -358,8 +358,8 @@ std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::stri
 // --- Helper: Spells ---
 std::string ChatHandler_GetBotSpellInfo(Player* bot)
 {
-    // Map to store highest rank of each spell: spell name -> (spellId, rank, description, costText)
-    std::map<std::string, std::tuple<uint32, uint32, std::string, std::string>> uniqueSpells;
+    // Map to store highest rank of each spell: spell name -> (spellId, rank, costText)
+    std::map<std::string, std::tuple<uint32, uint32, std::string>> uniqueSpells;
     
     for (const auto& spellPair : bot->GetSpellMap())
     {
@@ -371,20 +371,6 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
             continue;
         if (bot->HasSpellCooldown(spellId))
             continue;
-        
-        // Get the spell description
-        const char* description = spellInfo->Description[0];
-        if (!description || !*description)
-            continue;
-        
-        std::string spellDescription = description;
-        // Clean up the description - remove excessive whitespace and limit length
-        spellDescription.erase(0, spellDescription.find_first_not_of(" \t\n\r"));
-        spellDescription.erase(spellDescription.find_last_not_of(" \t\n\r") + 1);
-        if (spellDescription.length() > 100)
-        {
-            spellDescription = spellDescription.substr(0, 97) + "...";
-        }
         
         const char* name = spellInfo->SpellName[0];
         if (!name || !*name)
@@ -417,7 +403,7 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
         if (it == uniqueSpells.end())
         {
             // First time seeing this spell
-            uniqueSpells[spellName] = std::make_tuple(spellId, rank, spellDescription, costText);
+            uniqueSpells[spellName] = std::make_tuple(spellId, rank, costText);
         }
         else
         {
@@ -426,7 +412,7 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
             if (rank > existingRank)
             {
                 // Replace with higher rank
-                uniqueSpells[spellName] = std::make_tuple(spellId, rank, spellDescription, costText);
+                uniqueSpells[spellName] = std::make_tuple(spellId, rank, costText);
             }
         }
     }
@@ -437,15 +423,14 @@ std::string ChatHandler_GetBotSpellInfo(Player* bot)
     {
         uint32 spellId = std::get<0>(spellData);
         uint32 rank = std::get<1>(spellData);
-        const std::string& spellDescription = std::get<2>(spellData);
-        const std::string& costText = std::get<3>(spellData);
+        const std::string& costText = std::get<2>(spellData);
         
         spellSummary << "**" << spellName << "**";
         if (rank > 0)
         {
             spellSummary << " (Rank " << rank << ")";
         }
-        spellSummary << ": " << spellDescription << " (Costs " << costText << ")\n";
+        spellSummary << " - Costs " << costText << "\n";
     }
     return spellSummary.str();
 }
