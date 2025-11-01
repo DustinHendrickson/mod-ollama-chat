@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_httpclient.h"
+#include "mod-ollama-chat-utilities.h"
 #include "Log.h"
 #include <sstream>
 #include <nlohmann/json.hpp>
@@ -38,9 +39,12 @@ std::string QueryOllamaAPI(const std::string& prompt)
     std::string url   = g_OllamaUrl;
     std::string model = g_OllamaModel;
 
+    // Sanitize the prompt to ensure it's valid UTF-8 before creating JSON
+    std::string sanitizedPrompt = SanitizeUTF8(prompt);
+
     nlohmann::json requestData = {
         {"model",  model},
-        {"prompt", prompt},
+        {"prompt", sanitizedPrompt},
         {"stream", false}
     };
 
@@ -111,7 +115,11 @@ std::string QueryOllamaAPI(const std::string& prompt)
         if (!stopSeqs.empty())
             requestData["stop"] = stopSeqs;
     }
-    if (!g_OllamaSystemPrompt.empty())   requestData["system"]          = g_OllamaSystemPrompt;
+    if (!g_OllamaSystemPrompt.empty())
+    {
+        // Sanitize system prompt as well
+        requestData["system"] = SanitizeUTF8(g_OllamaSystemPrompt);
+    }
 
     if (g_ThinkModeEnableForModule)
     {

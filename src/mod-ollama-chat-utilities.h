@@ -35,4 +35,87 @@ inline std::vector<std::string> SplitString(const std::string& str, char delim)
     return tokens;
 }
 
+// Sanitize a string to be valid UTF-8 by removing or replacing invalid bytes
+inline std::string SanitizeUTF8(const std::string& str)
+{
+    std::string result;
+    result.reserve(str.size());
+    
+    for (size_t i = 0; i < str.size(); )
+    {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+        
+        // Single-byte character (0xxxxxxx)
+        if (c <= 0x7F)
+        {
+            result.push_back(str[i]);
+            i++;
+        }
+        // Two-byte character (110xxxxx 10xxxxxx)
+        else if ((c & 0xE0) == 0xC0)
+        {
+            if (i + 1 < str.size() && (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80)
+            {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                i += 2;
+            }
+            else
+            {
+                // Invalid sequence, replace with space
+                result.push_back(' ');
+                i++;
+            }
+        }
+        // Three-byte character (1110xxxx 10xxxxxx 10xxxxxx)
+        else if ((c & 0xF0) == 0xE0)
+        {
+            if (i + 2 < str.size() &&
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) == 0x80)
+            {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                result.push_back(str[i + 2]);
+                i += 3;
+            }
+            else
+            {
+                // Invalid sequence, replace with space
+                result.push_back(' ');
+                i++;
+            }
+        }
+        // Four-byte character (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
+        else if ((c & 0xF8) == 0xF0)
+        {
+            if (i + 3 < str.size() &&
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 3]) & 0xC0) == 0x80)
+            {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                result.push_back(str[i + 2]);
+                result.push_back(str[i + 3]);
+                i += 4;
+            }
+            else
+            {
+                // Invalid sequence, replace with space
+                result.push_back(' ');
+                i++;
+            }
+        }
+        else
+        {
+            // Invalid UTF-8 start byte, replace with space
+            result.push_back(' ');
+            i++;
+        }
+    }
+    
+    return result;
+}
+
 #endif // MOD_OLLAMA_CHAT_UTILS_H
