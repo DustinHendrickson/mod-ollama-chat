@@ -3,7 +3,9 @@
 #include "PlayerbotMgr.h"
 #include "Log.h"
 #include "mod-ollama-chat_config.h"
+#include "DatabaseEnv.h"
 #include <random>
+#include <vector>
 
 // Internal personality map
 std::string GetBotPersonality(Player* bot)
@@ -22,7 +24,7 @@ std::string GetBotPersonality(Player* bot)
     }
 
     // RP personalities disabled or config not loaded
-    if (!g_EnableRPPersonalities || g_PersonalityKeys.empty())
+    if (!g_EnableRPPersonalities || g_PersonalityKeysRandomOnly.empty())
     {
         g_BotPersonalityList[botGuid] = "default";
         return "default";
@@ -48,9 +50,9 @@ std::string GetBotPersonality(Player* bot)
         return dbPersonality;
     }
 
-    // Otherwise, assign randomly from config
-    uint32 newIdx = urand(0, g_PersonalityKeys.size() - 1);
-    std::string chosenPersonality = g_PersonalityKeys[newIdx];
+    // Otherwise, assign randomly from config (only from non-manual personalities)
+    uint32 newIdx = urand(0, g_PersonalityKeysRandomOnly.size() - 1);
+    std::string chosenPersonality = g_PersonalityKeysRandomOnly[newIdx];
     g_BotPersonalityList[botGuid] = chosenPersonality;
 
     // Save to database if schema supports string (recommend TEXT or VARCHAR column for personality)
@@ -79,4 +81,44 @@ std::string GetPersonalityPromptAddition(const std::string& personality)
     if (it != g_PersonalityPrompts.end())
         return it->second;
     return g_DefaultPersonalityPrompt;
+}
+
+bool SetBotPersonality(Player* bot, const std::string& personality)
+{
+    if (!bot)
+        return false;
+    
+    uint64_t botGuid = bot->GetGUID().GetRawValue();
+    
+    // Check if personality exists
+    if (g_PersonalityPrompts.find(personality) == g_PersonalityPrompts.end() && personality != "default")
+    {
+        return false;
+    }
+    
+    // Update in memory
+    g_BotPersonalityList[botGuid] = personality;
+    
+    // Update in database
+    CharacterDatabase.Execute("REPLACE INTO mod_ollama_chat_personality (guid, personality) VALUES ({}, '{}')", 
+                             botGuid, personality);
+    
+    if(g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] Set personality '{}' for bot {}", personality, bot->GetName());
+    }
+    
+    return true;
+}
+
+std::vector<std::string> GetAllPersonalityKeys()
+{
+    return g_PersonalityKeys;
+}
+
+bool PersonalityExists(const std::string& personality)
+{
+    if (personality == "default")
+        return true;
+    return g_PersonalityPrompts.find(personality) != g_PersonalityPrompts.end();
 }

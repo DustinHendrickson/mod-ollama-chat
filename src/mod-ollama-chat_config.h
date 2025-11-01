@@ -87,6 +87,7 @@ extern std::string g_ChatExtraInfoTemplate;
 extern std::unordered_map<uint64_t, std::string> g_BotPersonalityList;
 extern std::unordered_map<std::string, std::string> g_PersonalityPrompts;
 extern std::vector<std::string> g_PersonalityKeys;
+extern std::vector<std::string> g_PersonalityKeysRandomOnly; // Personalities that can be randomly assigned
 extern std::string g_DefaultPersonalityPrompt;
 
 // --------------------------------------------

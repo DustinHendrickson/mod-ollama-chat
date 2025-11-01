@@ -91,6 +91,7 @@ std::string g_ChatExtraInfoTemplate;
 std::unordered_map<uint64_t, std::string> g_BotPersonalityList;
 std::unordered_map<std::string, std::string> g_PersonalityPrompts;
 std::vector<std::string> g_PersonalityKeys;
+std::vector<std::string> g_PersonalityKeysRandomOnly;
 std::string g_DefaultPersonalityPrompt;
 
 // --------------------------------------------
@@ -575,8 +576,9 @@ void LoadPersonalityTemplatesFromDB()
 {
     g_PersonalityPrompts.clear();
     g_PersonalityKeys.clear();
+    g_PersonalityKeysRandomOnly.clear();
 
-    QueryResult result = CharacterDatabase.Query("SELECT `key`, `prompt` FROM `mod_ollama_chat_personality_templates`");
+    QueryResult result = CharacterDatabase.Query("SELECT `key`, `prompt`, `manual_only` FROM `mod_ollama_chat_personality_templates`");
     if (!result)
     {
         LOG_ERROR("server.loading", "[Ollama Chat] No personality templates found in the database!");
@@ -587,12 +589,20 @@ void LoadPersonalityTemplatesFromDB()
     {
         std::string key = (*result)[0].Get<std::string>();
         std::string prompt = (*result)[1].Get<std::string>();
+        bool manualOnly = (*result)[2].Get<bool>();
+        
         g_PersonalityPrompts[key] = prompt;
         g_PersonalityKeys.push_back(key);
+        
+        // Only add to random pool if not manual_only
+        if (!manualOnly)
+        {
+            g_PersonalityKeysRandomOnly.push_back(key);
+        }
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[Ollama Chat] Cached {} personalities.", g_PersonalityKeys.size());
-
+    LOG_INFO("server.loading", "[Ollama Chat] Cached {} personalities ({} available for random assignment).", 
+             g_PersonalityKeys.size(), g_PersonalityKeysRandomOnly.size());
 }
 
 void LoadBotConversationHistoryFromDB()

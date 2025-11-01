@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_command.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_sentiment.h"
+#include "mod-ollama-chat_personality.h"
 #include "Chat.h"
 #include "Config.h"
 #include "ObjectAccessor.h"
@@ -23,10 +24,18 @@ ChatCommandTable OllamaChatConfigCommand::GetCommands() const
         { "reset", HandleOllamaSentimentResetCommand, SEC_ADMINISTRATOR, Console::Yes }
     };
 
+    static ChatCommandTable ollamaPersonalityCommandTable =
+    {
+        { "get", HandleOllamaPersonalityGetCommand, SEC_ADMINISTRATOR, Console::Yes },
+        { "set", HandleOllamaPersonalitySetCommand, SEC_ADMINISTRATOR, Console::Yes },
+        { "list", HandleOllamaPersonalityListCommand, SEC_ADMINISTRATOR, Console::Yes }
+    };
+
     static ChatCommandTable ollamaReloadCommandTable =
     {
         { "reload", HandleOllamaReloadCommand, SEC_ADMINISTRATOR, Console::Yes },
-        { "sentiment", ollamaSentimentCommandTable }
+        { "sentiment", ollamaSentimentCommandTable },
+        { "personality", ollamaPersonalityCommandTable }
     };
 
     static ChatCommandTable commandTable =
@@ -307,5 +316,94 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
                                 targetPlayer->GetName().c_str(), count);
     }
 
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalityGetCommand(ChatHandler* handler, std::string botName)
+{
+    Player* bot = ObjectAccessor::FindPlayerByName(botName);
+    if (!bot)
+    {
+        handler->PSendSysMessage("OllamaChat: Bot '%s' not found.", botName.c_str());
+        return true;
+    }
+    
+    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    {
+        handler->PSendSysMessage("OllamaChat: Player '%s' is not a bot.", botName.c_str());
+        return true;
+    }
+    
+    std::string personality = GetBotPersonality(bot);
+    std::string prompt = GetPersonalityPromptAddition(personality);
+    
+    handler->PSendSysMessage("OllamaChat: Bot '%s' has personality '%s'", botName.c_str(), personality.c_str());
+    handler->PSendSysMessage("  Prompt: %s", prompt.c_str());
+    
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalitySetCommand(ChatHandler* handler, std::string botName, std::string personality)
+{
+    Player* bot = ObjectAccessor::FindPlayerByName(botName);
+    if (!bot)
+    {
+        handler->PSendSysMessage("OllamaChat: Bot '%s' not found.", botName.c_str());
+        return true;
+    }
+    
+    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    {
+        handler->PSendSysMessage("OllamaChat: Player '%s' is not a bot.", botName.c_str());
+        return true;
+    }
+    
+    if (!PersonalityExists(personality))
+    {
+        handler->PSendSysMessage("OllamaChat: Personality '%s' does not exist. Use '.ollama personality list' to see available personalities.", personality.c_str());
+        return true;
+    }
+    
+    if (SetBotPersonality(bot, personality))
+    {
+        std::string prompt = GetPersonalityPromptAddition(personality);
+        handler->PSendSysMessage("OllamaChat: Set bot '%s' personality to '%s'", botName.c_str(), personality.c_str());
+        handler->PSendSysMessage("  Prompt: %s", prompt.c_str());
+    }
+    else
+    {
+        handler->PSendSysMessage("OllamaChat: Failed to set personality for bot '%s'.", botName.c_str());
+    }
+    
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalityListCommand(ChatHandler* handler)
+{
+    std::vector<std::string> personalities = GetAllPersonalityKeys();
+    
+    if (personalities.empty())
+    {
+        handler->SendSysMessage("OllamaChat: No personalities loaded.");
+        return true;
+    }
+    
+    handler->PSendSysMessage("OllamaChat: Available personalities (%zu total, %zu random-assignable):", 
+                            personalities.size(), g_PersonalityKeysRandomOnly.size());
+    
+    for (const auto& personality : personalities)
+    {
+        std::string prompt = GetPersonalityPromptAddition(personality);
+        
+        // Check if this personality is manual-only
+        bool isManualOnly = (std::find(g_PersonalityKeysRandomOnly.begin(), g_PersonalityKeysRandomOnly.end(), personality) 
+                            == g_PersonalityKeysRandomOnly.end());
+        
+        std::string manualTag = isManualOnly ? " [MANUAL ONLY]" : "";
+        
+        handler->PSendSysMessage("  - %s%s", personality.c_str(), manualTag.c_str());
+        handler->PSendSysMessage("    %s", prompt.c_str());
+    }
+    
     return true;
 }

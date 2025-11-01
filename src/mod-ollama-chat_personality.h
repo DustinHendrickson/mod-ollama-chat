@@ -15,4 +15,13 @@ std::string GetBotPersonality(Player* bot);
 // Falls back to a default if not found.
 std::string GetPersonalityPromptAddition(const std::string& type);
 
+// Set a bot's personality manually (saves to database)
+bool SetBotPersonality(Player* bot, const std::string& personality);
+
+// Get all available personality keys
+std::vector<std::string> GetAllPersonalityKeys();
+
+// Check if a personality exists
+bool PersonalityExists(const std::string& personality);
+
 #endif // MOD_OLLAMA_CHAT_PERSONALITY_H
