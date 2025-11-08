@@ -63,18 +63,49 @@
 1. **Prerequisites:**
    - Ensure you have liyunfan1223's AzerothCore (https://github.com/liyunfan1223/azerothcore-wotlk) installation with the Player Bots (https://github.com/liyunfan1223/mod-playerbots) module enabled.
    - The module depends on:
-     - fmtlib (https://github.com/fmtlib/fmt) - For string formatting
-     - nlohmann/json (https://github.com/nlohmann/json) - For JSON processing
+     - **fmtlib** (https://github.com/fmtlib/fmt) - For string formatting
+     - **nlohmann/json** (https://github.com/nlohmann/json) - For JSON processing (**bundled with module** - no installation needed)
      - cpp-httplib (https://github.com/yhirose/cpp-httplib) - Header-only HTTP library (included, no installation needed)
      - Ollama LLM support – set up a local instance of the Ollama API server with the model of your choice. More details at https://ollama.com
 
-2. **Clone the Module:**
+2. **Install Dependencies:**
+
+   > [!NOTE]
+   > **nlohmann/json and yhirose/cpp-httplib are bundled** with the module - you don't need to install them separately!
+
+   ### Windows (vcpkg):
+   ```bash
+   vcpkg install fmt
+   ```
+
+   ### Ubuntu/Debian:
+   ```bash
+   sudo apt update
+   sudo apt install libfmt-dev
+   ```
+
+   ### CentOS/RHEL/Fedora:
+   ```bash
+   sudo yum install fmt-devel  # or dnf install fmt-devel
+   ```
+
+   ### macOS (Homebrew):
+   ```bash
+   brew install fmt
+   ```
+
+   ### Arch Linux:
+   ```bash
+   sudo pacman -S fmt
+   ```
+
+3. **Clone the Module:**
    ```bash
    cd /path/to/azerothcore/modules
    git clone https://github.com/DustinHendrickson/mod-ollama-chat.git
    ```
 
-3. **Recompile AzerothCore:**
+4. **Recompile AzerothCore:**
    ```bash
    cd /path/to/azerothcore
    mkdir build && cd build
@@ -82,16 +113,75 @@
    make -j$(nproc)
    ```
 
-4. **Configuration:**
+5. **Configuration:**
    Copy the default configuration file to your server configuration directory and change to match your setup (if not already done):
    ```bash
    cp /path/to/azerothcore/modules/mod-ollama-chat/mod-ollama-chat.conf.dist /path/to/azerothcore/etc/config/mod-ollama-chat.conf
    ```
 
-5. **Restart the Server:**
+6. **Restart the Server:**
    ```bash
    ./worldserver
    ```
+
+## Setting up Ollama Server
+
+This module requires a running Ollama server to function. Ollama allows you to run large language models locally on your machine.
+
+### Installing Ollama
+
+Download and install Ollama from [ollama.com](https://ollama.com). It supports Windows, macOS, and Linux.
+
+- **Windows/macOS:** Download the installer from the website and run it.
+- **Linux:** Follow the installation instructions for your distribution (e.g., `curl -fsSL https://ollama.com/install.sh | sh`).
+
+### Starting the Ollama Server
+
+Once installed, start the Ollama server:
+
+```bash
+ollama serve
+```
+
+This will start the server on `http://localhost:11434` by default.
+
+### Running Ollama Across the Network
+
+If you want to run the Ollama server on a different computer than your AzerothCore server, set the `OLLAMA_HOST` environment variable to `0.0.0.0` before starting the server:
+
+```bash
+export OLLAMA_HOST=0.0.0.0
+ollama serve
+```
+
+This binds the server to all network interfaces, allowing connections from other machines on your network. Update the `OllamaChat.ApiEndpoint` in `mod-ollama-chat.conf` to use the IP address of the machine running Ollama (e.g., `http://192.168.1.100:11434`).
+
+> [!WARNING]
+> Exposing Ollama to the network may pose security risks. Ensure your firewall allows traffic on port 11434 only from trusted networks, and consider additional security measures if exposing to the internet.
+
+### Pulling a Model
+
+Before using the module, pull a model that the bots will use for generating responses. For example, to pull the Llama 3.2 1B model:
+
+```bash
+ollama pull llama3.2:1b
+```
+
+You can find available models at [ollama.com/library](https://ollama.com/library). Choose a model that fits your hardware capabilities.
+
+### Connecting the Module
+
+The module connects to the Ollama API via the configuration in `mod-ollama-chat.conf`. The default endpoint is `http://localhost:11434`. If your Ollama server is running on a different host or port, update the `OllamaChat.ApiEndpoint` setting.
+
+### Checking if Ollama is Running
+
+To verify that the Ollama server is running and accessible, you can test the API:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+This should return a JSON response listing available models. If you get a connection error, ensure the server is started and the endpoint is correct.
 
 ## Configuration Options
 
