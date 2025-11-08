@@ -12,10 +12,16 @@ std::string GetBotPersonality(Player* bot)
 {
     uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-    // If personality already assigned, return it
+    // If personality already assigned, return it (but only if RP personalities are enabled)
     auto it = g_BotPersonalityList.find(botGuid);
     if (it != g_BotPersonalityList.end())
     {
+        // If RP personalities are disabled, reset to default
+        if (!g_EnableRPPersonalities)
+        {
+            g_BotPersonalityList[botGuid] = "default";
+            return "default";
+        }
         if(g_DebugEnabled)
         {
             LOG_INFO("server.loading", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second, bot->GetName());
@@ -121,4 +127,13 @@ bool PersonalityExists(const std::string& personality)
     if (personality == "default")
         return true;
     return g_PersonalityPrompts.find(personality) != g_PersonalityPrompts.end();
+}
+
+void ClearAllBotPersonalities()
+{
+    g_BotPersonalityList.clear();
+    if(g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] Cleared all bot personality assignments due to RP personalities being disabled");
+    }
 }

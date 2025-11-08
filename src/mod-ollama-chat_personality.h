@@ -25,4 +25,7 @@ std::vector<std::string> GetAllPersonalityKeys();
 // Check if a personality exists
 bool PersonalityExists(const std::string& personality);
 
+// Clear all personality assignments (used when RP personalities are disabled)
+void ClearAllBotPersonalities();
+
 #endif // MOD_OLLAMA_CHAT_PERSONALITY_H

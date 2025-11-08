@@ -51,6 +51,14 @@ bool OllamaChatConfigCommand::HandleOllamaReloadCommand(ChatHandler* handler)
 {
     sConfigMgr->Reload();
     LoadOllamaChatConfig();
+
+    // Clear personality assignments if RP personalities are disabled
+    // This ensures that when re-enabled later, bots get fresh random assignments
+    if (!g_EnableRPPersonalities)
+    {
+        ClearAllBotPersonalities();
+    }
+
     LoadBotPersonalityList();
     LoadBotConversationHistoryFromDB();
     InitializeSentimentTracking();
