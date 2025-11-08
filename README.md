@@ -11,6 +11,16 @@
 >
 > This module is also in development and can bog down your server due to the nature of running local LLM. Please proceed with this in mind.
 
+> [!INFO]
+> To fully disable Playerbots normal chatter and random chatter that might interfere with this module, set the following settings in your `playerbots.conf`:
+> - `AiPlayerbot.EnableBroadcasts = 0` (disables loot/quest/kill broadcasts)
+> - `AiPlayerbot.RandomBotTalk = 0` (disables random talking in say/yell/general channels)
+> - `AiPlayerbot.RandomBotEmote = 0` (disables random emoting)
+> - `AiPlayerbot.RandomBotSuggestDungeons = 0` (disables dungeon suggestions)
+> - `AiPlayerbot.EnableGreet = 0` (disables greeting when invited)
+> - `AiPlayerbot.GuildFeedback = 0` (disables guild event chatting)
+> - `AiPlayerbot.RandomBotSayWithoutMaster = 0` (disables bots talking without a master)
+
 ## Overview
 
 ***mod-ollama-chat*** is an AzerothCore module that enhances the Player Bots module by integrating external language model (LLM) support via the Ollama API. This module enables player bots to generate dynamic, in-character chat responses using advanced natural language processing locally on your computer (or remotely hosted). Bots are enriched with personality traits, random chatter triggers, and context-aware replies that mimic the language and lore of World of Warcraft.
@@ -234,9 +244,7 @@ Visit the [Personality Packs Discussion Board](https://github.com/DustinHendrick
 
 For detailed logs of bot responses, prompt generation, and LLM interactions, enable debug mode via your server logs or module-specific settings.
 
-## Troubleshooting
 
-It's advised to turn off the normal Player Bots chat in your `playerbots.conf` by setting  `AiPlayerbot.EnableBroadcasts = 0`
 
 ## License
 
