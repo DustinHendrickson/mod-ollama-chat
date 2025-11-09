@@ -3,91 +3,147 @@
     "id": "dungeon_ragefire_chasm",
     "title": "Ragefire Chasm",
     "content": "Ragefire Chasm is a level 13-18 dungeon located beneath Orgrimmar. This fiery cavern is inhabited by troggs and dark shaman cultists. Key bosses include Taragaman the Hungerer and Bazzalan. Players can find mail armor, weapons, and various items. This dungeon teaches basic group coordination and is often the first instance new players experience. It's accessible through a cave entrance in the Cleft of Shadow in Orgrimmar.",
-    "keywords": ["ragefire", "chasm", "dungeon", "level_13", "orgrimmar", "troggs", "taragaman", "bazzalan"],
+    "keywords": ["ragefire", "chasm", "dungeon", "level 13", "orgrimmar", "troggs", "taragaman", "bazzalan", "fiery cavern", "dark shaman", "mail armor", "weapons", "group coordination", "first instance", "cleft of shadow", "orc starting", "horde", "fire elementals", "cultists"],
     "tags": ["dungeon", "leveling", "orgrimmar", "fire", "instance"]
   },
   {
     "id": "dungeon_deadmines",
     "title": "The Deadmines",
     "content": "The Deadmines is a level 15-21 dungeon located in the hills of Westfall. This extensive mine system is controlled by the Defias Brotherhood led by Edwin VanCleef. Key bosses include Rhahk'Zor, Sneed's Shredder, and Edwin VanCleef himself. Players navigate complex mine cart tracks and fight various Defias members. This dungeon offers good loot for its level range and teaches players about pirate themes and organized crime in Azeroth.",
-    "keywords": ["deadmines", "dungeon", "level_15", "westfall", "defias", "edwin_vancleef", "mine_cart"],
+    "keywords": ["deadmines", "dungeon", "level 15", "westfall", "defias", "edwin van cleef", "mine cart", "rhahk zor", "sneed", "pirates", "organized crime", "hills", "alliance", "loot", "complex tracks", "brotherhood", "van cleef", "mines", "underground"],
     "tags": ["dungeon", "leveling", "westfall", "pirates", "instance"]
   },
   {
     "id": "dungeon_wailing_caverns",
     "title": "Wailing Caverns",
     "content": "Wailing Caverns is a level 15-25 dungeon located in the Barrens. This vast underground cave system has been corrupted by the druid Naralex and his followers. Key bosses include Lady Anacondra, Lord Cobrahn, and Mutanus the Devourer. Players fight various serpent creatures and corrupted wildlife. This dungeon features a unique emerald dream corruption theme and offers good experience and loot for mid-level players.",
-    "keywords": ["wailing", "caverns", "dungeon", "level_15", "barrens", "naralex", "serpents", "emerald_dream"],
+    "keywords": ["wailing", "caverns", "dungeon", "level 15", "barrens", "naralex", "serpents", "emerald dream", "lady anacondra", "lord cobrahn", "mutanus the devourer", "corrupted", "druid", "cave system", "underground", "experience", "loot", "mid level", "corruption", "wildlife"],
     "tags": ["dungeon", "leveling", "barrens", "nature", "corruption", "instance"]
   },
   {
     "id": "dungeon_shadowfang_keep",
     "title": "Shadowfang Keep",
     "content": "Shadowfang Keep is a level 18-25 dungeon located in Silverpine Forest. This haunted castle is controlled by the worgen and led by Lord Godfrey. Key bosses include Rethilgore, Baron Ashbury, and Lord Walden. Players navigate through castle halls fighting undead and worgen enemies. This dungeon offers good loot and experience, with a horror theme involving werewolves and haunted nobility.",
-    "keywords": ["shadowfang", "keep", "dungeon", "level_18", "silverpine", "worgen", "lord_godfrey", "castle"],
+    "keywords": ["shadowfang", "keep", "dungeon", "level 18", "silverpine", "worgen", "lord godfrey", "rethilgore", "baron ashbury", "lord walden", "castle", "halls", "undead", "haunted", "horror", "werewolves", "nobility", "loot", "experience", "alliance"],
     "tags": ["dungeon", "leveling", "silverpine", "undead", "worgen", "instance"]
   },
   {
     "id": "dungeon_blackfathom_deeps",
     "title": "Blackfathom Deeps",
     "content": "Blackfathom Deeps is a level 20-27 dungeon located beneath the pool of Aszhara in Ashenvale. This underwater temple is controlled by the Twilight's Hammer cult and naga. Key bosses include Ghamoo-ra, Lady Sarevess, and Aku'mai. Players fight through watery chambers and encounter various aquatic enemies. This dungeon has a strong aquatic and cult theme with good loot for its level range.",
-    "keywords": ["blackfathom", "deeps", "dungeon", "level_20", "ashenvale", "twilight_hammer", "naga", "aquatic"],
+    "keywords": ["blackfathom", "deeps", "dungeon", "level 20", "ashenvale", "twilight hammer", "naga", "aquatic", "ghamoo ra", "lady sarevess", "aku mai", "underwater", "temple", "watery chambers", "cult", "loot", "alliance", "night elf", "pool of aszhara"],
     "tags": ["dungeon", "leveling", "ashenvale", "water", "cult", "instance"]
   },
   {
     "id": "dungeon_lower_blackrock_spire",
     "title": "Lower Blackrock Spire",
     "content": "Lower Blackrock Spire is a level 55-60 dungeon located in the Burning Steppes. This lower section of Blackrock Spire is controlled by various dark creatures and warlords. Key bosses include Highlord Omokk, Shadow Hunter Vosh'gajin, and War Master Voone. Players fight through orc and dragonkin enemies in a volcanic fortress. This high-level dungeon offers excellent loot and is part of the Blackrock Mountain complex.",
-    "keywords": ["blackrock", "spire", "lower", "dungeon", "level_55", "burning_steppes", "omokk", "dragonkin"],
+    "keywords": ["blackrock", "spire", "lower", "dungeon", "level 55", "burning steppes", "omokk", "dragonkin", "highlord omokk", "shadow hunter vosh gajin", "war master voone", "orc", "volcanic", "fortress", "loot", "blackrock mountain", "high level", "warlords", "dark creatures"],
     "tags": ["dungeon", "high_level", "burning_steppes", "orcs", "dragons", "instance"]
   },
   {
     "id": "dungeon_scholomance",
     "title": "Scholomance",
     "content": "Scholomance is a level 55-60 dungeon located in the Western Plaguelands. This haunted school of necromancy is controlled by the Scourge and dark mages. Key bosses include Kirtonos the Herald, Jandice Barov, and Darkmaster Gandling. Players fight through classrooms and libraries battling undead scholars and experiments. This dungeon has a strong academic horror theme with excellent loot for its level.",
-    "keywords": ["scholomance", "dungeon", "level_55", "plaguelands", "necromancy", "kirtonos", "barov"],
+    "keywords": ["scholomance", "dungeon", "level 55", "plaguelands", "necromancy", "kirtonos", "barov", "darkmaster gandling", "scourge", "dark mages", "classrooms", "libraries", "undead", "scholars", "experiments", "academic", "horror", "loot", "western plaguelands"],
     "tags": ["dungeon", "high_level", "plaguelands", "undead", "necromancy", "instance"]
   },
   {
     "id": "dungeon_stratholme",
     "title": "Stratholme",
     "content": "Stratholme is a level 55-60 dungeon located in the Eastern Plaguelands. This cursed city is divided into two wings: Scarlet Stratholme and Undead Stratholme. Key bosses include Balnazzar, Baron Rivendare, and various undead lords. Players navigate through a ruined city fighting Scourge and Scarlet Crusade forces. This large dungeon offers excellent loot and has a strong plague and undead theme.",
-    "keywords": ["stratholme", "dungeon", "level_55", "plaguelands", "scarlet", "balnazzar", "rivendare"],
+    "keywords": ["stratholme", "dungeon", "level 55", "plaguelands", "scarlet", "balnazzar", "rivendare", "cursed city", "scarlet stratholme", "undead stratholme", "ruined", "scourge", "scarlet crusade", "undead lords", "plague", "loot", "large", "eastern plaguelands"],
     "tags": ["dungeon", "high_level", "plaguelands", "undead", "scarlet_crusade", "instance"]
   },
   {
     "id": "raid_onyxias_lair",
     "title": "Onyxia's Lair",
     "content": "Onyxia's Lair is a level 60 raid dungeon located beneath the Dragonmurk in Dustwallow Marsh. This volcanic cavern is home to the black dragon Onyxia. The raid consists of a single boss encounter with multiple phases. Players must coordinate to defeat the dragon through air and ground phases. This raid offers excellent loot including the Thunderfury weapon and is a classic endgame challenge.",
-    "keywords": ["onyxia", "lair", "raid", "level_60", "dustwallow", "dragon", "thunderfury", "phases"],
+    "keywords": ["onyxia", "lair", "raid", "level 60", "dustwallow", "dragon", "thunderfury", "phases", "volcanic cavern", "black dragon", "single boss", "air phase", "ground phase", "coordination", "loot", "classic", "endgame", "dragonmurk"],
     "tags": ["raid", "endgame", "dustwallow", "dragon", "classic", "instance"]
   },
   {
     "id": "raid_molten_core",
     "title": "Molten Core",
     "content": "Molten Core is a level 60 raid dungeon located beneath Blackrock Mountain. This fiery cavern is home to Ragnaros and his elemental lieutenants. Key bosses include Lucifron, Magmadar, Gehennas, and Ragnaros himself. Players fight through waves of fire elementals and major bosses. This raid offers legendary items and is the premier endgame content of Classic WoW.",
-    "keywords": ["molten", "core", "raid", "level_60", "blackrock", "ragnaros", "elementals", "legendary"],
+    "keywords": ["molten", "core", "raid", "level 60", "blackrock", "ragnaros", "elementals", "legendary", "fiery cavern", "lieutenants", "lucifron", "magmadar", "gehennas", "fire elementals", "major bosses", "waves", "endgame", "classic", "blackrock mountain"],
     "tags": ["raid", "endgame", "blackrock", "fire", "elementals", "classic", "instance"]
   },
   {
     "id": "raid_blackwing_lair",
     "title": "Blackwing Lair",
     "content": "Blackwing Lair is a level 60 raid dungeon located in Blackrock Spire. This draconic fortress is home to Nefarian and his black dragonflight. Key bosses include Razorgore, Vaelastrasz, and Nefarian himself. Players navigate through dragon-themed chambers fighting drakes and lieutenants. This raid offers excellent loot and is known for its complex encounters requiring precise coordination.",
-    "keywords": ["blackwing", "lair", "raid", "level_60", "blackrock", "nefarian", "dragons", "drakes"],
+    "keywords": ["blackwing", "lair", "raid", "level 60", "blackrock", "nefarian", "dragons", "drakes", "draconic fortress", "black dragonflight", "razorgore", "vaelastrasz", "lieutenants", "dragon themed", "chambers", "loot", "complex", "coordination", "blackrock spire"],
     "tags": ["raid", "endgame", "blackrock", "dragons", "nefarian", "classic", "instance"]
   },
   {
     "id": "raid_naxxramas",
     "title": "Naxxramas",
     "content": "Naxxramas is a level 60 raid dungeon floating above the Eastern Plaguelands. This massive necropolis is the stronghold of Kel'Thuzad and the Scourge. The raid is divided into four wings: Arachnid, Plague, Military, and Construct. Key bosses include Anub'Rekhan, Maexxna, and Kel'Thuzad himself. This raid offers the best loot in Wrath of the Lich King and features complex encounters.",
-    "keywords": ["naxxramas", "raid", "level_60", "plaguelands", "kelthuzad", "scourge", "necroplis"],
+    "keywords": ["naxxramas", "raid", "level 60", "plaguelands", "kel thuzad", "scourge", "necroplis", "floating", "four wings", "arachnid", "plague", "military", "construct", "anub rekhan", "maexxna", "best loot", "complex", "eastern plaguelands"],
     "tags": ["raid", "endgame", "plaguelands", "undead", "kelthuzad", "wrath", "instance"]
   },
   {
     "id": "raid_ulduar",
     "title": "Ulduar",
     "content": "Ulduar is a level 80 raid dungeon located in the Storm Peaks of Northrend. This titanic complex is home to Yogg-Saron and various titan constructs. The raid features multiple wings including the Siege of Ulduar, Antechamber, and Inner Sanctum. Key bosses include Flame Leviathan, XT-002 Deconstructor, and Yogg-Saron. This raid offers excellent loot and features complex mechanical encounters.",
-    "keywords": ["ulduar", "raid", "level_80", "storm_peaks", "yoggsaron", "titans", "constructs"],
+    "keywords": ["ulduar", "raid", "level 80", "storm peaks", "yogg saron", "titans", "constructs", "titanic complex", "multiple wings", "siege of ulduar", "antechamber", "inner sanctum", "flame leviathan", "xt 002 deconstructor", "mechanical", "loot", "northrend"],
     "tags": ["raid", "endgame", "northrend", "titans", "yoggsaron", "wrath", "instance"]
+  },
+  {
+    "id": "dungeon_blackrock_depths",
+    "title": "Blackrock Depths",
+    "content": "Blackrock Depths is a level 52-60 dungeon located in Blackrock Mountain. This massive prison complex is home to the Dark Iron dwarves and various prisoners. Key bosses include Lord Incendius, Bael'Gar, and Emperor Dagran Thaurissan. Players navigate through forges, arenas, and cells fighting dwarves and elementals. This dungeon offers excellent loot and has a strong prison theme.",
+    "keywords": ["blackrock", "depths", "dungeon", "level 52", "blackrock mountain", "dark iron", "prison", "lord incendius", "bael gar", "emperor dagran thaurissan", "forges", "arenas", "cells", "dwarves", "elementals", "loot", "prison theme"],
+    "tags": ["dungeon", "high_level", "blackrock", "dwarves", "prison", "instance"]
+  },
+  {
+    "id": "dungeon_dire_maul",
+    "title": "Dire Maul",
+    "content": "Dire Maul is a level 55-60 dungeon complex located in Feralas. This ancient night elf ruin is divided into three wings: Warpwood Quarter, Capital Gardens, and Gordok Commons. Key bosses include Pusillin, Lethtendris, and King Gordok. Players fight through corrupted wildlife and ogres. This dungeon offers good loot and has a strong nature corruption theme.",
+    "keywords": ["dire", "maul", "dungeon", "level 55", "feralas", "night elf", "ruin", "three wings", "warpwood quarter", "capital gardens", "gordok commons", "pusillin", "lethtendris", "king gordok", "corrupted", "wildlife", "ogres", "loot", "nature corruption"],
+    "tags": ["dungeon", "high_level", "feralas", "night_elf", "corruption", "instance"]
+  },
+  {
+    "id": "dungeon_maraudon",
+    "title": "Maraudon",
+    "content": "Maraudon is a level 45-55 dungeon located in the Valley of Spears in Desolace. This ancient centaur burial ground is corrupted by the evil Princess Theradras. Key bosses include Noxxion, Razorlash, and Princess Theradras herself. Players fight through caverns filled with centaurs and earthen elementals. This dungeon offers good loot and has a strong earth and corruption theme.",
+    "keywords": ["maraudon", "dungeon", "level 45", "desolace", "valley of spears", "centaur", "burial ground", "princess theradras", "noxxion", "razorlash", "corrupted", "caverns", "earthen", "elementals", "loot", "earth", "corruption"],
+    "tags": ["dungeon", "mid_level", "desolace", "centaur", "earth", "instance"]
+  },
+  {
+    "id": "dungeon_sunken_temple",
+    "title": "Sunken Temple",
+    "content": "Sunken Temple is a level 50-60 dungeon located in the Swamp of Sorrows. This ancient troll temple is controlled by the Atal'ai and corrupted by Hakkar the Soulflayer. Key bosses include Jammal'an the Prophet, Shade of Eranikus, and Avatar of Hakkar. Players fight through temple chambers battling trolls and dragons. This dungeon offers excellent loot and has a strong troll and corruption theme.",
+    "keywords": ["sunken", "temple", "dungeon", "level 50", "swamp of sorrows", "troll", "atal ai", "hakkar", "jammal an", "shade of eranikus", "avatar of hakkar", "temple chambers", "dragons", "loot", "troll", "corruption"],
+    "tags": ["dungeon", "high_level", "swamp_of_sorrows", "trolls", "corruption", "instance"]
+  },
+  {
+    "id": "dungeon_zul_farrak",
+    "title": "Zul'Farrak",
+    "content": "Zul'Farrak is a level 44-54 dungeon located in Tanaris. This ancient troll city is controlled by the Sandfury trolls and Chief Ukorz Sandscalp. Key bosses include Antu'sul, Theka the Martyr, and Chief Ukorz. Players fight through sandy ruins battling trolls and hydras. This dungeon offers good loot and has a strong desert and troll theme.",
+    "keywords": ["zul farrak", "dungeon", "level 44", "tanaris", "troll city", "sandfury", "chief ukorz", "antusul", "theka the martyr", "sandy ruins", "hydras", "loot", "desert", "troll"],
+    "tags": ["dungeon", "mid_level", "tanaris", "trolls", "desert", "instance"]
+  },
+  {
+    "id": "raid_zul_gurub",
+    "title": "Zul'Gurub",
+    "content": "Zul'Gurub is a level 60 raid dungeon located in Stranglethorn Vale. This ancient troll empire stronghold is controlled by the Gurubashi trolls and Hakkar the Soulflayer. Key bosses include High Priestess Jeklik, Bloodlord Mandokir, and Hakkar himself. Players fight through jungle ruins battling trolls and wildlife. This raid offers excellent loot and has a strong troll and jungle theme.",
+    "keywords": ["zul gurub", "raid", "level 60", "stranglethorn vale", "troll empire", "gurubashi", "hakkar", "high priestess jeklik", "bloodlord mandokir", "jungle ruins", "wildlife", "loot", "troll", "jungle"],
+    "tags": ["raid", "endgame", "stranglethorn", "trolls", "jungle", "instance"]
+  },
+  {
+    "id": "raid_ruins_of_ahn_qiraj",
+    "title": "Ruins of Ahn'Qiraj",
+    "content": "Ruins of Ahn'Qiraj is a level 60 raid dungeon located in Silithus. This ancient qiraji fortress is controlled by the silithid and their leaders. Key bosses include Kurinnaxx, General Rajaxx, and Ossirian the Unscarred. Players fight through sandy ruins battling insectoid enemies. This raid offers excellent loot and is part of the Ahn'Qiraj War Effort.",
+    "keywords": ["ruins of ahn qiraj", "raid", "level 60", "silithus", "qiraji", "silithid", "kurinnaxx", "general rajaxx", "ossirian", "sandy ruins", "insectoid", "loot", "war effort"],
+    "tags": ["raid", "endgame", "silithus", "silithid", "qiraji", "instance"]
+  },
+  {
+    "id": "raid_temple_of_ahn_qiraj",
+    "title": "Temple of Ahn'Qiraj",
+    "content": "Temple of Ahn'Qiraj is a level 60 raid dungeon located in Silithus. This massive qiraji temple is home to C'Thun and his lieutenants. Key bosses include The Prophet Skeram, Princess Huhuran, and C'Thun himself. Players fight through temple chambers battling insectoid horrors. This raid offers the best loot in Classic WoW and features extremely complex encounters.",
+    "keywords": ["temple of ahn qiraj", "raid", "level 60", "silithus", "qiraji", "c thun", "prophet skeram", "princess huhuran", "temple chambers", "insectoid", "best loot", "complex", "classic"],
+    "tags": ["raid", "endgame", "silithus", "qiraji", "c_thun", "instance"]
   }
 ]

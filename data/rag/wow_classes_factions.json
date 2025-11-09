@@ -3,7 +3,7 @@
     "id": "wow_classes_warrior",
     "title": "Warrior Class",
     "content": "Warriors are versatile melee fighters who excel in both damage dealing and tanking. They have three specializations: Arms (melee DPS), Fury (two-handed weapon DPS), and Protection (tanking). Warriors use rage as their resource and can charge into battle, use defensive stances, and provide strong physical damage. They are essential for tanking dungeons and raids.",
-    "keywords": ["warrior", "tank", "dps", "melee", "rage", "arms", "fury", "protection"],
+    "keywords": ["warrior", "tank", "dps", "melee", "rage", "arms", "fury", "protection", "battle", "stances", "versatile", "fighter", "combat", "strength", "damage", "protection", "shield", "sword", "axe", "mace", "charge", "intercept", "taunt", "challenging shout"],
     "tags": ["class", "melee", "tank", "dps", "versatile"]
   },
   {
@@ -24,7 +24,7 @@
     "id": "wow_classes_rogue",
     "title": "Rogue Class",
     "content": "Rogues are stealthy melee DPS specialists who excel at burst damage and controlling the battlefield. They can stealth, pick locks, and assassinate targets. Rogues have high mobility with abilities like sprint and vanish. They use energy as their resource and combo points to unleash powerful finishing moves. Rogues are deadly in PvP and excel at controlling fights.",
-    "keywords": ["rogue", "stealth", "melee", "dps", "burst", "energy", "combo_points"],
+    "keywords": ["rogue", "stealth", "melee", "dps", "burst", "energy", "combo points", "assassinate", "sprint", "vanish", "backstab", "sap", "kidney shot", "eviscerate", "sinister strike", "pick lock", "lockpicking", "poison", "dagger", "leather armor", "agility", "critical strike", "mobility"],
     "tags": ["class", "melee", "dps", "stealth", "control"]
   },
   {
@@ -66,7 +66,7 @@
     "id": "wow_classes_death_knight",
     "title": "Death Knight Class",
     "content": "Death Knights are undead warriors raised by the Lich King, available starting in Wrath of the Lich King. They are powerful tanks (Blood) or DPS (Frost/Unholy) with rune-based abilities. Death Knights have strong survivability and can raise ghouls to assist in combat. They use runes and runic power as resources and have anti-magic abilities.",
-    "keywords": ["death_knight", "undead", "tank", "dps", "runes", "runic_power", "blood", "frost", "unholy"],
+    "keywords": ["death knight", "undead", "tank", "dps", "runes", "runic power", "blood", "frost", "unholy", "lich king", "ghoul", "anti magic", "death grip", "death coil", "icy touch", "plague strike", "blood strike", "frost strike", "scourge strike", "lichborne", "antimagic shell", "bone shield"],
     "tags": ["class", "melee", "tank", "dps", "undead"]
   },
   {
@@ -80,7 +80,77 @@
     "id": "wow_factions_horde",
     "title": "Horde Faction",
     "content": "The Horde is a powerful faction of warrior races who fight for survival and strength. Member races include Orcs, Trolls, Tauren, Undead (Forsaken), and Blood Elves. The Horde values strength, honor in battle, and protecting their way of life. Their capital cities include Orgrimmar, Thunder Bluff, Undercity, and Silvermoon City. Horde players are fierce warriors who respect strength and combat prowess.",
-    "keywords": ["horde", "faction", "strength", "warriors", "orcs", "trolls", "tauren", "undead", "blood_elves"],
+    "keywords": ["horde", "faction", "strength", "warriors", "orcs", "trolls", "tauren", "undead", "blood_elves", "orgrimmar", "thunder bluff", "undercity", "silvermoon", "thrall", "sylvanas", "garrosh", "voljin", "baine bloodhoof", "lor the mar", "horde pride", "red", "black", "for the horde"],
     "tags": ["faction", "horde", "races", "cities"]
+  },
+  {
+    "id": "wow_races_humans",
+    "title": "Human Race",
+    "content": "Humans are the most widespread and adaptable race in Azeroth, known for their resilience and determination. They founded the Alliance and built the mighty kingdom of Stormwind. Humans excel at all classes and are known for their diplomacy and leadership. Key traits include +10% Spirit and +5% reputation gains. Humans start in Elwynn Forest and have access to mounts at level 20.",
+    "keywords": ["human", "alliance", "stormwind", "diplomacy", "leadership", "resilience", "determination", "elwynn forest", "king varian", "anduin", "bolvar", "tirion fordring", "spirit", "reputation", "versatile", "paladin", "warrior", "rogue", "mage", "priest", "warlock"],
+    "tags": ["race", "alliance", "human", "versatile"]
+  },
+  {
+    "id": "wow_races_orcs",
+    "title": "Orc Race",
+    "content": "Orcs are fierce and honorable warriors from Draenor, brought to Azeroth through the Dark Portal. They form the backbone of the Horde and value strength and combat prowess above all. Orcs have +5% strength and +5% expertise. They start in Durotar and have a rich history of shamanism and warfare. Notable orcs include Thrall, Garrosh Hellscream, and Grommash Hellscream.",
+    "keywords": ["orc", "horde", "draenor", "dark portal", "strength", "warriors", "shaman", "thrall", "garrosh", "grommash", "durotar", "orgrimmar", "expertise", "bloodlust", "hardiness", "axe thrower", "warrior", "hunter", "shaman", "rogue", "death knight"],
+    "tags": ["race", "horde", "orc", "warrior"]
+  },
+  {
+    "id": "wow_races_dwarves",
+    "title": "Dwarf Race",
+    "content": "Dwarves are stout, bearded mountain dwellers known for their craftsmanship and love of ale. They are master miners, blacksmiths, and engineers. Dwarves have +10% expertise and +5% reputation with Ironforge. They start in Dun Morogh and are fiercely loyal to the Alliance. Dwarves excel at warrior, priest, and hunter classes. Famous dwarves include King Magni Bronzebeard and Muradin Bronzebeard.",
+    "keywords": ["dwarf", "alliance", "ironforge", "craftsmanship", "mining", "blacksmithing", "engineering", "ale", "beards", "dun morogh", "king magni", "muradin", "expertise", "reputation", "stoneform", "gun specialization", "warrior", "priest", "hunter", "paladin", "rogue"],
+    "tags": ["race", "alliance", "dwarf", "craftsman"]
+  },
+  {
+    "id": "wow_races_night_elves",
+    "title": "Night Elf Race",
+    "content": "Night Elves are ancient, immortal beings who protect the natural world of Azeroth. They are master druids, hunters, and warriors with a deep connection to nature. Night Elves have +10% nature resistance and +5% wisp spirit. They start on the sacred tree of Teldrassil and are devoted to Elune. Night Elves excel at druid, hunter, and priest classes. Key figures include Tyrande Whisperwind and Malfurion Stormrage.",
+    "keywords": ["night elf", "alliance", "nature", "druid", "hunter", "immortal", "elune", "teldrassil", "darnassus", "tyrande", "malfurion", "nature resistance", "wisp spirit", "shadowmeld", "quickness", "druid", "hunter", "priest", "warrior", "rogue"],
+    "tags": ["race", "alliance", "night elf", "nature"]
+  },
+  {
+    "id": "wow_races_tauren",
+    "title": "Tauren Race",
+    "content": "Tauren are massive, peaceful nomads from the plains of Mulgore, devoted to the spirits of nature. They are natural shamans and druids with a deep spiritual connection to the elements. Tauren have +5% health and +5% nature resistance. They start in Mulgore and have a rich culture of storytelling and herbalism. Tauren excel at druid, shaman, and warrior classes. Chief Baine Bloodhoof leads the tauren people.",
+    "keywords": ["tauren", "horde", "mulgore", "plains", "shaman", "druid", "spirits", "nature", "thunder bluff", "baine bloodhoof", "health", "nature resistance", "cultivation", "endurance", "war stomp", "druid", "shaman", "warrior", "hunter", "priest"],
+    "tags": ["race", "horde", "tauren", "spiritual"]
+  },
+  {
+    "id": "wow_races_trolls",
+    "title": "Troll Race",
+    "content": "Trolls are fierce jungle warriors from the islands of the South Seas, known for their regeneration and voodoo magic. They are agile hunters and warriors with a tribal culture. Trolls have +5% attack speed and +5% expertise. They start in Durotar alongside the orcs. Trolls excel at hunter, mage, priest, rogue, shaman, and warrior classes. Notable trolls include Vol'jin and Zul'jin.",
+    "keywords": ["troll", "horde", "jungle", "warriors", "regeneration", "voodoo", "hunter", "durotar", "voljin", "zuljin", "attack speed", "expertise", "beast slaying", "berserking", "da voodoo shuffle", "hunter", "mage", "priest", "rogue", "shaman", "warrior"],
+    "tags": ["race", "horde", "troll", "agile"]
+  },
+  {
+    "id": "wow_races_gnomes",
+    "title": "Gnome Race",
+    "content": "Gnomes are ingenious tinkerers and inventors from the underground city of Gnomeregan. They are brilliant engineers and mages with a love for technology. Gnomes have +5% intellect and +5% arcane resistance. They start in Dun Morogh and are loyal Alliance members. Gnomes excel at mage, rogue, and warrior classes. Famous gnomes include High Tinker Mekkatorque and Sicco Thermaplugg.",
+    "keywords": ["gnome", "alliance", "gnomeregan", "tinkerers", "engineers", "technology", "dun morogh", "ironforge", "mekkatorque", "sicco", "intellect", "arcane resistance", "escape artist", "engineering specialization", "mage", "rogue", "warrior", "warlock", "death knight"],
+    "tags": ["race", "alliance", "gnome", "ingenious"]
+  },
+  {
+    "id": "wow_races_forsaken",
+    "title": "Forsaken (Undead) Race",
+    "content": "The Forsaken are undead beings who broke free from the Scourge, fighting for their freedom. They are cunning rogues and warlocks with resistance to fear and sleep. Forsaken have +5% expertise and +5% shadow resistance. They start in Tirisfal Glades and rule the Undercity. Forsaken excel at rogue, warlock, priest, mage, and warrior classes. Queen Sylvanas Windrunner leads the Forsaken.",
+    "keywords": ["forsaken", "undead", "horde", "scourge", "freedom", "undercity", "tirisfal glades", "sylvanas", "expertise", "shadow resistance", "cannibalize", "touch of the forsaken", "will of the forsaken", "rogue", "warlock", "priest", "mage", "warrior"],
+    "tags": ["race", "horde", "undead", "forsaken"]
+  },
+  {
+    "id": "wow_races_blood_elves",
+    "title": "Blood Elf Race",
+    "content": "Blood Elves are magically addicted survivors of the fallen kingdom of Quel'Thalas. They are powerful mages and paladins with a thirst for magic. Blood Elves have +10% intellect and +5% reputation with Silvermoon City. They start in Eversong Woods and are devoted to Kael'thas Sunstrider. Blood Elves excel at mage, paladin, priest, rogue, hunter, and warlock classes.",
+    "keywords": ["blood elf", "horde", "quel thalas", "magic addiction", "silvermoon", "eversong woods", "kaelthas", "intellect", "reputation", "mana tap", "arcane torrent", "mage", "paladin", "priest", "rogue", "hunter", "warlock", "death knight"],
+    "tags": ["race", "horde", "blood elf", "magical"]
+  },
+  {
+    "id": "wow_races_draenei",
+    "title": "Draenei Race",
+    "content": "Draenei are six-armed aliens who crashed on Azeroth fleeing demonic pursuers. They are holy paladins and priests with a devotion to the Light. Draenei have +10% strength and +5% reputation with the Exodar. They start on Azuremyst Isle and have advanced technology. Draenei excel at paladin, priest, shaman, mage, hunter, and warrior classes. Prophet Velen leads the draenei.",
+    "keywords": ["draenei", "alliance", "exodar", "azuremyst isle", "light", "paladin", "priest", "velen", "strength", "reputation", "heroic presence", "gift of the naaru", "paladin", "priest", "shaman", "mage", "hunter", "warrior"],
+    "tags": ["race", "alliance", "draenei", "holy"]
   }
 ]

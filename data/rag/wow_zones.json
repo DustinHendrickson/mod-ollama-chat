@@ -3,14 +3,14 @@
     "id": "zone_elwynn_forest",
     "title": "Elwynn Forest",
     "content": "Elwynn Forest is the starting zone for Human players in Stormwind. This peaceful forested area contains Northshire Abbey where new players learn basic skills. Key locations include Goldshire (the main town), Northshire Valley, and the forests around Stormwind. Common mobs include wolves, bears, kobolds, and bandits. Players can find quests from guards, farmers, and townsfolk. This zone teaches basic combat, gathering professions, and introduces players to World of Warcraft gameplay.",
-    "keywords": ["elwynn", "forest", "human", "starting", "zone", "goldshire", "northshire", "stormwind"],
+    "keywords": ["elwynn", "forest", "human", "starting", "zone", "goldshire", "northshire", "stormwind", "peaceful forested area", "northshire abbey", "new players", "learn basic skills", "key locations", "main town", "northshire valley", "forests around", "common mobs", "wolves", "bears", "kobolds", "bandits", "find quests", "guards", "farmers", "townsfolk", "teaches basic combat", "gathering professions", "introduces players", "world of warcraft", "gameplay"],
     "tags": ["zone", "starting_area", "human", "leveling"]
   },
   {
     "id": "zone_durotar",
     "title": "Durotar",
     "content": "Durotar is the starting zone for Orc and Troll players in Orgrimmar. This harsh desert and canyon region contains the Valley of Trials where new players learn basic skills. Key locations include Orgrimmar (the main city), Razor Hill, and the Echo Isles. Common enemies include boars, scorpids, quilboars, and centaurs. Players receive quests from various NPCs and learn about Horde culture and combat. This zone introduces players to shamanistic elements and Horde traditions.",
-    "keywords": ["durotar", "orc", "troll", "starting", "zone", "orgrimmar", "razor_hill", "valley_of_trials"],
+    "keywords": ["durotar", "orc", "troll", "starting", "zone", "orgrimmar", "razor hill", "valley of trials", "harsh desert", "canyon region", "new players", "learn basic skills", "key locations", "main city", "echo isles", "common enemies", "boars", "scorpids", "quilboars", "centaurs", "receive quests", "various npcs", "learn about", "horde culture", "combat", "introduces players", "shamanistic elements", "horde traditions"],
     "tags": ["zone", "starting_area", "horde", "leveling"]
   },
   {
@@ -24,14 +24,14 @@
     "id": "zone_mulgore",
     "title": "Mulgore",
     "content": "Mulgore is the starting zone for Tauren players in Thunder Bluff. This vast plains region contains Bloodhoof Village where new players learn basic skills. Key locations include Thunder Bluff (the main city), Red Cloud Mesa, and the plains of Mulgore. Players learn about shamanism, hunting, and Tauren spirituality. Common enemies include wolves, cougars, and hostile centaurs. This zone teaches players about the elements and Tauren culture.",
-    "keywords": ["mulgore", "tauren", "starting", "zone", "thunder_bluff", "bloodhoof", "plains"],
+    "keywords": ["mulgore", "tauren", "starting", "zone", "thunder bluff", "bloodhoof", "plains", "vast plains region", "bloodhoof village", "new players", "learn basic skills", "key locations", "main city", "red cloud mesa", "plains of mulgore", "learn about", "shamanism", "hunting", "tauren spirituality", "common enemies", "wolves", "cougars", "hostile centaurs", "teaches players", "about the elements", "tauren culture"],
     "tags": ["zone", "starting_area", "horde", "tauren", "leveling"]
   },
   {
     "id": "zone_dun_morogh",
     "title": "Dun Morogh",
     "content": "Dun Morogh is the starting zone for Dwarf and Gnome players in Ironforge. This mountainous region contains Anvilmar where new players begin. Key locations include Ironforge (the main city), Kharanos, and the Coldridge Valley. Players learn engineering, mining, and blacksmithing. Common enemies include troggs, wolves, and dark iron dwarves. This zone emphasizes technology, crafting, and dwarven culture.",
-    "keywords": ["dun_morogh", "dwarf", "gnome", "starting", "zone", "ironforge", "kharanos", "coldridge"],
+    "keywords": ["dun morogh", "dwarf", "gnome", "starting", "zone", "ironforge", "kharanos", "coldridge", "mountainous region", "anvilmar", "new players", "begin", "key locations", "main city", "coldridge valley", "learn engineering", "mining", "blacksmithing", "common enemies", "troggs", "wolves", "dark iron dwarves", "emphasizes technology", "crafting", "dwarven culture"],
     "tags": ["zone", "starting_area", "alliance", "dwarf", "gnome", "leveling"]
   },
   {
@@ -45,28 +45,28 @@
     "id": "zone_azuremyst_isle",
     "title": "Azuremyst Isle",
     "content": "Azuremyst Isle is the starting zone for Draenei players in the Exodar. This crashed spaceship island contains the Crash Site where new players begin. Key locations include the Exodar (the capital city), Azure Watch, and the forests of Azuremyst. Players learn about the Light, technology, and Draenei culture. Common enemies include nagas, owlbears, and corrupted wildlife. This zone introduces players to the Draenei exodus and their technological heritage.",
-    "keywords": ["azuremyst", "isle", "draenei", "starting", "zone", "exodar", "crash_site", "azure_watch"],
+    "keywords": ["azuremyst", "isle", "draenei", "starting", "zone", "exodar", "crash site", "azure watch", "crashed spaceship island", "new players", "begin", "key locations", "capital city", "forests of azuremyst", "learn about", "the light", "technology", "draenei culture", "common enemies", "nagas", "owlbears", "corrupted wildlife", "introduces players", "draenei exodus", "technological heritage"],
     "tags": ["zone", "starting_area", "alliance", "draenei", "leveling"]
   },
   {
     "id": "zone_eversong_woods",
     "title": "Eversong Woods",
     "content": "Eversong Woods is the starting zone for Blood Elf players in Silvermoon City. This magical forest contains Sunstrider Isle where new players learn basic skills. Key locations include Silvermoon City, Falconwing Square, and the forests of Eversong. Players learn about arcane magic, addiction to magic, and Blood Elf society. Common enemies include wraiths, mana creatures, and hostile wildlife. This zone introduces players to Blood Elf culture and the magic addiction struggle.",
-    "keywords": ["eversong", "woods", "blood", "elf", "starting", "zone", "silvermoon", "sunstrider"],
+    "keywords": ["eversong", "woods", "blood", "elf", "starting", "zone", "silvermoon", "sunstrider", "magical forest", "sunstrider isle", "new players", "learn basic skills", "key locations", "silvermoon city", "falconwing square", "forests of eversong", "learn about", "arcane magic", "addiction to magic", "blood elf society", "common enemies", "wraiths", "mana creatures", "hostile wildlife", "introduces players", "blood elf culture", "magic addiction", "struggle"],
     "tags": ["zone", "starting_area", "horde", "blood_elf", "leveling"]
   },
   {
     "id": "zone_borean_tundra",
     "title": "Borean Tundra",
     "content": "Borean Tundra is a level 68-72 zone in Northrend, the icy northern continent. This frozen wasteland contains major cities like Valiance Keep (Alliance) and Warsong Hold (Horde). Key areas include the Riplash Ruins, the Geyser Fields, and the coastline. Players can find quests involving the Scourge, nerubians, and the blue dragonflight. This zone features diverse environments from icy plains to geothermal areas and introduces players to Northrend's harsh climate.",
-    "keywords": ["borean", "tundra", "northrend", "level_68", "valiance_keep", "warsong_hold", "riplash"],
+    "keywords": ["borean", "tundra", "northrend", "level 68", "valiance keep", "warsong hold", "riplash", "icy northern continent", "frozen wasteland", "major cities", "alliance", "horde", "key areas", "riplash ruins", "geyser fields", "coastline", "find quests", "involving the scourge", "nerubians", "blue dragonflight", "features diverse environments", "icy plains", "geothermal areas", "introduces players", "northrend harsh climate"],
     "tags": ["zone", "northrend", "leveling", "wrath", "contested"]
   },
   {
     "id": "zone_howling_fjord",
     "title": "Howling Fjord",
     "content": "Howling Fjord is a level 68-72 zone in Northrend featuring dramatic fjords and viking-inspired settlements. Alliance players start at Valgarde while Horde players start at Camp Winterhoof. Key areas include Utgarde Keep, the Dragonflayer area, and the coastal regions. Players encounter vrykul, wolves, and various wildlife. This zone contains both questing areas and instances, making it a hub for Northrend adventurers.",
-    "keywords": ["howling", "fjord", "northrend", "level_68", "valgarde", "camp_winterhoof", "utgarde"],
+    "keywords": ["howling", "fjord", "northrend", "level 68", "valgarde", "camp winterhoof", "utgarde", "dramatic fjords", "viking inspired settlements", "alliance players", "start at", "horde players", "key areas", "utgarde keep", "dragonflayer area", "coastal regions", "encounter vrykul", "wolves", "various wildlife", "contains both", "questing areas", "instances", "making it a hub", "northrend adventurers"],
     "tags": ["zone", "northrend", "leveling", "wrath", "contested"]
   }
 ]

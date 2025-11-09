@@ -3,105 +3,161 @@
     "id": "general_leveling_guide",
     "title": "Leveling Strategies",
     "content": "Efficient leveling involves questing in appropriate level zones, using rest bonuses, and grouping when possible. Follow zone storylines for better experience. Use flight paths to travel efficiently. Complete dungeons for bonus experience. Leveling speed depends on playstyle and available time. Some classes level faster than others due to mechanics.",
-    "keywords": ["leveling", "questing", "rest_bonus", "grouping", "dungeons", "experience"],
+    "keywords": ["leveling", "questing", "rest bonus", "grouping", "dungeons", "experience", "zone storylines", "flight paths", "travel", "bonus experience", "playstyle", "time", "classes", "mechanics", "efficient", "speed"],
     "tags": ["general", "leveling", "progression", "efficiency"]
   },
   {
     "id": "general_gold_making",
     "title": "Gold Making Methods",
     "content": "Gold can be made through professions, auction house trading, farming rare mobs, completing quests, and running dungeons. Blacksmithing and enchanting are profitable. Understanding market demand is key. Some methods require significant time investment. Gold is used for mounts, repairs, and training.",
-    "keywords": ["gold_making", "professions", "auction_house", "farming", "trading", "market"],
+    "keywords": ["gold making", "professions", "auction house", "farming", "trading", "market", "blacksmithing", "enchanting", "profitable", "demand", "time investment", "mounts", "repairs", "training", "rare mobs", "quests", "dungeons"],
     "tags": ["general", "economy", "gold", "professions"]
   },
   {
     "id": "general_ui_customization",
     "title": "Interface Customization",
     "content": "The UI can be customized extensively. Move frames, change sizes, add custom addons. Key bindings improve efficiency. Action bars can be configured for different situations. Understanding the interface is crucial for effective play. Many players use custom UI setups for optimal performance.",
-    "keywords": ["ui_customization", "frames", "addons", "key_bindings", "action_bars", "efficiency"],
+    "keywords": ["ui customization", "frames", "addons", "key bindings", "action bars", "efficiency", "interface", "custom", "performance", "move frames", "change sizes", "configured", "effective play", "custom ui"],
     "tags": ["general", "interface", "customization", "addons"]
   },
   {
     "id": "general_addons",
     "title": "Essential Addons",
     "content": "Popular addons include Deadly Boss Mods for raid encounters, QuestHelper for navigation, Gatherer for resource tracking, and Auctioneer for auction house management. Addons enhance gameplay but must be kept updated. Some addons provide quality of life improvements. Choosing the right addons depends on playstyle.",
-    "keywords": ["addons", "deadly_boss_mods", "questhelper", "gatherer", "auctioneer", "quality_of_life"],
+    "keywords": ["addons", "deadly boss mods", "questhelper", "gatherer", "auctioneer", "quality of life", "raid encounters", "navigation", "resource tracking", "auction house", "updated", "enhance gameplay", "playstyle"],
     "tags": ["general", "addons", "tools", "enhancement"]
   },
   {
     "id": "general_server_population",
     "title": "Server Types and Population",
     "content": "Servers have different populations and rulesets. PvP servers allow open world combat, PvE servers restrict PvP. High population servers have active economies, low population servers have empty cities. Server type affects gameplay experience. Choosing the right server is important for enjoyment.",
-    "keywords": ["server_population", "pvp_servers", "pve_servers", "economy", "rulesets", "experience"],
+    "keywords": ["server population", "pvp servers", "pve servers", "economy", "rulesets", "experience", "open world combat", "active economies", "empty cities", "gameplay", "enjoyment", "high population", "low population"],
     "tags": ["general", "servers", "population", "rules"]
   },
   {
     "id": "general_character_creation",
     "title": "Character Creation Tips",
     "content": "Choose race/class combinations that fit your playstyle. Some races provide better starting zones or racial abilities. Consider faction balance on your server. Think about long-term goals when creating characters. Server transfers allow changing servers later. Character names must be unique.",
-    "keywords": ["character_creation", "race", "class", "playstyle", "faction_balance", "server_transfer"],
+    "keywords": ["character creation", "race", "class", "playstyle", "starting zones", "racial abilities", "faction balance", "long term goals", "server transfer", "unique names", "combinations"],
     "tags": ["general", "character", "creation", "planning"]
   },
   {
     "id": "general_time_management",
     "title": "In-Game Time Management",
     "content": "World of Warcraft has a day/night cycle that affects gameplay. Some quests or events only occur at certain times. Daily quests reset daily. Raid lockouts reset weekly. Understanding game time helps with planning. Real-world time affects in-game events and resets.",
-    "keywords": ["time_management", "day_night_cycle", "daily_quests", "raid_lockouts", "resets", "planning"],
+    "keywords": ["time management", "day night cycle", "daily quests", "raid lockouts", "resets", "planning", "gameplay", "events", "real world time", "weekly", "understanding"],
     "tags": ["general", "time", "planning", "resets"]
   },
   {
     "id": "general_communication",
     "title": "Communication and Community",
     "content": "Use guild chat, general chat, and trade chat for communication. Voice chat enhances coordination. Good communication is essential for group content. Community websites provide additional information. Building relationships leads to better gameplay experiences. Respect other players and follow chat etiquette.",
-    "keywords": ["communication", "guild_chat", "voice_chat", "coordination", "community", "etiquette"],
+    "keywords": ["communication", "guild chat", "voice chat", "coordination", "community", "etiquette", "general chat", "trade chat", "group content", "websites", "relationships", "gameplay", "respect"],
     "tags": ["general", "communication", "community", "social"]
   },
   {
     "id": "general_gear_optimization",
     "title": "Gear Optimization",
     "content": "Stat priority depends on class and spec. Use gear comparison tools. Enchantments and gems improve gear significantly. Don't neglect off-hand items. Reforging allows stat conversion. Understanding your class guides optimal gearing decisions. Regular gear upgrades improve performance.",
-    "keywords": ["gear_optimization", "stat_priority", "enchantments", "gems", "reforging", "performance"],
+    "keywords": ["gear optimization", "stat priority", "enchantments", "gems", "reforging", "performance", "class", "spec", "comparison tools", "off hand", "stat conversion", "upgrades"],
     "tags": ["general", "gear", "optimization", "stats"]
   },
   {
     "id": "general_playstyle_adaptation",
     "title": "Adapting Playstyles",
     "content": "Different content requires different approaches. Solo play, group play, PvP, raiding all have different strategies. Be flexible and learn from experiences. Try different roles and activities. Understanding various playstyles enriches the game experience. Don't limit yourself to one type of content.",
-    "keywords": ["playstyle_adaptation", "solo_play", "group_play", "pvp", "raiding", "flexibility"],
+    "keywords": ["playstyle adaptation", "solo play", "group play", "pvp", "raiding", "flexible", "experiences", "roles", "activities", "enriches", "game experience", "strategies"],
     "tags": ["general", "playstyle", "adaptation", "variety"]
   },
   {
     "id": "general_burnout_prevention",
     "title": "Avoiding Burnout",
     "content": "Take breaks when feeling frustrated. Set realistic goals. Don't feel obligated to do everything. Enjoy the journey, not just endgame. Play at your own pace. Balance gaming with real life. Burnout prevention leads to longer enjoyment of the game.",
-    "keywords": ["burnout_prevention", "breaks", "goals", "balance", "pace", "enjoyment"],
+    "keywords": ["burnout prevention", "breaks", "goals", "balance", "pace", "enjoyment", "frustrated", "realistic", "obligated", "journey", "endgame", "real life"],
     "tags": ["general", "health", "balance", "wellness"]
   },
   {
     "id": "general_patch_changes",
     "title": "Understanding Patches",
     "content": "Game updates change mechanics and balance. Stay informed about upcoming changes. Some patches buff, others nerf. Class balance shifts over time. Understanding patch notes helps adapt strategies. Patches can significantly affect gameplay and require relearning.",
-    "keywords": ["patch_changes", "updates", "balance", "buffs", "nerfs", "adaptation"],
+    "keywords": ["patch changes", "updates", "balance", "buffs", "nerfs", "adaptation", "mechanics", "informed", "class balance", "patch notes", "strategies", "gameplay", "relearning"],
     "tags": ["general", "patches", "updates", "balance"]
   },
   {
     "id": "general_achievement_hunting",
     "title": "Achievement Collecting",
     "content": "Achievements provide goals and rewards. Some are easy, others very challenging. Achievement hunting adds replayability. Meta achievements combine multiple goals. Titles and mounts from achievements. Achievement points provide bragging rights. Collecting achievements extends game longevity.",
-    "keywords": ["achievement_hunting", "goals", "rewards", "meta_achievements", "titles", "replayability"],
+    "keywords": ["achievement hunting", "goals", "rewards", "meta achievements", "titles", "mounts", "replayability", "challenging", "bragging rights", "game longevity", "collecting"],
     "tags": ["general", "achievements", "goals", "collection"]
   },
   {
     "id": "general_alt_management",
     "title": "Managing Multiple Characters",
     "content": "Alts provide different experiences and utility. Bank alts for storage, profession alts for crafting. Level alts for achievements or fun. Server transfers move characters. Managing alts requires organization. Multiple characters enhance gameplay variety and utility.",
-    "keywords": ["alt_management", "bank_alts", "profession_alts", "server_transfers", "organization", "variety"],
+    "keywords": ["alt management", "bank alts", "profession alts", "server transfers", "organization", "variety", "utility", "storage", "crafting", "achievements", "fun", "multiple characters", "gameplay"],
     "tags": ["general", "alts", "management", "utility"]
   },
   {
     "id": "general_endgame_content",
     "title": "Endgame Content Overview",
     "content": "Endgame includes raiding, PvP, achievements, professions, and reputation grinds. Different players prefer different activities. Endgame provides the most challenging content. Requires good gear and coordination. Endgame content evolves with expansions. Finding enjoyable endgame activities is key to long-term play.",
-    "keywords": ["endgame_content", "raiding", "pvp", "achievements", "reputation", "challenging"],
+    "keywords": ["endgame content", "raiding", "pvp", "achievements", "reputation", "challenging", "gear", "coordination", "expansions", "long term play", "activities", "evolves"],
     "tags": ["general", "endgame", "content", "variety"]
+  },
+  {
+    "id": "general_learning_basics",
+    "title": "Learning the Basics",
+    "content": "Start with the tutorial and basic quests in your starting zone. Learn your class abilities and how to use them effectively. Understand the interface and basic controls. Practice combat against low-level enemies. Don't be afraid to ask for help in chat. The game has a steep learning curve but becomes intuitive with practice.",
+    "keywords": ["learning basics", "tutorial", "starting zone", "class abilities", "interface", "controls", "combat", "practice", "help", "chat", "learning curve", "intuitive"],
+    "tags": ["general", "basics", "learning", "beginners"]
+  },
+  {
+    "id": "general_finding_groups",
+    "title": "Finding Groups for Content",
+    "content": "Use the Looking for Group tool or LFG channel to find other players. Be clear about what you're looking for. Good communication helps get invites. Trade chat and guild recruitment can lead to groups. Dungeon finder became available in Cataclysm. Patience is key when looking for groups. Building a reputation as a good group member helps.",
+    "keywords": ["finding groups", "looking for group", "lfg", "communication", "invites", "trade chat", "guild recruitment", "dungeon finder", "patience", "reputation", "good member"],
+    "tags": ["general", "groups", "social", "content"]
+  },
+  {
+    "id": "general_addon_management",
+    "title": "Managing Addons Effectively",
+    "content": "Keep addons updated to avoid compatibility issues. Use a lightweight UI for better performance. Backup your WTF folder regularly. Some addons conflict with each other. Read addon descriptions carefully. Join addon communities for support. Not all addons work on all servers or with all versions.",
+    "keywords": ["addon management", "updated", "compatibility", "lightweight ui", "performance", "backup", "wtf folder", "conflict", "descriptions", "communities", "support", "servers", "versions"],
+    "tags": ["general", "addons", "management", "technical"]
+  },
+  {
+    "id": "general_questing_efficiency",
+    "title": "Questing Efficiently",
+    "content": "Group similar quests together to minimize travel. Use quest helper addons for navigation. Complete daily quests for extra rewards. Some quests have follow-ups that chain together. Pay attention to quest objectives and requirements. Questing in the right level zones maximizes experience. Don't ignore side quests for bonus rewards.",
+    "keywords": ["questing efficiency", "group quests", "travel", "quest helper", "navigation", "daily quests", "rewards", "follow ups", "objectives", "requirements", "level zones", "experience", "side quests", "bonus"],
+    "tags": ["general", "questing", "efficiency", "progression"]
+  },
+  {
+    "id": "general_inventory_management",
+    "title": "Managing Inventory and Bags",
+    "content": "Use bag space efficiently by selling junk to vendors. Bank important items you don't need immediately. Use profession bags for materials. Sort your bags regularly. Don't carry too much weight. Some items can be disenchanted or milled for profit. Bag space is limited so prioritize what you keep.",
+    "keywords": ["inventory management", "bags", "bag space", "vendors", "bank", "profession bags", "materials", "sort", "weight", "disenchanted", "milled", "profit", "limited", "prioritize"],
+    "tags": ["general", "inventory", "management", "organization"]
+  },
+  {
+    "id": "general_reputation_grinding",
+    "title": "Reputation Grinding Strategies",
+    "content": "Focus on one faction at a time for faster progress. Use reputation tabards for bonus gains. Complete faction-specific quests and dailies. Kill reputation enemies in appropriate zones. Some reputations require special items or achievements. Reputation unlocks vendors, mounts, and titles. Plan your grinding to maximize rewards.",
+    "keywords": ["reputation grinding", "faction", "progress", "tabards", "bonus gains", "quests", "dailies", "enemies", "zones", "special items", "achievements", "unlocks", "vendors", "mounts", "titles", "plan", "rewards"],
+    "tags": ["general", "reputation", "grinding", "progression"]
+  },
+  {
+    "id": "general_raid_preparation",
+    "title": "Preparing for Raids",
+    "content": "Ensure you have appropriate gear and consumables. Learn boss strategies beforehand. Know your role in the raid. Practice with your class in dummy scenarios. Have backup strategies for different situations. Good preparation reduces wipes and increases success. Communication with your raid team is crucial.",
+    "keywords": ["raid preparation", "gear", "consumables", "boss strategies", "role", "practice", "dummy", "backup strategies", "situations", "preparation", "wipes", "success", "communication", "raid team"],
+    "tags": ["general", "raids", "preparation", "strategy"]
+  },
+  {
+    "id": "general_pvp_preparation",
+    "title": "PvP Preparation Tips",
+    "content": "Gear up with PvP-specific items and enchants. Learn class matchups and counters. Practice in battlegrounds or world PvP. Understand crowd control and interrupts. Know when to engage and when to retreat. Team coordination is essential. PvP requires different tactics than PvE combat.",
+    "keywords": ["pvp preparation", "gear", "enchants", "matchups", "counters", "practice", "battlegrounds", "world pvp", "crowd control", "interrupts", "engage", "retreat", "coordination", "tactics", "pve"],
+    "tags": ["general", "pvp", "preparation", "combat"]
   }
 ]

@@ -3,7 +3,7 @@
     "id": "mechanic_reputation",
     "title": "Reputation System",
     "content": "The reputation system in World of Warcraft tracks your standing with various factions throughout Azeroth. Reputation is gained through quests, killing enemies, and completing faction-specific tasks. Reputation levels range from Hated to Exalted, with each level unlocking better rewards. Many factions offer unique mounts, tabards, titles, and access to exclusive vendors. Managing reputation is important for endgame progression and accessing rare items.",
-    "keywords": ["reputation", "faction", "standing", "hated", "exalted", "rewards", "mounts", "titles"],
+    "keywords": ["reputation", "faction", "standing", "hated", "exalted", "rewards", "mounts", "titles", "quests", "killing enemies", "faction specific tasks", "levels", "unlocking", "unique", "tabards", "exclusive vendors", "managing", "endgame progression", "rare items"],
     "tags": ["mechanic", "reputation", "factions", "progression"]
   },
   {
@@ -17,14 +17,14 @@
     "id": "mechanic_quests",
     "title": "Quest System",
     "content": "Quests are the primary way players progress through World of Warcraft. Quests are obtained from NPCs and involve various objectives like killing enemies, gathering items, or exploring areas. Completing quests rewards experience, gold, items, and reputation. Quests are color-coded by difficulty: gray (too low level), green (easy), yellow (appropriate level), orange (challenging), and red (too high level). Quest chains tell stories and guide players through zones and storylines.",
-    "keywords": ["quests", "objectives", "experience", "gold", "rewards", "quest_chains", "storylines"],
+    "keywords": ["quests", "objectives", "experience", "gold", "rewards", "quest chains", "storylines", "npcs", "killing enemies", "gathering items", "exploring areas", "completing", "color coded", "difficulty", "gray", "green", "yellow", "orange", "red", "tell stories", "guide players", "zones"],
     "tags": ["mechanic", "progression", "story", "objectives"]
   },
   {
     "id": "mechanic_talents",
     "title": "Talent System",
     "content": "The talent system allows players to specialize their characters by spending talent points in three trees: one for each specialization. Talent points are earned every level starting from level 10. Each talent provides unique abilities, stat bonuses, or ability improvements. Players can respec (reset) their talents at class trainers for gold. Choosing the right talents is crucial for optimizing character performance in different content types like PvP, raiding, or solo play.",
-    "keywords": ["talents", "specialization", "talent_points", "trees", "respec", "optimization"],
+    "keywords": ["talents", "specialization", "talent points", "trees", "respec", "optimization", "characters", "spending", "earned every level", "level 10", "unique abilities", "stat bonuses", "ability improvements", "reset", "class trainers", "gold", "character performance", "content types", "pvp", "raiding", "solo play"],
     "tags": ["mechanic", "character", "specialization", "progression"]
   },
   {
@@ -45,7 +45,7 @@
     "id": "mechanic_pvp",
     "title": "Player vs Player Combat",
     "content": "Player vs Player (PvP) combat allows players to fight against other players. PvP can occur in the open world, battlegrounds, or arenas. Players gain honor points and ranking through victories. Honor is used to purchase PvP gear and weapons. Battlegrounds like Warsong Gulch and Arathi Basin offer structured PvP experiences. PvP requires different strategies than PvE, focusing on crowd control, burst damage, and survivability.",
-    "keywords": ["pvp", "player_vs_player", "battlegrounds", "honor", "ranking", "arenas"],
+    "keywords": ["pvp", "player vs player", "battlegrounds", "honor", "ranking", "arenas", "combat", "fight against other players", "open world", "honor points", "victories", "purchase pvp gear", "weapons", "warsong gulch", "arathi basin", "structured", "strategies", "pve", "crowd control", "burst damage", "survivability"],
     "tags": ["mechanic", "combat", "pvp", "battlegrounds"]
   },
   {
@@ -59,14 +59,14 @@
     "id": "mechanic_pets",
     "title": "Pet System",
     "content": "Pets are companions that follow players and assist in combat. Hunters can tame wild beasts as pets, while other classes can obtain pets through quests or purchases. Pets can be customized with names, appearances, and abilities. Some pets provide combat bonuses, while others are purely cosmetic. The pet battle system allows players to collect and battle with pets in a turn-based mini-game. Pets add personality and utility to characters.",
-    "keywords": ["pets", "companions", "hunters", "tame", "pet_battles", "cosmetic"],
+    "keywords": ["pets", "companions", "hunters", "tame", "pet battles", "cosmetic", "follow players", "assist in combat", "wild beasts", "obtain through quests", "purchases", "customized", "names", "appearances", "abilities", "combat bonuses", "collect", "battle", "turn based", "mini game", "personality", "utility", "characters"],
     "tags": ["mechanic", "companions", "pets", "collection"]
   },
   {
     "id": "mechanic_guilds",
     "title": "Guild System",
     "content": "Guilds are player organizations that provide social structure and benefits. Guild members can chat, share quests, and access guild banks. Guilds can own guild houses and have guild achievements. Guild leaders can promote members to different ranks with varying permissions. Guilds participate in guild vs guild activities and can earn guild reputations. Being in a guild provides a sense of community and shared goals.",
-    "keywords": ["guilds", "organizations", "guild_bank", "ranks", "community", "guild_vs_guild"],
+    "keywords": ["guilds", "organizations", "guild bank", "ranks", "community", "guild vs guild", "player organizations", "social structure", "benefits", "guild members", "chat", "share quests", "access", "guild houses", "guild achievements", "guild leaders", "promote members", "permissions", "activities", "guild reputations", "sense of community", "shared goals"],
     "tags": ["mechanic", "social", "guilds", "community"]
   },
   {
@@ -80,21 +80,21 @@
     "id": "mechanic_world_events",
     "title": "World Events",
     "content": "World Events are large-scale events that affect the entire game world. Examples include the Scourge Invasion, the Ahn'Qiraj War Effort, and seasonal events like Hallow's End or Brewfest. World Events involve special quests, bosses, and rewards. They bring players together for massive coordinated efforts. Participating in world events provides unique items, achievements, and experiences. These events create memorable moments in the game's history.",
-    "keywords": ["world_events", "scourge_invasion", "ahnqiraj", "seasonal", "hallows_end", "brewfest"],
+    "keywords": ["world events", "scourge invasion", "ahnqiraj", "seasonal", "hallows end", "brewfest", "large scale events", "affect entire game world", "ahn qiraj war effort", "special quests", "bosses", "rewards", "bring players together", "massive coordinated efforts", "participating", "unique items", "achievements", "experiences", "memorable moments", "game history"],
     "tags": ["mechanic", "events", "world", "seasonal"]
   },
   {
     "id": "mechanic_profession_specializations",
     "title": "Profession Specializations",
     "content": "Many professions have specializations that provide unique recipes and abilities. Blacksmithing has Armorsmithing and Weaponsmithing. Leatherworking has Dragonscale, Elemental, and Tribal. Tailoring has Mooncloth, Shadoweave, and Spellfire. Engineering has Goblin and Gnomish. Alchemy has potions, elixirs, and transmutation. Choosing a specialization focuses your profession on specific types of items and unlocks exclusive recipes.",
-    "keywords": ["profession_specializations", "blacksmithing", "leatherworking", "tailoring", "engineering", "alchemy"],
+    "keywords": ["profession specializations", "blacksmithing", "leatherworking", "tailoring", "engineering", "alchemy", "unique recipes", "abilities", "armorsmithing", "weaponsmithing", "dragonscale", "elemental", "tribal", "mooncloth", "shadoweave", "spellfire", "goblin", "gnomish", "potions", "elixirs", "transmutation", "choosing", "focuses", "specific types", "exclusive recipes"],
     "tags": ["mechanic", "professions", "specializations", "crafting"]
   },
   {
     "id": "mechanic_currency",
     "title": "Currency Systems",
     "content": "World of Warcraft has multiple currency systems beyond gold. Honor points for PvP gear, arena points for rated gear, justice points for dungeon/raid gear, valor points for heroic gear, and various tokens for specific reputations. Emblems of various colors provide raid gear. Different currencies serve different purposes and are earned through specific activities. Managing multiple currencies is important for gearing up characters efficiently.",
-    "keywords": ["currency", "honor", "arena_points", "justice_points", "valor_points", "emblems"],
+    "keywords": ["currency", "honor", "arena points", "justice points", "valor points", "emblems", "gold", "pvp gear", "rated gear", "dungeon raid gear", "heroic gear", "tokens", "specific reputations", "various colors", "raid gear", "different purposes", "earned through", "specific activities", "managing", "gearing up", "characters", "efficiently"],
     "tags": ["mechanic", "currency", "gearing", "progression"]
   }
 ]

@@ -3,49 +3,49 @@
     "id": "quest_class_stories",
     "title": "Class-Specific Storylines",
     "content": "Each class has unique quests that tell their story. Paladins have the Silver Hand storyline, warlocks have demonic pacts, hunters have beast mastery. Class quests provide unique items and abilities. They often involve important lore figures. Completing class quests enhances understanding of class identity and provides powerful rewards.",
-    "keywords": ["class_stories", "paladin", "warlock", "hunter", "silver_hand", "lore", "identity"],
+    "keywords": ["class stories", "paladin", "warlock", "hunter", "silver hand", "lore", "identity", "each class", "unique quests", "tell their story", "silver hand storyline", "demonic pacts", "beast mastery", "provide unique items", "abilities", "important lore figures", "completing class quests", "enhances understanding", "powerful rewards"],
     "tags": ["quests", "story", "class", "lore"]
   },
   {
     "id": "quest_zone_storylines",
     "title": "Zone Story Arcs",
     "content": "Each zone has a main storyline that guides players through the area. Examples include the Defias Brotherhood in Westfall, the Scourge invasion in the Plaguelands, or the silithid threat in Silithus. Zone stories connect to larger world events. Following zone storylines provides better loot and understanding of the world.",
-    "keywords": ["zone_storylines", "defias_brotherhood", "scourge", "silithid", "world_events", "loot"],
+    "keywords": ["zone storylines", "defias brotherhood", "scourge", "silithid", "world events", "loot", "each zone", "main storyline", "guides players", "through the area", "westfall", "scourge invasion", "plaguelands", "silithid threat", "silithus", "connect to larger", "following zone storylines", "provides better loot", "understanding of the world"],
     "tags": ["quests", "story", "zones", "progression"]
   },
   {
     "id": "quest_reputation_grinds",
     "title": "Reputation Quest Hubs",
     "content": "Many factions have extensive quest lines for reputation. The Cenarion Circle in Silithus, the Argent Dawn in the Plaguelands, the Thorium Brotherhood in Searing Gorge. Reputation quests often involve grinding specific activities. High reputation unlocks better rewards and access to exclusive content.",
-    "keywords": ["reputation_quests", "cenarion_circle", "argent_dawn", "thorium_brotherhood", "grinding"],
+    "keywords": ["reputation quests", "cenarion circle", "argent dawn", "thorium brotherhood", "grinding", "many factions", "extensive quest lines", "silithus", "plaguelands", "searing gorge", "involve grinding", "specific activities", "high reputation", "unlocks better rewards", "access to", "exclusive content"],
     "tags": ["quests", "reputation", "grinding", "rewards"]
   },
   {
     "id": "quest_dungeon_quests",
     "title": "Dungeon and Raid Quests",
     "content": "Many dungeons and raids have associated quests. Blackrock Depths has the Dark Iron dwarves storyline, Stratholme has the Scourge invasion quests. Dungeon quests often provide attunement or access to harder content. They explain the dungeon's lore and provide additional rewards beyond boss loot.",
-    "keywords": ["dungeon_quests", "blackrock_depths", "stratholme", "attunement", "lore", "rewards"],
+    "keywords": ["dungeon quests", "blackrock depths", "stratholme", "attunement", "lore", "rewards", "many dungeons", "raids", "associated quests", "dark iron dwarves", "storyline", "scourge invasion quests", "provide attunement", "access to harder content", "explain the dungeon", "additional rewards", "beyond boss loot"],
     "tags": ["quests", "dungeons", "raids", "lore"]
   },
   {
     "id": "quest_world_events",
     "title": "World Event Quests",
     "content": "Major world events have extensive quest lines. The Ahn'Qiraj War Effort required collecting resources across Azeroth. The Scourge Invasion had defense quests in major cities. World event quests involve massive coordination and provide unique rewards. They create memorable experiences for the entire playerbase.",
-    "keywords": ["world_event_quests", "ahnqiraj", "scourge_invasion", "coordination", "memorable"],
+    "keywords": ["world event quests", "ahnqiraj", "scourge invasion", "coordination", "memorable", "major world events", "extensive quest lines", "ahn qiraj war effort", "required collecting", "resources across azeroth", "defense quests", "major cities", "involve massive coordination", "provide unique rewards", "create memorable experiences", "entire playerbase"],
     "tags": ["quests", "events", "world", "coordination"]
   },
   {
     "id": "quest_epic_questlines",
     "title": "Epic Quest Chains",
     "content": "Some quests form long, involved storylines. The Warlock artifact quests, the Paladin epic mounts, the Hunter epic bow quests. Epic quests often span multiple zones and require significant time investment. They provide the most powerful and unique rewards in the game.",
-    "keywords": ["epic_questlines", "warlock_artifacts", "paladin_mounts", "hunter_bow", "investment"],
+    "keywords": ["epic questlines", "warlock artifacts", "paladin mounts", "hunter bow", "investment", "some quests", "form long", "involved storylines", "warlock artifact quests", "paladin epic mounts", "hunter epic bow quests", "span multiple zones", "require significant", "time investment", "provide the most", "powerful", "unique rewards", "in the game"],
     "tags": ["quests", "epic", "storylines", "rewards"]
   },
   {
     "id": "quest_profession_quests",
     "title": "Profession Quest Lines",
     "content": "Professions have quests that advance their story. Blacksmithing has the Dark Iron quests, alchemy has the Elixir of Vigor, fishing has the Nat Pagle quests. Profession quests provide recipes, tools, and understanding of the profession's lore. They often require gathering rare materials or completing difficult tasks.",
-    "keywords": ["profession_quests", "blacksmithing", "alchemy", "fishing", "recipes", "tools"],
+    "keywords": ["profession quests", "blacksmithing", "alchemy", "fishing", "recipes", "tools", "professions have quests", "advance their story", "dark iron quests", "elixir of vigor", "nat pagle quests", "provide recipes", "understanding of", "profession lore", "require gathering", "rare materials", "completing difficult tasks"],
     "tags": ["quests", "professions", "lore", "recipes"]
   },
   {
@@ -66,42 +66,42 @@
     "id": "quest_escort_quests",
     "title": "Escort and Protection Quests",
     "content": "Quests where players must escort NPCs to destinations while protecting them from enemies. Examples include escorting the druid to Moonglade or protecting the caravan in Thousand Needles. Escort quests can be challenging due to mob aggro and pathing issues. They often provide good rewards for successful completion.",
-    "keywords": ["escort_quests", "protection", "druid", "caravan", "challenging", "rewards"],
+    "keywords": ["escort quests", "protection", "druid", "caravan", "challenging", "rewards", "players must escort", "npcs to destinations", "protecting them", "from enemies", "escorting the druid", "moonglade", "protecting the caravan", "thousand needles", "due to mob aggro", "pathing issues", "provide good rewards", "successful completion"],
     "tags": ["quests", "escort", "protection", "challenging"]
   },
   {
     "id": "quest_collection_quests",
     "title": "Collection and Gathering Quests",
     "content": "Quests that require collecting specific items. Gathering rare herbs, killing specific mobs for drops, finding hidden objects. Examples include the collection quests in Un'Goro Crater or the breadcrumb quests in zones. These quests teach exploration and efficient farming techniques.",
-    "keywords": ["collection_quests", "gathering", "herbs", "drops", "exploration", "farming"],
+    "keywords": ["collection quests", "gathering", "herbs", "drops", "exploration", "farming", "require collecting", "specific items", "gathering rare herbs", "killing specific mobs", "finding hidden objects", "un goro crater", "breadcrumb quests", "zones", "teach exploration", "efficient farming", "techniques"],
     "tags": ["quests", "collection", "gathering", "exploration"]
   },
   {
     "id": "quest_timed_quests",
     "title": "Timed and Race Quests",
     "content": "Quests with time limits or racing elements. Racing against other players, completing objectives before time runs out. Examples include the race to the finish in certain zones or timed defense quests. These quests require speed and efficiency. They often provide bonus rewards for fast completion.",
-    "keywords": ["timed_quests", "racing", "speed", "efficiency", "bonus_rewards", "defense"],
+    "keywords": ["timed quests", "racing", "speed", "efficiency", "bonus rewards", "defense", "time limits", "racing elements", "racing against other players", "completing objectives", "before time runs out", "race to the finish", "certain zones", "timed defense quests", "require speed", "provide bonus rewards", "fast completion"],
     "tags": ["quests", "timed", "racing", "speed"]
   },
   {
     "id": "quest_group_quests",
     "title": "Group and Raid Quests",
     "content": "Quests designed for groups or raids. The Molten Core attunement quests, the Ahn'Qiraj opening quests. These quests require coordination and often involve difficult combat. They provide access to endgame content and powerful rewards. Group quests teach teamwork and strategy.",
-    "keywords": ["group_quests", "raid_quests", "molten_core", "ahnqiraj", "coordination", "teamwork"],
+    "keywords": ["group quests", "raid quests", "molten core", "ahnqiraj", "coordination", "teamwork", "designed for groups", "raids", "molten core attunement", "ahn qiraj opening", "require coordination", "difficult combat", "provide access", "endgame content", "powerful rewards", "teach teamwork", "strategy"],
     "tags": ["quests", "group", "raid", "coordination"]
   },
   {
     "id": "quest_repeatable_quests",
     "title": "Repeatable and Daily Quests",
     "content": "Quests that can be completed multiple times. Daily quests for reputation, repeatable quests for gold or items. Examples include the Cenarion Circle dailies or the fishing daily quests. Repeatable quests provide ongoing activities and rewards. They help with gearing and reputation grinding.",
-    "keywords": ["repeatable_quests", "daily_quests", "cenarion_circle", "fishing", "ongoing", "grinding"],
+    "keywords": ["repeatable quests", "daily quests", "cenarion circle", "fishing", "ongoing", "grinding", "completed multiple times", "daily quests for reputation", "repeatable quests for gold", "items", "cenarion circle dailies", "fishing daily quests", "provide ongoing activities", "rewards", "help with gearing", "reputation grinding"],
     "tags": ["quests", "repeatable", "daily", "grinding"]
   },
   {
     "id": "quest_hidden_quests",
     "title": "Hidden and Secret Quests",
     "content": "Quests not obviously marked on the map. Hidden quests require exploration, talking to specific NPCs, or discovering secret areas. Examples include the quest for the Green Hills of Stranglethorn pages or the hidden quests in Blackrock Mountain. Finding hidden quests provides satisfaction and unique rewards.",
-    "keywords": ["hidden_quests", "secret_quests", "exploration", "green_hills", "blackrock_mountain", "satisfaction"],
+    "keywords": ["hidden quests", "secret quests", "exploration", "green hills", "blackrock mountain", "satisfaction", "not obviously marked", "on the map", "require exploration", "talking to specific npcs", "discovering secret areas", "quest for the", "green hills of stranglethorn", "pages", "hidden quests in", "finding hidden quests", "provides satisfaction", "unique rewards"],
     "tags": ["quests", "hidden", "secret", "exploration"]
   }
 ]

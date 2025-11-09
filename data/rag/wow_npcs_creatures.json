@@ -3,42 +3,42 @@
     "id": "npc_world_bosses",
     "title": "World Bosses",
     "content": "World bosses are powerful creatures that spawn in the open world and can be attacked by any player. They drop valuable loot and provide challenging combat. Examples include Lord Kazzak (Burning Legion), Azuregos (blue dragon), and Doom Lord Kazzak. World bosses require coordination and often drop epic items. They respawn on timers and are popular targets for guilds and groups.",
-    "keywords": ["world_bosses", "lord_kazzak", "azuregos", "doom_lord_kazzak", "loot", "coordination"],
+    "keywords": ["world bosses", "lord kazzak", "azuregos", "doom lord kazzak", "loot", "coordination", "powerful creatures", "spawn in open world", "attacked by any player", "valuable loot", "challenging combat", "burning legion", "blue dragon", "require coordination", "epic items", "respawn on timers", "popular targets", "guilds", "groups"],
     "tags": ["npcs", "bosses", "world", "loot"]
   },
   {
     "id": "npc_rare_elites",
     "title": "Rare Elite Creatures",
     "content": "Rare elites are powerful monsters that spawn occasionally in the world. They drop rare items and achievements. Examples include the Bone Witch (Eastern Plaguelands), Snarler (Un'Goro Crater), or Krellack (Winterspring). Rare elites often have unique abilities and require strategy to defeat. Many players hunt rares for achievements and valuable drops.",
-    "keywords": ["rare_elites", "bone_witch", "snarler", "krellack", "achievements", "drops"],
+    "keywords": ["rare elites", "bone witch", "snarler", "krellack", "achievements", "drops", "powerful monsters", "spawn occasionally", "rare items", "eastern plaguelands", "un goro crater", "winterspring", "unique abilities", "require strategy", "hunt rares", "valuable drops"],
     "tags": ["npcs", "rare", "elite", "achievements"]
   },
   {
     "id": "npc_quest_givers",
     "title": "Important Quest Givers",
     "content": "Many NPCs provide crucial quests that advance storylines or provide rare rewards. Examples include Thrall (Orgrimmar), King Magni Bronzebeard (Ironforge), or Archmage Antonidas (Dalaran). Quest givers often have dialogue that provides lore and context. Some quest givers are part of larger quest chains that span multiple zones.",
-    "keywords": ["quest_givers", "thrall", "king_magni", "archmage_antonidas", "lore", "storylines"],
+    "keywords": ["quest givers", "thrall", "king magni", "archmage antonidas", "lore", "storylines", "crucial quests", "advance storylines", "rare rewards", "orgrimmar", "ironforge", "dalaran", "dialogue", "provides lore", "context", "larger quest chains", "span multiple zones"],
     "tags": ["npcs", "quests", "lore", "story"]
   },
   {
     "id": "npc_class_trainers",
     "title": "Class and Profession Trainers",
     "content": "Class trainers teach new abilities and talents as players level up. Profession trainers teach crafting skills and recipes. Examples include Uthel'nay (mage trainer in Orgrimmar) or Fenthwick (hunter trainer in Stormwind). Trainers are essential for character progression. Some trainers require reputation or special access.",
-    "keywords": ["class_trainers", "profession_trainers", "uthelnay", "fenthwick", "abilities", "talents"],
+    "keywords": ["class trainers", "profession trainers", "uthelnay", "fenthwick", "abilities", "talents", "teach new abilities", "level up", "crafting skills", "recipes", "mage trainer", "orgrimmar", "hunter trainer", "stormwind", "essential", "character progression", "require reputation", "special access"],
     "tags": ["npcs", "training", "progression", "skills"]
   },
   {
     "id": "npc_vendors",
     "title": "Special Vendors",
     "content": "Special vendors sell unique items not available elsewhere. Examples include the Argent Dawn vendors (for Stratholme), the Thorium Brotherhood vendors (for Blackrock Depths), or the Darkmoon Faire vendors. Some vendors require reputation or special currencies. Finding and accessing special vendors is part of efficient gearing strategies.",
-    "keywords": ["special_vendors", "argent_dawn", "thorium_brotherhood", "darkmoon_faire", "reputation"],
+    "keywords": ["special vendors", "argent dawn", "thorium brotherhood", "darkmoon faire", "reputation", "unique items", "not available elsewhere", "stratholme", "blackrock depths", "require reputation", "special currencies", "finding", "accessing", "efficient gearing", "strategies"],
     "tags": ["npcs", "vendors", "items", "reputation"]
   },
   {
     "id": "npc_flight_masters",
     "title": "Flight Masters",
     "content": "Flight masters provide fast travel between locations via gryphons (Alliance) or wyverns (Horde). Learning flight paths is essential for efficient travel. Flight masters are located in major cities and towns. Some flight paths require reputation or quests to unlock. The flight network connects all major zones and makes exploration much easier.",
-    "keywords": ["flight_masters", "gryphons", "wyverns", "flight_paths", "travel", "exploration"],
+    "keywords": ["flight masters", "gryphons", "wyverns", "flight paths", "travel", "exploration", "fast travel", "alliance", "horde", "learning", "essential", "efficient travel", "major cities", "towns", "require reputation", "quests to unlock", "flight network", "connects all major zones", "makes exploration easier"],
     "tags": ["npcs", "travel", "flight", "exploration"]
   },
   {
@@ -52,14 +52,14 @@
     "id": "npc_banker",
     "title": "Bankers and Guild Banks",
     "content": "Bankers provide access to personal bank storage. Guild banks provide shared storage for guild members. Bankers are located in major cities. Guild banks have tabs and permissions that can be managed by officers. Using banks effectively is essential for managing large amounts of items and materials.",
-    "keywords": ["bankers", "guild_banks", "storage", "tabs", "permissions", "inventory"],
+    "keywords": ["bankers", "guild banks", "storage", "tabs", "permissions", "inventory", "personal bank storage", "shared storage", "guild members", "major cities", "managed by officers", "using banks effectively", "managing large amounts", "items", "materials"],
     "tags": ["npcs", "storage", "guild", "inventory"]
   },
   {
     "id": "npc_auctioneers",
     "title": "Auctioneers",
     "content": "Auctioneers manage the auction house where players can buy and sell items. They are located in major cities. Auctioneers handle posting auctions, bidding, and collecting winnings. Understanding how to use the auction house effectively is crucial for the in-game economy. Different cities have different auction houses with varying activity levels.",
-    "keywords": ["auctioneers", "auction_house", "buy", "sell", "bid", "economy"],
+    "keywords": ["auctioneers", "auction house", "buy", "sell", "bid", "economy", "manage", "players can buy and sell", "located in major cities", "posting auctions", "bidding", "collecting winnings", "understanding", "use effectively", "crucial", "in game economy", "different cities", "varying activity levels"],
     "tags": ["npcs", "economy", "trading", "auction"]
   },
   {
@@ -73,35 +73,35 @@
     "id": "npc_lore_figures",
     "title": "Important Lore Figures",
     "content": "Many NPCs are important figures in Warcraft lore. Examples include Medivh (the Last Guardian), Illidan Stormrage, or Sylvanas Windrunner. These characters have rich backstories and often provide quests or dialogue that advances the game's narrative. Learning about lore figures enhances the gaming experience and understanding of the world.",
-    "keywords": ["lore_figures", "medivh", "illidan", "sylvanas", "backstories", "narrative"],
+    "keywords": ["lore figures", "medivh", "illidan", "sylvanas", "backstories", "narrative", "important figures", "warcraft lore", "last guardian", "illidan stormrage", "sylvanas windrunner", "rich backstories", "provide quests", "dialogue", "advances the game", "learning about", "enhances gaming experience", "understanding of the world"],
     "tags": ["npcs", "lore", "story", "characters"]
   },
   {
     "id": "npc_faction_leaders",
     "title": "Faction Leaders",
     "content": "Faction leaders guide their organizations and provide quests and reputation. Examples include Cairne Bloodhoof (Thunder Bluff), Tyrande Whisperwind (Darnassus), or Varian Wrynn (Stormwind). Faction leaders often have complex storylines and political motivations. Interacting with faction leaders helps players understand the geopolitical landscape of Azeroth.",
-    "keywords": ["faction_leaders", "cairne_bloodhoof", "tyrande_whisperwind", "varian_wrynn", "politics"],
+    "keywords": ["faction leaders", "cairne bloodhoof", "tyrande whisperwind", "varian wrynn", "politics", "guide their organizations", "provide quests", "reputation", "thunder bluff", "darnassus", "stormwind", "complex storylines", "political motivations", "interacting with", "helps players understand", "geopolitical landscape", "azeroth"],
     "tags": ["npcs", "factions", "leaders", "politics"]
   },
   {
     "id": "npc_merchants",
     "title": "Specialized Merchants",
     "content": "Specialized merchants sell specific types of goods. Weapon merchants, armorers, reagent vendors, poison vendors. Some merchants are only available in certain locations or require special access. Finding the right merchants is important for gearing up and obtaining necessary supplies. Different merchants offer different quality and selection of goods.",
-    "keywords": ["specialized_merchants", "weapons", "armor", "reagents", "poisons", "supplies"],
+    "keywords": ["specialized merchants", "weapons", "armor", "reagents", "poisons", "supplies", "sell specific types", "weapon merchants", "armorers", "reagent vendors", "poison vendors", "certain locations", "require special access", "finding the right", "important for gearing up", "obtaining necessary", "different quality", "selection of goods"],
     "tags": ["npcs", "merchants", "goods", "supplies"]
   },
   {
     "id": "npc_guards",
     "title": "City Guards and Sentries",
     "content": "Guards protect cities and provide security. They attack hostile players and creatures. Guards have different levels and abilities based on the city. Some guards provide directions or information. Guards help maintain order in cities and make them safe for players. Different races have different guard appearances and behaviors.",
-    "keywords": ["city_guards", "sentries", "security", "protection", "directions", "order"],
+    "keywords": ["city guards", "sentries", "security", "protection", "directions", "order", "protect cities", "attack hostile players", "creatures", "different levels", "abilities", "based on the city", "provide directions", "information", "maintain order", "safe for players", "different races", "guard appearances", "behaviors"],
     "tags": ["npcs", "guards", "security", "cities"]
   },
   {
     "id": "npc_transport",
     "title": "Transportation NPCs",
     "content": "Various NPCs provide transportation services. Boat captains, zeppelin masters, portal trainers. Examples include the zeppelin between Orgrimmar and Undercity, or the boat from Booty Bay to Ratchet. Transportation NPCs make long-distance travel faster and more convenient. Some transportation requires tickets or has schedules.",
-    "keywords": ["transportation", "boat_captains", "zeppelin_masters", "portals", "tickets", "schedules"],
+    "keywords": ["transportation", "boat captains", "zeppelin masters", "portals", "tickets", "schedules", "provide transportation services", "portal trainers", "examples include", "zeppelins", "orgrimmar", "undercity", "boat", "booty bay", "ratchet", "long distance travel", "faster", "more convenient", "requires tickets", "has schedules"],
     "tags": ["npcs", "transport", "travel", "convenience"]
   }
 ]
