@@ -11,7 +11,7 @@
 >
 > This module is also in development and can bog down your server due to the nature of running local LLM. Please proceed with this in mind.
 
-> [!INFO]
+> [!IMPORTANT]
 > To fully disable Playerbots normal chatter and random chatter that might interfere with this module, set the following settings in your `playerbots.conf`:
 > - `AiPlayerbot.EnableBroadcasts = 0` (disables loot/quest/kill broadcasts)
 > - `AiPlayerbot.RandomBotTalk = 0` (disables random talking in say/yell/general channels)

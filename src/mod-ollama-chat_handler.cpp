@@ -1189,10 +1189,20 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 UpdateBotPlayerSentiment(botPtr, senderPtr, msg);
                 
                 AppendBotConversation(botGuid, senderGuid, msg, response);
-                float respDistance = senderPtr->GetDistance(botPtr);
-                if(g_DebugEnabled)
+                if (botPtr->IsInWorld() && senderPtr->IsInWorld())
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} (distance: {}) responded: {}", botPtr->GetName(), respDistance, response);
+                    float respDistance = senderPtr->GetDistance(botPtr);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} (distance: {}) responded: {}", botPtr->GetName(), respDistance, response);
+                    }
+                }
+                else
+                {
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded: {} (distance not calculated - players not in world)", botPtr->GetName(), response);
+                    }
                 }
             }
             catch (const std::exception& ex)
