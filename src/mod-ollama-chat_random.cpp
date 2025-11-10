@@ -90,8 +90,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
     std::unordered_set<uint64_t> processedBotsThisTick;
 
-    std::unordered_set<uint64_t> processedBotsThisTick;
-
     for (auto const& itr : allPlayers)
     {
         Player* bot = itr.second;
