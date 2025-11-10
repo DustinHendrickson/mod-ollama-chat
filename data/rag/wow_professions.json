@@ -77,88 +77,109 @@
   "tags": ["profession", "crafting", "armor", "bags", "cloth classes", "mage", "priest", "warlock"]
   },
   {
+    "id": "profession_cooking",
+    "title": "Cooking Profession",
+    "content": "Cooking is a secondary profession that lets players prepare food that provides buffs and stat bonuses. Recipes range from basic breads and stews to powerful feasts that grant raid-wide bonuses. Cooking often uses ingredients gathered from fish and drops and is valuable for raiding and leveling. Some expansions add unique cooking buffs and world event recipes.",
+    "keywords": [
+      "cooking",
+      "food",
+      "recipes",
+      "feasts",
+      "buffs",
+      "stat bonuses",
+      "ingredients",
+      "consumables"
+    ],
+    "tags": [
+      "profession",
+      "secondary",
+      "consumables",
+      "buffs",
+      "raiding"
+    ]
+  },
+  {
+    "id": "profession_fishing",
+    "title": "Fishing Profession",
+    "content": "Fishing is a secondary gathering profession that lets players catch fish and other items from water sources. Fish are used as ingredients for Cooking and some crafting recipes. Fishing can also yield rare items, reagents, and collectibles. Specialized lures, poles, and fishing skills improve catch rates and access to rare catches.",
+    "keywords": [
+      "fishing","fish","gathering","poles","lures","catches","ingredients","cooking"],
+    "tags": [
+      "profession",
+      "secondary",
+      "gathering",
+      "materials",
+      "consumables"
+    ]
+  },
+  {
+    "id": "profession_first_aid",
+    "title": "First Aid Profession",
+    "content": "First Aid is a legacy secondary profession that allows players to create bandages and health-restoring items. It is useful for out-of-combat healing and can be vital for solo players. In some expansions First Aid was integrated into other systems, but in classic and TBC-era content it remains useful for quick healing between fights.",
+    "keywords": ["first aid","bandages","healing","consumables","out of combat","survival"],
+    "tags": ["profession","secondary","consumables","healing","solo"]
+  },
+  {
     "id": "mage_professions_guide",
     "title": "Best Professions for Mages",
     "content": "For mages, the best professions are typically Tailoring (for cloth armor and bags), Enchanting (for spell power enchants and disenchanting), and Alchemy (for mana potions and flasks). Tailoring allows mages to create their own gear and is essential for cloth wearers. Enchanting provides valuable spell power enchants for weapons and armor. Alchemy creates mana regeneration items crucial for spellcasters.",
-  "keywords": ["mage", "professions", "profession", "tailoring", "enchanting", "alchemy", "cloth", "spell power", "mana"],
-  "tags": ["profession", "mage", "cloth classes", "spellcaster"]
+    "keywords": ["mage", "professions", "profession", "tailoring", "enchanting", "alchemy", "cloth", "spell power", "mana"],
+    "tags": ["profession", "mage", "cloth classes", "spellcaster"]
   },
   {
     "id": "warrior_professions_guide",
     "title": "Best Professions for Warriors",
     "content": "For warriors, the best professions are Blacksmithing (for plate armor and weapons), Mining (for ore materials), and Engineering (for utility items and repairs). Blacksmithing allows warriors to create their own plate armor and weapons. Mining provides the essential ores needed for blacksmithing. Engineering offers repair bots and other useful combat utilities.",
     "keywords": ["warrior", "professions", "profession", "blacksmithing", "mining", "engineering", "plate", "armor", "weapons"],
-  "tags": ["profession", "warrior", "plate classes", "melee"]
+    "tags": ["profession", "warrior", "plate classes", "melee"]
   },
   {
     "id": "paladin_professions_guide",
     "title": "Best Professions for Paladins",
     "content": "For paladins, the best professions are Blacksmithing (for plate armor), Mining (for materials), Enchanting (for holy and spell power enchants), and Jewelcrafting (for jewelry and trinkets). Blacksmithing enables paladins to create their own plate armor. Enchanting provides essential spell power and holy enchants. Jewelcrafting offers valuable jewelry with healing and spell power stats.",
     "keywords": ["paladin", "professions", "profession", "blacksmithing", "mining", "enchanting", "jewelcrafting", "plate", "holy", "healing"],
-  "tags": ["profession", "paladin", "plate classes", "healer", "tank"]
+    "tags": ["profession", "paladin", "plate classes", "healer", "tank"]
   },
   {
     "id": "hunter_professions_guide",
     "title": "Best Professions for Hunters",
     "content": "For hunters, the best professions are Leatherworking (for leather armor), Skinning (for leather materials), Engineering (for guns, scopes, and ammo), and Mining (for engineering materials). Leatherworking allows hunters to create their own leather armor. Engineering provides guns, scopes for better ranged damage, and repair bots. Skinning pairs perfectly with leatherworking for self-sufficiency.",
     "keywords": ["hunter", "professions", "profession", "leatherworking", "skinning", "engineering", "guns", "scopes", "ammo", "ranged"],
-  "tags": ["profession", "hunter", "leather classes", "ranged"]
+    "tags": ["profession", "hunter", "leather classes", "ranged"]
   },
   {
     "id": "rogue_professions_guide",
     "title": "Best Professions for Rogues",
     "content": "For rogues, the best professions are Leatherworking (for leather armor), Skinning (for materials), Engineering (for utility gadgets and lockpicking), and Enchanting (for agility and critical strike enchants). Leatherworking enables rogues to create their own leather armor. Engineering provides useful gadgets and potentially lockpicking tools. Enchanting offers agility and critical strike enhancements crucial for rogue damage.",
-  "keywords": ["rogue", "professions", "profession", "leatherworking", "skinning", "engineering", "enchanting", "agility", "critical strike", "stealth"],
-  "tags": ["profession", "rogue", "leather classes", "melee", "stealth"]
+    "keywords": ["rogue", "professions", "profession", "leatherworking", "skinning", "engineering", "enchanting", "agility", "critical strike", "stealth"],
+    "tags": ["profession", "rogue", "leather classes", "melee", "stealth"]
   },
   {
     "id": "priest_professions_guide",
     "title": "Best Professions for Priests",
     "content": "For priests, the best professions are Tailoring (for cloth armor), Enchanting (for spell power and intellect enchants), Alchemy (for mana potions), and Inscription (for healing and spell modification glyphs). Tailoring allows priests to create their own cloth armor. Enchanting provides spell power enchants essential for healing and damage. Inscription offers glyphs that modify priest spells and abilities.",
-  "keywords": ["priest", "professions", "profession", "tailoring", "enchanting", "alchemy", "inscription", "healing", "cloth", "spell power"],
-  "tags": ["profession", "priest", "cloth classes", "healer", "caster"]
+    "keywords": ["priest", "professions", "profession", "tailoring", "enchanting", "alchemy", "inscription", "healing", "cloth", "spell power"],
+    "tags": ["profession", "priest", "cloth classes", "healer", "caster"]
   },
   {
     "id": "shaman_professions_guide",
     "title": "Best Professions for Shamans",
     "content": "For shamans, the best professions are Leatherworking (for leather/mail armor), Skinning (for materials), Mining (for blacksmithing/engineering materials), and Enchanting (for spell power enchants). Leatherworking enables shamans to create their own leather or mail armor. Mining provides materials for crafting professions. Enchanting offers spell power enchants crucial for shaman elemental and healing spells.",
     "keywords": ["shaman", "professions", "profession", "leatherworking", "skinning", "mining", "enchanting", "elemental", "healing", "enhancement"],
-  "tags": ["profession", "shaman", "leather classes", "healer", "caster", "melee"]
+    "tags": ["profession", "shaman", "leather classes", "healer", "caster", "melee"]
   },
   {
     "id": "warlock_professions_guide",
     "title": "Best Professions for Warlocks",
     "content": "For warlocks, the best professions are Tailoring (for cloth armor), Enchanting (for spell power enchants), Alchemy (for mana and health potions), and Jewelcrafting (for soul stones and trinkets). Tailoring allows warlocks to create their own cloth armor. Enchanting provides spell power enchants for damage spells. Alchemy creates essential mana and health potions for warlock sustainability.",
-  "keywords": ["warlock", "professions", "profession", "tailoring", "enchanting", "alchemy", "jewelcrafting", "cloth", "spell power", "demonology"],
-  "tags": ["profession", "warlock", "cloth classes", "caster"]
+    "keywords": ["warlock", "professions", "profession", "tailoring", "enchanting", "alchemy", "jewelcrafting", "cloth", "spell power", "demonology"],
+    "tags": ["profession", "warlock", "cloth classes", "caster"]
   },
   {
     "id": "druid_professions_guide",
     "title": "Best Professions for Druids",
     "content": "For druids, the best professions are Leatherworking (for leather armor), Skinning (for materials), Herbalism (for alchemy materials), and Alchemy (for consumables and potions). Leatherworking enables druids to create their own leather armor. Skinning pairs with leatherworking for self-sufficiency. Alchemy provides potions useful for druid healing and mana regeneration in various forms.",
     "keywords": ["druid", "professions", "profession", "leatherworking", "skinning", "herbalism", "alchemy", "healing", "restoration", "balance"],
-  "tags": ["profession", "druid", "leather classes", "healer", "caster", "melee"]
-  }
-,
-  {
-    "id": "profession_cooking",
-    "title": "Cooking Profession",
-    "content": "Cooking is a secondary profession that lets players prepare food that provides buffs and stat bonuses. Recipes range from basic breads and stews to powerful feasts that grant raid-wide bonuses. Cooking often uses ingredients gathered from fish and drops and is valuable for raiding and leveling. Some expansions add unique cooking buffs and world event recipes.",
-    "keywords": ["cooking", "food", "recipes", "feasts", "buffs", "stat bonuses", "ingredients", "consumables"],
-    "tags": ["profession", "secondary", "consumables", "buffs", "raiding"]
-  },
-  {
-    "id": "profession_fishing",
-    "title": "Fishing Profession",
-    "content": "Fishing is a secondary gathering profession that lets players catch fish and other items from water sources. Fish are used as ingredients for Cooking and some crafting recipes. Fishing can also yield rare items, reagents, and collectibles. Specialized lures, poles, and fishing skills improve catch rates and access to rare catches.",
-    "keywords": ["fishing", "fish", "gathering", "poles", "lures", "catches", "ingredients", "cooking"],
-    "tags": ["profession", "secondary", "gathering", "materials", "consumables"]
-  },
-  {
-    "id": "profession_first_aid",
-    "title": "First Aid Profession",
-    "content": "First Aid is a legacy secondary profession that allows players to create bandages and health-restoring items. It is useful for out-of-combat healing and can be vital for solo players. In some expansions First Aid was integrated into other systems, but in classic and TBC-era content it remains useful for quick healing between fights.",
-    "keywords": ["first aid", "bandages", "healing", "consumables", "out of combat", "survival"],
-    "tags": ["profession", "secondary", "consumables", "healing", "solo"]
+    "tags": ["profession", "druid", "leather classes", "healer", "caster", "melee"]
   }
 ]

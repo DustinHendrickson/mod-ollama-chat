@@ -90,88 +90,79 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
     std::unordered_set<uint64_t> processedBotsThisTick;
 
-    for (Player* realPlayer : realPlayers)
+    std::unordered_set<uint64_t> processedBotsThisTick;
+
+    for (auto const& itr : allPlayers)
     {
-        std::vector<Player*> botsInRange;
-        // For each bot, check if it should do random chatter
-        for (auto const& itr : allPlayers)
+        Player* bot = itr.second;
+        PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
+        if (!ai) continue;
+        if (!bot->IsInWorld() || bot->IsBeingTeleported()) continue;
+        if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue;
+
+        // If bot is in a guild, check if any real player from their guild is online
+        bool hasRealPlayerInGuild = false;
+        Guild* guild = bot->GetGuild();
+        if (guild)
         {
-            Player* bot = itr.second;
-            PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
-            if (!ai) continue;
-            if (!bot->IsInWorld() || bot->IsBeingTeleported()) continue;
-            if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue;
-
-            // If bot is in a guild, check if any real player from their guild is online
-            bool hasRealPlayerInGuild = false;
-            Guild* guild = bot->GetGuild();
-            if (guild)
+            for (auto const& pair : ObjectAccessor::GetPlayers())
             {
-                for (auto const& pair : ObjectAccessor::GetPlayers())
+                Player* player = pair.second;
+                if (!player || !player->IsInWorld())
+                    continue;
+                if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                    continue;
+                if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
                 {
-                    Player* player = pair.second;
-                    if (!player || !player->IsInWorld())
-                        continue;
-                    if (sPlayerbotsMgr->GetPlayerbotAI(player))
-                        continue;
-                    if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
-                    {
-                        hasRealPlayerInGuild = true;
-                        break;
-                    }
-                }
-            }
-
-            // Only allow random chatter if:
-            // - For guild random chatter: hasRealPlayerInGuild
-            // - For other types: must be near a real player (handled in their own logic)
-
-            // For non-guild random chatter, require proximity to a real player
-            bool nearRealPlayer = false;
-            for (Player* realPlayer : realPlayers)
-            {
-                if (bot->GetDistance(realPlayer) <= g_RandomChatterRealPlayerDistance)
-                {
-                    nearRealPlayer = true;
+                    hasRealPlayerInGuild = true;
                     break;
                 }
             }
+        }
 
-            // If not in a guild or no real player in guild, only allow non-guild chatter if near a real player
-            if (!guild || !hasRealPlayerInGuild)
+        // For non-guild random chatter, require proximity to a real player, unless in guild with real player and flag is checked
+        bool nearRealPlayer = false;
+        for (Player* realPlayer : realPlayers)
+        {
+            if (bot->GetDistance(realPlayer) <= g_RandomChatterRealPlayerDistance)
             {
-                if (!nearRealPlayer)
-                    continue;
+                nearRealPlayer = true;
+                break;
             }
+        }
 
-            // Apply party restriction for random chatter
-            if (g_RestrictBotsToPartyMembers)
+        bool allowWithoutProximity = g_RestrictBotsToPartyMembers && guild && hasRealPlayerInGuild;
+        if (!allowWithoutProximity && !nearRealPlayer)
+            continue;
+
+        // Apply party restriction for random chatter
+        if (g_RestrictBotsToPartyMembers)
+        {
+            Group* botGroup = bot->GetGroup();
+            if (!botGroup || (botGroup->isRaidGroup() && !botGroup->isBGGroup()))
             {
-                Group* botGroup = bot->GetGroup();
-                if (!botGroup || (botGroup->isRaidGroup() && !botGroup->isBGGroup()))
+                // Bot is not in a valid party, skip
+                continue;
+            }
+            
+            // Check if there's at least one real player in the group
+            bool hasRealPlayerInParty = false;
+            for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
                 {
-                    // Bot is not in a valid party, skip
-                    continue;
-                }
-                
-                // Check if there's at least one real player in the group
-                bool hasRealPlayerInParty = false;
-                for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
-                {
-                    Player* member = ref->GetSource();
-                    if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
-                    {
-                        hasRealPlayerInParty = true;
-                        break;
-                    }
-                }
-                
-                if (!hasRealPlayerInParty)
-                {
-                    // No real players in party, skip
-                    continue;
+                    hasRealPlayerInParty = true;
+                    break;
                 }
             }
+            
+            if (!hasRealPlayerInParty)
+            {
+                // No real players in party, skip
+                continue;
+            }
+        }
 
             uint64_t guid = bot->GetGUID().GetRawValue();
             processedBotsThisTick.insert(guid);
@@ -872,48 +863,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (hasRealPlayerInGuild)
                         {
-                            // Check if there are real players nearby for non-guild channels
-                            bool hasNearbyRealPlayer = false;
-                            for (auto const& pair : ObjectAccessor::GetPlayers())
-                            {
-                                Player* player = pair.second;
-                                if (!player || !player->IsInWorld())
-                                    continue;
-                                if (sPlayerbotsMgr->GetPlayerbotAI(player))
-                                    continue;
-                                if (botPtr->GetDistance(player) <= g_RandomChatterRealPlayerDistance)
-                                {
-                                    hasNearbyRealPlayer = true;
-                                    break;
-                                }
-                            }
-                            
-                            // For bots in guilds with real players, randomly choose between available channels
-                            std::vector<std::string> channels = {"Guild"};
-                            if (hasNearbyRealPlayer)
-                            {
-                                channels.push_back("General");
-                                channels.push_back("Say");
-                            }
-                            
-                            std::random_device rd;
-                            std::mt19937 gen(rd());
-                            std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
-                            std::string selectedChannel = channels[dist(gen)];
-                            
-                            if (selectedChannel == "Guild" || IsaGuildComment) {
-                                if (g_DebugEnabled)
-                                    LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
-                                botAI->SayToGuild(response);
-                            } else if (selectedChannel == "Say") {
-                                if (g_DebugEnabled)
-                                    LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Say: {}", response);
-                                botAI->Say(response);
-                            } else if (selectedChannel == "General") {
-                                if (g_DebugEnabled)
-                                    LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
-                                botAI->SayToChannel(response, ChatChannelId::GENERAL);
-                            }
+                            // Guilded bots only speak in /guild
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
+                            botAI->SayToGuild(response);
                         }
                     }
                     else {
