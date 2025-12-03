@@ -258,6 +258,15 @@ extern uint32_t g_EventCooldownTime;
 extern bool g_RestrictBotsToPartyMembers;
 
 // --------------------------------------------
+// Timing
+// --------------------------------------------
+// settings to control how fast the bot can respond
+extern bool     g_EnableResponseDelay;          // Enable/disable response delay feature
+extern uint32_t g_MinResponseTimeMs;            // minimum response time in milliseconds
+extern uint32_t g_MaxResponseTimeMs;            // maximum response time in milliseconds
+extern float    g_ResponseWeightedByMessageLength;
+
+// --------------------------------------------
 // Loader Functions
 // --------------------------------------------
 void LoadOllamaChatConfig();

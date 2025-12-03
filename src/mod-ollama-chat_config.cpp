@@ -257,6 +257,14 @@ uint32_t g_EventCooldownTime = 10;
 // --------------------------------------------
 bool g_RestrictBotsToPartyMembers = false;
 
+// --------------------------------------------
+// Timing
+// --------------------------------------------
+// settings to control how fast the bot can respond
+bool     g_EnableResponseDelay = false;         //New feature so default to off
+uint32_t g_MinResponseTimeMs = 1000;            // minimum response time in milliseconds
+uint32_t g_MaxResponseTimeMs = 15000;            // maximum response time in milliseconds
+float    g_ResponseWeightedByMessageLength = 0.5f; // 0.0 = no weighting, completely random, 1.0 = fully weighted by message length, not random
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
 {
@@ -560,12 +568,20 @@ void LoadOllamaChatConfig()
     // Party restriction settings
     g_RestrictBotsToPartyMembers = sConfigMgr->GetOption<bool>("OllamaChat.RestrictBotsToPartyMembers", false);
 
+    /*
+    Time settings to control bot response speed
+    */
+    g_EnableResponseDelay = sConfigMgr->GetOption<bool>("OllamaChat.EnableResponseDelay", false);
+    g_MinResponseTimeMs = sConfigMgr->GetOption<uint32_t>("OllamaChat.MinResponseTimeMs", 1000);
+    g_MaxResponseTimeMs = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxResponseTimeMs", 15000);
+    g_ResponseWeightedByMessageLength = sConfigMgr->GetOption<float>("OllamaChat.ResponseWeightedByMessageLength", 0.5f);
+
     LOG_INFO("server.loading",
-             "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
+             "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, EnableResponseDelay = {}, "
              "PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
              "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
              "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
-             g_Enable, g_SayDistance, g_YellDistance,
+             g_Enable, g_SayDistance, g_YellDistance, g_EnableResponseDelay,
              g_PlayerReplyChance, g_BotReplyChance, g_MaxBotsToPick,
              g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,

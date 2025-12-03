@@ -26,7 +26,11 @@ std::string QueryOllamaAPI(const std::string& prompt)
 {
     // Initialize our custom HTTP client
     static OllamaHttpClient httpClient;
-    
+    //Track response time so we don't double up on delay
+    uint32_t startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()
+    ).count();
+
     if (!httpClient.IsAvailable())
     {
         if(g_DebugEnabled)
@@ -199,6 +203,37 @@ std::string QueryOllamaAPI(const std::string& prompt)
                 LOG_INFO("server.loading", "[Ollama Chat] Bot used think.");
             }
         }
+    }
+
+    //Add delay here if enabled
+    if (g_EnableResponseDelay)
+    {
+        uint32_t currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()
+        ).count();
+        //Actual delay time
+        uint32_t elapsedTimeMs = currentTimeMs - startTimeMs;
+        //Calculate delay time
+        uint32_t baseDelay = g_MinResponseTimeMs;
+        //2/3 words per second, words are 5 characters average
+        uint32_t lengthBasedDelay =  (static_cast<float>(botReply.length()) / 5.0f*2.0f/3.0f)*1000.0f;
+        uint32_t randomDelay = rand() % (g_MaxResponseTimeMs - g_MinResponseTimeMs + 1);
+        //lerp between length based and random
+        baseDelay += static_cast<uint32_t>(lengthBasedDelay * g_ResponseWeightedByMessageLength);
+        baseDelay += static_cast<uint32_t>(randomDelay * (1.0f - g_ResponseWeightedByMessageLength));
+
+        //Clamp to max
+        if (baseDelay > g_MaxResponseTimeMs)
+            baseDelay = g_MaxResponseTimeMs;
+
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Applying response delay of {} ms.", baseDelay);
+        }
+
+        //If we've already exceeded the delay, skip sleeping
+        if (elapsedTimeMs < baseDelay)
+            std::this_thread::sleep_for(std::chrono::milliseconds(baseDelay-elapsedTimeMs));
     }
 
     return botReply;

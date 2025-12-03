@@ -791,3 +791,31 @@ OllamaChat.RAGSimilarityThreshold = 0.3
 #     Description: Template for including RAG information in bot prompts.
 #     Placeholders (named): {rag_info}
 OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this information to provide accurate and detailed responses when applicable."
+
+# --------------------------------------------
+# RESPONSE TIMING SIMULATION
+# --------------------------------------------
+
+# OllamaChat.EnableResponseDelay
+#     Description: Enable or disable response delay to simulate thinking time.
+#                  When enabled (1), the bot will wait a random time between MinResponseTimeMs and MaxResponseTimeMs before responding.
+#                  When disabled (0), the bot will respond as soon as response is ready.
+#     Default:     0 (false)
+OllamaChat.EnableResponseDelay = 0
+
+# OllamaChat.MinResponseTimeMs
+#     Description: Minimum response time in milliseconds to simulate thinking/typing time.
+#     Default:     1000
+OllamaChat.MinResponseTimeMs = 1000
+
+# OllamaChat.MaxResponseTimeMs
+#     Description: Maximum response time in milliseconds to simulate thinking/typing time.
+#     Default:     15000
+OllamaChat.MaxResponseTimeMs = 15000
+
+# OllamaChat.ResponseWeightedByMessageLength
+#     Description: Weight the response delay based on the length of the player's message.
+#                  Value between 0.0 (no weighting) and 1.0 (fully weighted).
+#                  Higher values will increase delay for longer messages.
+#     Default:     0.5
+OllamaChat.ResponseWeightedByMessageLength = 0.5
