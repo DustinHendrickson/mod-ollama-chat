@@ -898,6 +898,13 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             {
                 continue;
             }
+            
+            // When party restriction is enabled, only allow party/raid/whisper chat responses
+            // Block guild, say, yell, and other non-party communication
+            if (sourceLocal != SRC_PARTY_LOCAL && sourceLocal != SRC_RAID_LOCAL && sourceLocal != SRC_WHISPER_LOCAL)
+            {
+                continue;
+            }
         }
         
         // For channel messages, bots in eligibleBots have already passed STRICT channel checks
