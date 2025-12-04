@@ -176,7 +176,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (now < nextRandomChatTime[guid])
                 continue;
 
-            if(urand(0, 99) > g_RandomChatterBotCommentChance)
+            if(urand(0, 99) >= g_RandomChatterBotCommentChance)
                 continue;
 
             std::string environmentInfo;
