@@ -29,11 +29,12 @@ std::string QueryOllamaAPI(const std::string& prompt)
     
     if (!httpClient.IsAvailable())
     {
+        LOG_ERROR("server.loading", "[OllamaChat] ERROR: HTTP client not available. Check if Ollama service is running and accessible.");
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] HTTP client not available.");
+            LOG_INFO("server.loading", "[OllamaChat] Debug: HTTP client initialization failed.");
         }
-        return "Hmm... I'm lost in thought.";
+        return "";
     }
 
     std::string url   = g_OllamaUrl;
@@ -138,11 +139,12 @@ std::string QueryOllamaAPI(const std::string& prompt)
 
     if (responseBuffer.empty())
     {
+        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Failed to reach Ollama API at {}. Check URL configuration and network connectivity.", url);
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] Failed to reach Ollama AI.");
+            LOG_INFO("server.loading", "[OllamaChat] Debug: Empty response buffer from HTTP client. Model: {}", model);
         }
-        return "Failed to reach Ollama AI.";
+        return "";
     }
 
     std::stringstream ss(responseBuffer);
@@ -166,26 +168,40 @@ std::string QueryOllamaAPI(const std::string& prompt)
     }
     catch (const std::exception& e)
     {
+        LOG_ERROR("server.loading", "[OllamaChat] ERROR: JSON parsing failed. Exception: {}", e.what());
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading",
-                    "[Ollama Chat] JSON Parsing Error: {}",
-                    e.what());
+            LOG_INFO("server.loading", "[OllamaChat] Debug: Response buffer content: {}", responseBuffer);
         }
-        return "Error processing response.";
+        return "";
     }
 
     std::string botReply = extractedResponse.str();
 
     botReply = ExtractTextBetweenDoubleQuotes(botReply);
 
-    if (botReply.empty())
+    // Check for unclosed think tags
+    if (botReply.find("<think>") != std::string::npos || botReply.find("</think>") != std::string::npos)
     {
+        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Unclosed <think> tags detected in response. This usually means the model's output was truncated.");
+        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.ThinkModeEnableForModule = 1' in mod_ollama_chat.conf");
+        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.NumPredict = 0' (unlimited tokens) in mod_ollama_chat.conf");
+        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.NumCtx = 0' (model default context) in mod_ollama_chat.conf");
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] No valid response extracted.");
+            LOG_INFO("server.loading", "[OllamaChat] Debug: Partial response with think tags: {}", botReply);
         }
-        return "I'm having trouble understanding.";
+        return "";
+    }
+
+    if (botReply.empty())
+    {
+        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Empty response extracted from API. Model may not have generated any output.");
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[OllamaChat] Debug: Raw extracted response was empty.");
+        }
+        return "";
     }
 
     if(g_DebugEnabled)
@@ -202,6 +218,17 @@ std::string QueryOllamaAPI(const std::string& prompt)
     }
 
     return botReply;
+}
+
+// Helper function to check if a response is valid (not empty and not an error)
+bool IsValidAPIResponse(const std::string& response)
+{
+    if (response.empty())
+    {
+        return false;
+    }
+    // Response is valid if it's not empty
+    return true;
 }
 
 QueryManager g_queryManager;
