@@ -702,6 +702,16 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     // Handle different chat sources differently
     if (sourceLocal == SRC_WHISPER_LOCAL && receiver != nullptr)
     {
+        // Check if whisper replies are disabled
+        if (!g_EnableWhisperReplies)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Whisper replies are disabled, skipping");
+            }
+            return;
+        }
+        
         if(g_DebugEnabled)
         {
             LOG_INFO("server.loading", "[Ollama Chat] Processing whisper from {} to {}", 
