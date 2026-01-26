@@ -250,21 +250,25 @@ OllamaChat.EventChatterPromptTemplate = "You are {bot_name}, a level {bot_level}
 #     Description: When enabled (1), bots will delay their responses proportionally to the message length
 #                  to simulate realistic typing behavior. The delay is calculated as:
 #                  BaseDelay + (MessageLength * DelayPerChar) milliseconds
-#                  Example: 100 character message with defaults = 500ms + (100 * 50ms) = 5.5 seconds
+#                  Example: 100 character message with defaults = 1000ms + (100 * 250ms) = 26 seconds
 #     Default:     0 (false)
 OllamaChat.EnableTypingSimulation = 0
 
 # OllamaChat.TypingSimulationBaseDelay
 #     Description: Base delay in milliseconds before a bot starts "typing" a response.
 #                  This simulates the time it takes to read the message and start typing.
-#     Default:     500
-OllamaChat.TypingSimulationBaseDelay = 500
+#     Default:     1000
+OllamaChat.TypingSimulationBaseDelay = 1000
 
 # OllamaChat.TypingSimulationDelayPerChar
 #     Description: Additional delay in milliseconds per character in the bot's response.
-#                  50ms per character = ~20 characters per second (realistic typing speed)
-#     Default:     50
-OllamaChat.TypingSimulationDelayPerChar = 50
+#                  Realistic typing speeds:
+#                  - 400ms per char = 2.5 chars/sec (slow/casual)
+#                  - 250ms per char = 4 chars/sec (average human)
+#                  - 150ms per char = 6.7 chars/sec (proficient)
+#                  - 100ms per char = 10 chars/sec (professional)
+#     Default:     250
+OllamaChat.TypingSimulationDelayPerChar = 250
 
 # --------------------------------------------
 # RP PERSONALITIES SYSTEM

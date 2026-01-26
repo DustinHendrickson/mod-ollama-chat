@@ -261,8 +261,8 @@ bool g_RestrictBotsToPartyMembers = false;
 // Typing Simulation Settings
 // --------------------------------------------
 bool g_EnableTypingSimulation = false;
-uint32_t g_TypingSimulationBaseDelay = 500;      // 500ms base delay
-uint32_t g_TypingSimulationDelayPerChar = 50;    // 50ms per character
+uint32_t g_TypingSimulationBaseDelay = 1000;     // 1000ms base delay
+uint32_t g_TypingSimulationDelayPerChar = 250;   // 250ms per character (4 chars/sec)
 
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
@@ -440,8 +440,8 @@ void LoadOllamaChatConfig()
 
     // Typing Simulation
     g_EnableTypingSimulation          = sConfigMgr->GetOption<bool>("OllamaChat.EnableTypingSimulation", false);
-    g_TypingSimulationBaseDelay       = sConfigMgr->GetOption<uint32_t>("OllamaChat.TypingSimulationBaseDelay", 500);
-    g_TypingSimulationDelayPerChar    = sConfigMgr->GetOption<uint32_t>("OllamaChat.TypingSimulationDelayPerChar", 50);
+    g_TypingSimulationBaseDelay       = sConfigMgr->GetOption<uint32_t>("OllamaChat.TypingSimulationBaseDelay", 1000);
+    g_TypingSimulationDelayPerChar    = sConfigMgr->GetOption<uint32_t>("OllamaChat.TypingSimulationDelayPerChar", 250);
 
     g_EventTypeDefeated           = sConfigMgr->GetOption<std::string>("OllamaChat.EventTypeDefeated", "");
     g_EventTypeDefeatedPlayer     = sConfigMgr->GetOption<std::string>("OllamaChat.EventTypeDefeatedPlayer", "");
