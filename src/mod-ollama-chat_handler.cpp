@@ -161,100 +161,82 @@ Channel* GetValidChannel(uint32_t teamId, const std::string& channelName, Player
     return channel;
 }
 
-void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg)
+bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg)
 {
     if (!g_Enable)
-        return;
+        return true;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
+    return true;
 }
 
-void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Group* /*group*/)
+bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Group* /*group*/)
 {
     if (!g_Enable)
-        return;
+        return true;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
+    return true;
 }
 
-void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Guild* /*guild*/)
+bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Guild* /*guild*/)
 {
     if (!g_Enable)
-        return;
+        return true;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
+    return true;
 }
 
-void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Channel* channel)
+bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Channel* channel)
 {
     if (!g_Enable)
-        return;
+        return true;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, channel, nullptr);
+    return true;
 }
 
 bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Player* receiver)
 {
-    // Only handle whispers for our module
-    if (type != CHAT_MSG_WHISPER)
-        return true;
-    
     // Only process if our module is enabled
     if (!g_Enable)
         return true;
-    
-    // Check if this is a valid whisper to a bot
-    if (!receiver || !player || player == receiver)
-        return true;
-    
-    // Check if sender is a bot - if so, don't trigger Ollama responses for bot-to-bot whispers
-    PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
-    if (senderAI && senderAI->IsBotAI())
+
+    if (type == CHAT_MSG_WHISPER)
     {
-        return true;
+        // Check if this is a valid whisper to a bot
+        if (!receiver || !player || player == receiver)
+            return true;
+
+        // Check if sender is a bot - if so, don't trigger Ollama responses for bot-to-bot whispers
+        PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+        if (senderAI && senderAI->IsBotAI())
+        {
+            return true;
+        }
+
+        PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
+        if (!receiverAI || !receiverAI->IsBotAI())
+            return true;
     }
-    
-    PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
-    if (!receiverAI || !receiverAI->IsBotAI())
-        return true;
-    
+
     if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[Ollama Chat] OnPlayerCanUseChat called: player={}, type={}, receiver={}", 
-                player->GetName(), type, receiver ? receiver->GetName() : "null");
+        LOG_INFO("server.loading", "[Ollama Chat] OnPlayerCanUseChat called: player={}, type={}, receiver={}",
+            player->GetName(), type, receiver ? receiver->GetName() : "null");
     }
-    
+
     // Process the chat immediately in OnPlayerCanUseChat to prevent double processing
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, receiver);
-    
+
     // Return false to prevent the message from being processed again in OnPlayerChat
     return true;
-}
-
-void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Player* receiver)
-{
-    // This method should now only handle non-whisper messages or cases where OnPlayerCanUseChat returned true
-    if (!g_Enable)
-        return;
-
-    // Skip whispers since they're handled in OnPlayerCanUseChat
-    if (type == CHAT_MSG_WHISPER)
-        return;
-
-    if(g_DebugEnabled)
-    {
-        LOG_INFO("server.loading", "[Ollama Chat] OnPlayerChat with receiver called: player={}, type={}, receiver={}", 
-                player->GetName(), type, receiver ? receiver->GetName() : "null");
-    }
-
-    // Handle other chat types (non-whisper)
-    ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
-    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, receiver);
 }
 
 void AppendBotConversation(uint64_t botGuid, uint64_t playerGuid, const std::string& playerMessage, const std::string& botReply)
