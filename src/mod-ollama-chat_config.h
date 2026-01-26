@@ -258,6 +258,13 @@ extern uint32_t g_EventCooldownTime;
 extern bool g_RestrictBotsToPartyMembers;
 
 // --------------------------------------------
+// Typing Simulation Settings
+// --------------------------------------------
+extern bool g_EnableTypingSimulation;
+extern uint32_t g_TypingSimulationBaseDelay;      // Base delay in milliseconds
+extern uint32_t g_TypingSimulationDelayPerChar;   // Delay per character in milliseconds
+
+// --------------------------------------------
 // Loader Functions
 // --------------------------------------------
 void LoadOllamaChatConfig();

@@ -858,8 +858,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             continue;
         }
         
-        // Apply party restriction only for real player messages
-        if (!senderIsBot && g_RestrictBotsToPartyMembers)
+        // Apply party restriction for all messages
+        if (g_RestrictBotsToPartyMembers)
         {
             Group* botGroup = bot->GetGroup();
             Group* playerGroup = player->GetGroup();
@@ -1079,7 +1079,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 {
                     if(g_DebugEnabled)
                     {
-                        LOG_ERROR("server.loading", "[Ollama Chat] Bot {} received empty response from Ollama API.", botPtr->GetName());
+                        LOG_INFO("server.loading", "[OllamaChat] Bot {} skipped reply due to API error", botPtr->GetName());
                     }
                     return;
                 }
@@ -1092,6 +1092,25 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     }
                     return;
                 }
+                
+                // Simulate typing delay if enabled
+                if (g_EnableTypingSimulation)
+                {
+                    uint32_t delay = g_TypingSimulationBaseDelay + (response.length() * g_TypingSimulationDelayPerChar);
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[OllamaChat] Bot {} simulating typing delay: {}ms for {} characters", 
+                                 botPtr->GetName(), delay, response.length());
+                    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                    
+                    // Reacquire pointers after delay
+                    botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
+                    if (!botPtr) return;
+                    botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                    if (!botAI) return;
+                    senderPtr = ObjectAccessor::FindPlayer(ObjectGuid(senderGuid));
+                    if (!senderPtr) return;
+                }
+                
                 // Route the response.
                 if (channelId != 0 && !channelName.empty())
                 {

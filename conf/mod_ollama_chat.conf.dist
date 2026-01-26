@@ -20,14 +20,6 @@ OllamaChat.Enable = 1
 #     Default:     0 (false)
 OllamaChat.DebugEnabled = 0
 
-# OllamaChat.DebugShowFullPrompt
-#     Description: When enabled (1), logs the complete prompt sent to the Ollama API including RAG information.
-#                  This is useful for debugging what information the RAG system provides to bots.
-#                  Only active when OllamaChat.DebugEnabled is also enabled.
-#                  When disabled (0), only standard logging is used.
-#     Default:     0 (false)
-OllamaChat.DebugShowFullPrompt = 0
-
 # --------------------------------------------
 # OLLAMA LLM CONNECTION AND INFERENCE
 # --------------------------------------------
@@ -55,7 +47,7 @@ OllamaChat.Model = llama3.2:1b
 #     |     50     |   ~35–38      | Slightly longer reply            |
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
-OllamaChat.NumPredict = 100
+OllamaChat.NumPredict = 40
 
 # OllamaChat.Temperature
 #     Description: Controls the "creativity" or randomness of the model’s output.
@@ -131,8 +123,6 @@ OllamaChat.MaxConcurrentQueries = 0
 # OllamaChat.ThinkModeEnableForModule
 #     Description: Enables Think Mode for supported LLM models. When enabled, the API request will include the "think" flag,
 #                  and only the main response will be returned, with all <think> tags and their contents stripped from bot replies.
-#                  Make sure you set OllamaChat.NumPredict = 0 (unlimited) when using Think Mode.
-#                  Certain models that require Think Mode must have this enabled to function properly.
 #     Default:     0 (false)
 OllamaChat.ThinkModeEnableForModule = 0
 
@@ -159,7 +149,7 @@ OllamaChat.MaxBotsToPick = 2
 #     Description: A comma-separated list of command prefixes that should be ignored by AI bots.
 #                  If a message starts with any of these prefixes, the bot will not respond.
 #     Default:     
-OllamaChat.BlacklistCommands = autogear,talents,reset botAI,summon,release,revive,leave,attack,follow,flee,stay,runaway,grind,disperse,give leader,spells,cast ,quests,accept,drop,talk,reset,ss ,asked,trainer,rti,rtsc,do ,ll ,e ,ue ,nc ,open,destroy,s ,b ,bank,gb ,u ,co ,ELVUI_VERSIONCHK,I'm querying,DPSMate_,LibGroupTalents,BLT,oRA3,Skada,HealBot,hbComms,questie,pfQuest,DBMv4-Ver,BWVQ3,add,remove,reset ai,report,state,help,log,stats,tank,offtank,healer,cc ,damage,boost,passive,defensive,aggressive,stay,guard,free,follow,assist,pet,stance,formation,rpg,emote,cheer,applaud,drink,eat,dance,attackers,reset instances,home,zone,who ,pos ,tele,grind,loot,quest,trainer,travel,teleport,homebind,unfollow,invite,uninvite,join,leave,leader,ready,release,save,update,reset talents,gear,trade,mail,ah ,ahscan,ahbid,ahbuy,ahsell,ahcancel,bag,repair,vendor,train,spells,reset spells,learn,unlearn,cast,uncast,use ,move,go ,look,stop,turn,face,wait,party,followleader,stayleader,moveleader,info,distance,debug,reset path,reset state,reset all,reset dungeon,reset raid,zone info,LHC40,RECOUNT,GTFO_v,Altoholic,DS_,DataStore
+OllamaChat.BlacklistCommands = autogear,talents,reset botAI,summon,release,revive,leave,attack,follow,flee,stay,runaway,grind,disperse,give leader,spells,cast ,quests,accept,drop,talk,reset,ss ,trainer,rti,rtsc,do ,ll ,e ,ue ,nc ,open,destroy,s ,b ,bank,gb ,u ,co ,ELVUI_VERSIONCHK,Asked,DPSMate_,LibGroupTalents,BLT,oRA3,Skada,HealBot,hbComms,questie,pfQuest,DBMv4-Ver,BWVQ3,add,remove,reset ai,report,state,help,log,stats,tank,offtank,healer,cc ,damage,boost,passive,defensive,aggressive,stay,guard,free,follow,assist,pet,stance,formation,rpg,emote,cheer,applaud,drink,eat,dance,attackers,reset instances,home,zone,who ,pos ,tele,grind,loot,quest,trainer,travel,teleport,homebind,unfollow,invite,uninvite,join,leave,leader,ready,release,save,update,reset talents,gear,trade,mail,ah ,ahscan,ahbid,ahbuy,ahsell,ahcancel,bag,repair,vendor,train,spells,reset spells,learn,unlearn,cast,uncast,use ,move,go ,look,stop,turn,face,wait,party,followleader,stayleader,moveleader,info,distance,debug,reset path,reset state,reset all,reset dungeon,reset raid,zone info,LHC40,RECOUNT,GTFO_v,Altoholic,DS_,DataStore
 
 # OllamaChat.SayDistance
 #     Description: The maximum distance (in game units) a bot must be within to reply on a Say message.
@@ -170,12 +160,6 @@ OllamaChat.SayDistance = 30.0
 #     Description: The maximum distance (in game units) a bot must be within to reply on a Yell message.
 #     Default:     100.0
 OllamaChat.YellDistance = 100.0
-
-# OllamaChat.RestrictBotsToPartyMembers
-#     Description: When enabled (1), bots will only respond to real player messages/events when they are in the same non-raid party.
-#                  Bot-to-bot communication within parties is still allowed. This helps reduce spam while maintaining party functionality.
-#     Default:     0 (false)
-OllamaChat.RestrictBotsToPartyMembers = 0
 
 # --------------------------------------------
 # RANDOM CHATTER SYSTEM
@@ -220,9 +204,8 @@ OllamaChat.RandomChatterMaxBotsPerPlayer = 2
 
 # OllamaChat.RandomChatterPromptTemplate
 #   Description: The template string for random bot chatter prompts.
-#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {environment_info}
-#   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
+#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {environment_info}
+OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
 
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
@@ -256,9 +239,32 @@ OllamaChat.EventChatterMaxBotsPerPlayer = 2
 
 # OllamaChat.EventChatterPromptTemplate
 #     Description: The template used to generate bot prompts when reacting to world events.
-#     Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {event_type} {event_detail} {actor_name} {sentiment_info}
-#     Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.EventChatterPromptTemplate = "You are {bot_name}, a level {bot_level} {bot_class} ({bot_race} {bot_gender}) specializing as a {bot_role} from the {bot_faction} faction. You are currently in {bot_area}, Zone: {bot_zone}, Map: {bot_map}. Personality: {bot_personality_name}: {bot_personality}. {sentiment_info} Event: {actor_name} {event_type} {event_detail}. Respond to this specific Event that just happened in character, casually, in under 15 words. Avoid emojis, markdown, or narration."
+#     Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {event_type} {event_detail} {actor_name} {sentiment_info}
+OllamaChat.EventChatterPromptTemplate = "You are {bot_name}, a level {bot_level} {bot_class} ({bot_race} {bot_gender}) specializing as a {bot_role} from the {bot_faction} faction. You are currently in {bot_area}, Zone: {bot_zone}, Map: {bot_map}. Personality: {bot_personality}. {sentiment_info} Event: {actor_name} {event_type} {event_detail}. Respond to this specific Event that just happened in character, casually, in under 15 words. Avoid emojis, markdown, or narration."
+
+# --------------------------------------------
+# TYPING SIMULATION
+# --------------------------------------------
+
+# OllamaChat.EnableTypingSimulation
+#     Description: When enabled (1), bots will delay their responses proportionally to the message length
+#                  to simulate realistic typing behavior. The delay is calculated as:
+#                  BaseDelay + (MessageLength * DelayPerChar) milliseconds
+#                  Example: 100 character message with defaults = 500ms + (100 * 50ms) = 5.5 seconds
+#     Default:     0 (false)
+OllamaChat.EnableTypingSimulation = 0
+
+# OllamaChat.TypingSimulationBaseDelay
+#     Description: Base delay in milliseconds before a bot starts "typing" a response.
+#                  This simulates the time it takes to read the message and start typing.
+#     Default:     500
+OllamaChat.TypingSimulationBaseDelay = 500
+
+# OllamaChat.TypingSimulationDelayPerChar
+#     Description: Additional delay in milliseconds per character in the bot's response.
+#                  50ms per character = ~20 characters per second (realistic typing speed)
+#     Default:     50
+OllamaChat.TypingSimulationDelayPerChar = 50
 
 # --------------------------------------------
 # RP PERSONALITIES SYSTEM
@@ -367,9 +373,8 @@ OllamaChat.SentimentPromptTemplate = "Your relationship sentiment with {player_n
 
 # OllamaChat.ChatPromptTemplate
 #   Description: The main template for bot chat prompts sent to the LLM.
-#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {bot_personality_name} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
-#   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
+#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
+OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality}. {sentiment_info} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
 
 # OllamaChat.ChatExtraInfoTemplate
 #   Description: The context/details string about the bot and player, injected into the chat prompt as the last parameter.
@@ -383,62 +388,62 @@ OllamaChat.ChatExtraInfoTemplate = "Your Info: {bot_race} {bot_gender}, Spec: {b
 # OllamaChat.EnvCommentCreature
 #   Description: A pipe-separated (|) list of template messages for when any creature is spotted nearby.
 #   Placeholders (named): {creature_name}
-OllamaChat.EnvCommentCreature = You spot a creature named '{creature_name}'.
+OllamaChat.EnvCommentCreature = You spot a creature named '{creature_name}' and react cautiously.|You spot a creature named '{creature_name}' and assess its threat.|You spot a creature named '{creature_name}' and comment on its behavior.|You spot a creature named '{creature_name}' and consider whether to engage.|You spot a creature named '{creature_name}' and recall what you know about it.|You spot a creature named '{creature_name}' and comment on its appearance.|You spot a creature named '{creature_name}' and decide if it should be avoided.|You spot a creature named '{creature_name}' and speculate on its intentions.
 
 # OllamaChat.EnvCommentGameObject
 #   Description: A pipe-separated (|) list of template messages for when a game object is nearby.
 #   Placeholders (named): {object_name}
-OllamaChat.EnvCommentGameObject = You see {object_name} nearby.
+OllamaChat.EnvCommentGameObject = You see {object_name} nearby and comment on its purpose.|You see {object_name} nearby and decide whether to interact.|You see {object_name} nearby and recall why it is useful.|You see {object_name} nearby and judge its condition.|You see {object_name} nearby and consider if it is valuable.|You see {object_name} nearby and explain what it might be used for.|You see {object_name} nearby and react with curiosity.|You see {object_name} nearby and decide whether to investigate.
 
 # OllamaChat.EnvCommentEquippedItem
 #   Description: A pipe-separated (|) list of template messages referencing a random equipped item.
 #   Placeholders (named): {item_name}
-OllamaChat.EnvCommentEquippedItem = Talk about your equipped item {item_name}.
+OllamaChat.EnvCommentEquippedItem = Talk about your equipped item {item_name} and why you chose it.|Talk about your equipped item {item_name} and how it helps you.|Talk about your equipped item {item_name} and its strengths.|Talk about your equipped item {item_name} and any weaknesses.|Talk about your equipped item {item_name} and how it feels to use.|Talk about your equipped item {item_name} and when it is most effective.|Talk about your equipped item {item_name} and compare it to alternatives.|Talk about your equipped item {item_name} and your confidence in it.
 
 # OllamaChat.EnvCommentBagItem
 #   Description: A pipe-separated (|) list of template messages for an item in the bot's bag.
 #   Placeholders (named): {item_name}
-OllamaChat.EnvCommentBagItem = You notice a {item_name} in your bag.
+OllamaChat.EnvCommentBagItem = You notice a {item_name} in your bag and consider using it.|You notice a {item_name} in your bag and explain why you keep it.|You notice a {item_name} in your bag and decide if it is still useful.|You notice a {item_name} in your bag and recall where you got it.|You notice a {item_name} in your bag and judge its value.|You notice a {item_name} in your bag and think about trading it.|You notice a {item_name} in your bag and plan when to use it.|You notice a {item_name} in your bag and comment on its condition.
 
 # OllamaChat.EnvCommentBagItemSell
 #   Description: A pipe-separated (|) list of template messages for an item the bot might try to sell.
 #   Placeholders (named): {item_count} {item_name}
-OllamaChat.EnvCommentBagItemSell = You are trying persuasively to sell {item_count} of this item {item_name}.
+OllamaChat.EnvCommentBagItemSell = You are trying persuasively to sell {item_count} of this item {item_name} by highlighting its benefits.|You are trying persuasively to sell {item_count} of this item {item_name} by stressing its rarity.|You are trying persuasively to sell {item_count} of this item {item_name} by appealing to need.|You are trying persuasively to sell {item_count} of this item {item_name} by offering a deal.|You are trying persuasively to sell {item_count} of this item {item_name} by explaining its uses.|You are trying persuasively to sell {item_count} of this item {item_name} by comparing it to others.|You are trying persuasively to sell {item_count} of this item {item_name} by creating urgency.|You are trying persuasively to sell {item_count} of this item {item_name} by praising its quality.
 
 # OllamaChat.EnvCommentSpell
 #   Description: A pipe-separated (|) list of template messages about a random known spell.
 #   Placeholders (named): {spell_name} {spell_effect} {spell_cost}
-OllamaChat.EnvCommentSpell = Discuss possible uses or strategies for '{spell_name}', which {spell_effect} and costs {spell_cost}.
+OllamaChat.EnvCommentSpell = Discuss possible uses or strategies for '{spell_name}' in the current situation.|Discuss possible uses or strategies for '{spell_name}' against different enemies.|Discuss possible uses or strategies for '{spell_name}' when resources are low.|Discuss possible uses or strategies for '{spell_name}' and its risks.|Discuss possible uses or strategies for '{spell_name}' compared to other spells.|Discuss possible uses or strategies for '{spell_name}' in group combat.|Discuss possible uses or strategies for '{spell_name}' outside of combat.|Discuss possible uses or strategies for '{spell_name}' given its cost of {spell_cost}.
 
 # OllamaChat.EnvCommentQuestArea
 #   Description: A pipe-separated (|) list of template messages to suggest an area to quest in.
 #   Placeholders (named): {quest_area}
-OllamaChat.EnvCommentQuestArea = Suggest you could go questing around {quest_area}.
+OllamaChat.EnvCommentQuestArea = Suggest you could go questing around {quest_area} and explain why.|Suggest you could go questing around {quest_area} based on your level.|Suggest you could go questing around {quest_area} for rewards.|Suggest you could go questing around {quest_area} due to recent rumors.|Suggest you could go questing around {quest_area} to gain experience.|Suggest you could go questing around {quest_area} and note the dangers.|Suggest you could go questing around {quest_area} if prepared.|Suggest you could go questing around {quest_area} and set a goal.
 
 # OllamaChat.EnvCommentVendor
 #   Description: A pipe-separated (|) list of template messages when a vendor NPC is nearby.
 #   Placeholders (named): {vendor_name}
-OllamaChat.EnvCommentVendor = You spot {vendor_name} selling wares nearby.
+OllamaChat.EnvCommentVendor = You spot {vendor_name} selling wares nearby and consider browsing.|You spot {vendor_name} selling wares nearby and recall past deals.|You spot {vendor_name} selling wares nearby and check your coin.|You spot {vendor_name} selling wares nearby and judge their stock.|You spot {vendor_name} selling wares nearby and decide whether to trade.|You spot {vendor_name} selling wares nearby and comment on their reputation.|You spot {vendor_name} selling wares nearby and look for upgrades.|You spot {vendor_name} selling wares nearby and compare prices.
 
 # OllamaChat.EnvCommentQuestgiver
 #   Description: A pipe-separated (|) list of template messages when a questgiver NPC is nearby.
 #   Placeholders (named): {questgiver_name} {quest_count}
-OllamaChat.EnvCommentQuestgiver = {questgiver_name} looks like they have {quest_count} quests for anyone brave enough.
+OllamaChat.EnvCommentQuestgiver = {questgiver_name} looks like they have {quest_count} quests and you evaluate which to take.|{questgiver_name} looks like they have {quest_count} quests and you judge the risk.|{questgiver_name} looks like they have {quest_count} quests and you consider rewards.|{questgiver_name} looks like they have {quest_count} quests and you recall past work.|{questgiver_name} looks like they have {quest_count} quests and you assess urgency.|{questgiver_name} looks like they have {quest_count} quests and you choose carefully.|{questgiver_name} looks like they have {quest_count} quests and you plan next steps.|{questgiver_name} looks like they have {quest_count} quests and you comment on their tone.
 
 # OllamaChat.EnvCommentBagSlots
 #   Description: A pipe-separated (|) list of template messages about available bag slots.
 #   Placeholders (named): {bag_slots}
-OllamaChat.EnvCommentBagSlots = You have {bag_slots} free bag slots left.
+OllamaChat.EnvCommentBagSlots = You have {bag_slots} free bag slots left and decide how cautious to be.|You have {bag_slots} free bag slots left and plan your looting.|You have {bag_slots} free bag slots left and consider selling items.|You have {bag_slots} free bag slots left and comment on inventory pressure.|You have {bag_slots} free bag slots left and adjust priorities.|You have {bag_slots} free bag slots left and plan ahead.|You have {bag_slots} free bag slots left and evaluate risk.|You have {bag_slots} free bag slots left and think about storage.
 
 # OllamaChat.EnvCommentDungeon
 #   Description: A pipe-separated (|) list of template messages for when the bot is in a dungeon.
 #   Placeholders (named): {dungeon_name}
-OllamaChat.EnvCommentDungeon = You're in a Dungeon instance named '{dungeon_name}' talk about the Dungeon or one of its Bosses.
+OllamaChat.EnvCommentDungeon = You're in a Dungeon instance named '{dungeon_name}' and comment on the atmosphere.|You're in a Dungeon instance named '{dungeon_name}' and recall known bosses.|You're in a Dungeon instance named '{dungeon_name}' and plan your approach.|You're in a Dungeon instance named '{dungeon_name}' and assess danger.|You're in a Dungeon instance named '{dungeon_name}' and prepare mentally.|You're in a Dungeon instance named '{dungeon_name}' and comment on layout.|You're in a Dungeon instance named '{dungeon_name}' and recall past runs.|You're in a Dungeon instance named '{dungeon_name}' and set expectations.
 
 # OllamaChat.EnvCommentUnfinishedQuest
 #   Description: A pipe-separated (|) list of template messages about a random incomplete quest in the bot's log.
 #   Placeholders (named): {quest_name}
-OllamaChat.EnvCommentUnfinishedQuest = Say the name of and talk about your un-finished quest '{quest_name}'.
+OllamaChat.EnvCommentUnfinishedQuest = Say the name of and talk about your un-finished quest '{quest_name}' and what remains.|Say the name of and talk about your un-finished quest '{quest_name}' and its difficulty.|Say the name of and talk about your un-finished quest '{quest_name}' and why it stalled.|Say the name of and talk about your un-finished quest '{quest_name}' and your next step.|Say the name of and talk about your un-finished quest '{quest_name}' and its rewards.|Say the name of and talk about your un-finished quest '{quest_name}' and the risks.|Say the name of and talk about your un-finished quest '{quest_name}' and your motivation.|Say the name of and talk about your un-finished quest '{quest_name}' and its urgency.
 
 # --------------------------------------------
 # EVENT TEMPLATES
@@ -753,41 +758,3 @@ OllamaChat.GuildEventTypeLevelUp_Chance = 95
 #     Default:     guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete_Chance = 85
-
-# --------------------------------------------
-# RAG (Retrieval-Augmented Generation) SYSTEM
-# --------------------------------------------
-
-# OllamaChat.EnableRAG
-#     Description: Enable or disable the RAG (Retrieval-Augmented Generation) feature.
-#                  When enabled, the bot will analyze player messages and retrieve relevant information
-#                  from JSON knowledge base files to provide more accurate and detailed responses.
-#     Default:     0 (false)
-OllamaChat.EnableRAG = 0
-
-# OllamaChat.RAGDataPath
-#     Description: Path to the directory containing RAG JSON data files.
-#                  This should be a relative path from the server's working directory.
-#                  For AzerothCore installations, this is typically ../../../modules/mod-ollama-chat/data/rag/
-#                  The system will load all .json files from this directory.
-#     Default:     ../../../modules/mod-ollama-chat/data/rag/
-OllamaChat.RAGDataPath = ../../../modules/mod-ollama-chat/data/rag/
-
-# OllamaChat.RAGMaxRetrievedItems
-#     Description: Maximum number of relevant information items to retrieve and include in the prompt.
-#                  Higher values provide more context but may exceed token limits.
-#     Default:     3
-OllamaChat.RAGMaxRetrievedItems = 3
-
-# OllamaChat.RAGSimilarityThreshold
-#     Description: Minimum similarity score (0.0-1.0) required for information to be considered relevant.
-#                  Lower values will include more information but may be less accurate.
-#                  Higher values will be more precise but may miss relevant information.
-#                  Recommended range: 0.2-0.4 for good balance of relevance and coverage.
-#     Default:     0.3
-OllamaChat.RAGSimilarityThreshold = 0.3
-
-# OllamaChat.RAGPromptTemplate
-#     Description: Template for including RAG information in bot prompts.
-#     Placeholders (named): {rag_info}
-OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this information to provide accurate and detailed responses when applicable."

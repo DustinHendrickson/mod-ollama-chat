@@ -7,6 +7,9 @@
 
 std::string QueryOllamaAPI(const std::string& prompt);
 
+// Checks if an API response is valid (not an error message)
+bool IsValidAPIResponse(const std::string& response);
+
 // Submits a query to the API.
 std::future<std::string> SubmitQuery(const std::string& prompt);
 

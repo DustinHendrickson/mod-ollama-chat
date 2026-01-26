@@ -198,8 +198,8 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
     for (auto it = candidateBots.begin(); it != candidateBots.end(); ) {
         Player* bot = *it;
         
-        // Apply party restriction only for real player events
-        if (!isSourceBot && !IsBotAllowedForRestrictedMode(bot, source)) {
+        // Apply party restriction for all events
+        if (!IsBotAllowedForRestrictedMode(bot, source)) {
             it = candidateBots.erase(it);
             continue;
         }
@@ -346,13 +346,34 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
             if (prompt.empty()) return;
 
             std::string response = QueryOllamaAPI(prompt);
-            if (response.empty()) return;
+            if (response.empty())
+            {
+                if (g_DebugEnabled)
+                    LOG_INFO("server.loading", "[OllamaChat] Bot {} skipped event response due to API error", botPtr->GetName());
+                return;
+            }
 
             // reacquire pointers before use
             botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
             if (!botPtr) return;
             PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
             if (!botAI) return;
+
+            // Simulate typing delay if enabled
+            if (g_EnableTypingSimulation)
+            {
+                uint32_t delay = g_TypingSimulationBaseDelay + (response.length() * g_TypingSimulationDelayPerChar);
+                if (g_DebugEnabled)
+                    LOG_INFO("server.loading", "[OllamaChat] Bot {} simulating typing delay: {}ms for {} characters", 
+                             botPtr->GetName(), delay, response.length());
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                
+                // Reacquire pointers after delay
+                botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
+                if (!botPtr) return;
+                botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                if (!botAI) return;
+            }
 
             if (isGuildEvent && botPtr->GetGuild())
                 botAI->SayToGuild(response);
