@@ -57,6 +57,7 @@ bool        g_DisableRepliesInCombat          = true;
 bool        g_EnableRandomChatter             = true;
 bool        g_EnableEventChatter              = true;
 bool        g_EnableRPPersonalities           = false;
+bool        g_EnableWhisperReplies            = false;
 bool        g_DebugEnabled                    = false;
 bool        g_DebugShowFullPrompt             = false;
 
@@ -378,6 +379,7 @@ void LoadOllamaChatConfig()
     g_Enable                          = sConfigMgr->GetOption<bool>("OllamaChat.Enable", true);
     g_DisableRepliesInCombat          = sConfigMgr->GetOption<bool>("OllamaChat.DisableRepliesInCombat", true);
     g_EnableRandomChatter             = sConfigMgr->GetOption<bool>("OllamaChat.EnableRandomChatter", true);
+    g_EnableWhisperReplies            = sConfigMgr->GetOption<bool>("OllamaChat.EnableWhisperReplies", false);
     g_EnableEventChatter              = sConfigMgr->GetOption<bool>("OllamaChat.EnableEventChatter", true);
 
     g_DebugEnabled                    = sConfigMgr->GetOption<bool>("OllamaChat.DebugEnabled", false);
