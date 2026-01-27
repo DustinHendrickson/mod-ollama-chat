@@ -20,6 +20,15 @@ OllamaChat.Enable = 1
 #     Default:     0 (false)
 OllamaChat.DebugEnabled = 0
 
+# OllamaChat.DebugShowFullPrompt
+
+#     Description: When enabled (1), logs the complete prompt sent to the Ollama API including RAG information.
+#                  This is useful for debugging what information the RAG system provides to bots.
+#                  Only active when OllamaChat.DebugEnabled is also enabled.
+#                  When disabled (0), only standard logging is used.
+#     Default:     0 (false)
+OllamaChat.DebugShowFullPrompt = 0
+
 # --------------------------------------------
 # OLLAMA LLM CONNECTION AND INFERENCE
 # --------------------------------------------
@@ -47,7 +56,7 @@ OllamaChat.Model = llama3.2:1b
 #     |     50     |   ~35–38      | Slightly longer reply            |
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
-OllamaChat.NumPredict = 40
+OllamaChat.NumPredict = 100
 
 # OllamaChat.Temperature
 #     Description: Controls the "creativity" or randomness of the model’s output.
@@ -123,6 +132,8 @@ OllamaChat.MaxConcurrentQueries = 0
 # OllamaChat.ThinkModeEnableForModule
 #     Description: Enables Think Mode for supported LLM models. When enabled, the API request will include the "think" flag,
 #                  and only the main response will be returned, with all <think> tags and their contents stripped from bot replies.
+#                  Make sure you set OllamaChat.NumPredict = 0 (unlimited) when using Think Mode.
+#                  Certain models that require Think Mode must have this enabled to function properly.
 #     Default:     0 (false)
 OllamaChat.ThinkModeEnableForModule = 0
 
@@ -168,6 +179,12 @@ OllamaChat.SayDistance = 30.0
 #     Default:     100.0
 OllamaChat.YellDistance = 100.0
 
+# OllamaChat.RestrictBotsToPartyMembers
+#     Description: When enabled (1), bots will only respond to real player messages/events when they are in the same non-raid party.
+#                  Bot-to-bot communication within parties is still allowed. This helps reduce spam while maintaining party functionality.
+#     Default:     0 (false)
+OllamaChat.RestrictBotsToPartyMembers = 0
+
 # --------------------------------------------
 # RANDOM CHATTER SYSTEM
 # --------------------------------------------
@@ -211,8 +228,9 @@ OllamaChat.RandomChatterMaxBotsPerPlayer = 2
 
 # OllamaChat.RandomChatterPromptTemplate
 #   Description: The template string for random bot chatter prompts.
-#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {environment_info}
-OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
+#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {environment_info}
+#   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
+OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
 
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
@@ -246,8 +264,10 @@ OllamaChat.EventChatterMaxBotsPerPlayer = 2
 
 # OllamaChat.EventChatterPromptTemplate
 #     Description: The template used to generate bot prompts when reacting to world events.
-#     Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {event_type} {event_detail} {actor_name} {sentiment_info}
-OllamaChat.EventChatterPromptTemplate = "You are {bot_name}, a level {bot_level} {bot_class} ({bot_race} {bot_gender}) specializing as a {bot_role} from the {bot_faction} faction. You are currently in {bot_area}, Zone: {bot_zone}, Map: {bot_map}. Personality: {bot_personality}. {sentiment_info} Event: {actor_name} {event_type} {event_detail}. Respond to this specific Event that just happened in character, casually, in under 15 words. Avoid emojis, markdown, or narration."
+
+#     Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {event_type} {event_detail} {actor_name} {sentiment_info}
+#     Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
+OllamaChat.EventChatterPromptTemplate = "You are {bot_name}, a level {bot_level} {bot_class} ({bot_race} {bot_gender}) specializing as a {bot_role} from the {bot_faction} faction. You are currently in {bot_area}, Zone: {bot_zone}, Map: {bot_map}. Personality: {bot_personality_name}: {bot_personality}. {sentiment_info} Event: {actor_name} {event_type} {event_detail}. Respond to this specific Event that just happened in character, casually, in under 15 words. Avoid emojis, markdown, or narration."
 
 # --------------------------------------------
 # TYPING SIMULATION
@@ -384,8 +404,9 @@ OllamaChat.SentimentPromptTemplate = "Your relationship sentiment with {player_n
 
 # OllamaChat.ChatPromptTemplate
 #   Description: The main template for bot chat prompts sent to the LLM.
-#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
-OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality}. {sentiment_info} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
+#   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {bot_personality_name} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
+#   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
+OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
 
 # OllamaChat.ChatExtraInfoTemplate
 #   Description: The context/details string about the bot and player, injected into the chat prompt as the last parameter.
@@ -769,3 +790,49 @@ OllamaChat.GuildEventTypeLevelUp_Chance = 95
 #     Default:     guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
 OllamaChat.GuildEventTypeDungeonComplete_Chance = 85
+
+# --------------------------------------------
+# RAG (Retrieval-Augmented Generation) SYSTEM
+# --------------------------------------------
+
+# OllamaChat.EnableRAG
+#     Description: Enable or disable the RAG (Retrieval-Augmented Generation) feature.
+#                  When enabled, the bot will analyze player messages and retrieve relevant information
+#                  from JSON knowledge base files to provide more accurate and detailed responses.
+#     Default:     0 (false)
+OllamaChat.EnableRAG = 0
+
+
+
+# OllamaChat.RAGDataPath
+#     Description: Path to the directory containing RAG JSON data files.
+#                  This should be a relative path from the server's working directory.
+#                  For AzerothCore installations, this is typically ../../../modules/mod-ollama-chat/data/rag/
+#                  The system will load all .json files from this directory.
+#     Default:     ../../../modules/mod-ollama-chat/data/rag/
+OllamaChat.RAGDataPath = ../../../modules/mod-ollama-chat/data/rag/
+
+
+
+# OllamaChat.RAGMaxRetrievedItems
+#     Description: Maximum number of relevant information items to retrieve and include in the prompt.
+#                  Higher values provide more context but may exceed token limits.
+#     Default:     3
+OllamaChat.RAGMaxRetrievedItems = 3
+
+
+
+# OllamaChat.RAGSimilarityThreshold
+#     Description: Minimum similarity score (0.0-1.0) required for information to be considered relevant.
+#                  Lower values will include more information but may be less accurate.
+#                  Higher values will be more precise but may miss relevant information.
+#                  Recommended range: 0.2-0.4 for good balance of relevance and coverage.
+#     Default:     0.3
+OllamaChat.RAGSimilarityThreshold = 0.3
+
+
+
+# OllamaChat.RAGPromptTemplate
+#     Description: Template for including RAG information in bot prompts.
+#     Placeholders (named): {rag_info}
+OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this information to provide accurate and detailed responses when applicable."
