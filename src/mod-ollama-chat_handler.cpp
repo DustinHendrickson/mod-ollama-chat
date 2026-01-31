@@ -1,4 +1,4 @@
-#include "Log.h"
+﻿#include "Log.h"
 #include "Language.h"
 #include "Player.h"
 #include "Chat.h"
@@ -598,7 +598,7 @@ static std::string GenerateBotGameStateSnapshot(Player* bot)
     for (auto const& [questId, qsd] : bot->getQuestStatusMap())
     {
         // look up the template
-        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
         if (!quest)
             continue;
 
@@ -606,7 +606,7 @@ static std::string GenerateBotGameStateSnapshot(Player* bot)
         std::string title = quest->GetTitle();
 
         // then, if we have a locale record, overwrite it
-        if (auto const* locale = sObjectMgr->GetQuestLocale(questId))
+        if (auto const* locale = sObjectMgr.GetQuestLocale(questId))
         {
             int locIdx = bot->GetSession()->GetSessionDbLocaleIndex();
             if (locIdx >= 0)

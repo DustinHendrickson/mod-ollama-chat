@@ -1,4 +1,4 @@
-#include "mod-ollama-chat_command.h"
+﻿#include "mod-ollama-chat_command.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat_personality.h"
@@ -49,7 +49,7 @@ ChatCommandTable OllamaChatConfigCommand::GetCommands() const
 
 bool OllamaChatConfigCommand::HandleOllamaReloadCommand(ChatHandler* handler)
 {
-    sConfigMgr->Reload();
+    sConfigMgr.Reload();
     LoadOllamaChatConfig();
 
     // Clear personality assignments if RP personalities are disabled

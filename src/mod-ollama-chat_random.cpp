@@ -1,4 +1,4 @@
-#include "mod-ollama-chat_random.h"
+﻿#include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_sentiment.h"
@@ -322,7 +322,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             // Quest Area
             {
                 std::vector<std::string> questAreas;
-                for (auto const& qkv : sObjectMgr->GetQuestTemplates())
+                for (auto const& qkv : sObjectMgr.GetQuestTemplates())
                 {
                     Quest const* qt = qkv.second;
                     if (!qt) continue;
@@ -381,7 +381,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     Creature* giver = unit->ToCreature();
                     if (giver->HasNpcFlag(UNIT_NPC_FLAG_QUESTGIVER))
                     {
-                        auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
+                        auto bounds = sObjectMgr.GetCreatureQuestRelationBounds(giver->GetEntry());
                         int n       = std::distance(bounds.first, bounds.second);
                         if (!g_EnvCommentQuestgiver.empty()) {
                             uint32_t idx = g_EnvCommentQuestgiver.size() == 1 ? 0 : urand(0, g_EnvCommentQuestgiver.size() - 1);
@@ -432,7 +432,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 {
                     if (qs.second.Status == QUEST_STATUS_INCOMPLETE)
                     {
-                        if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
+                        if (auto* qt = sObjectMgr.GetQuestTemplate(qs.first))
                             if (!g_EnvCommentUnfinishedQuest.empty()) {
                                 uint32_t idx = g_EnvCommentUnfinishedQuest.size() == 1 ? 0 : urand(0, g_EnvCommentUnfinishedQuest.size() - 1);
                                 std::string templ = g_EnvCommentUnfinishedQuest[idx];
