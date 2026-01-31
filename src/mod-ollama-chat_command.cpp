@@ -114,7 +114,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
             handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", *botName));
             return true;
         }
-        if (!sPlayerbotsMgr->GetPlayerbotAI(targetBot))
+        if (!PlayerbotsMgr::instance().GetPlayerbotAI(targetBot))
         {
             handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", *botName));
             return true;
@@ -203,7 +203,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentSetCommand(ChatHandler* handl
         handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", botName));
         return true;
     }
-    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    if (!PlayerbotsMgr::instance().GetPlayerbotAI(bot))
     {
         handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
         return true;
@@ -261,7 +261,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
             handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", *botName));
             return true;
         }
-        if (!sPlayerbotsMgr->GetPlayerbotAI(targetBot))
+        if (!PlayerbotsMgr::instance().GetPlayerbotAI(targetBot))
         {
             handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", *botName));
             return true;
@@ -337,7 +337,7 @@ bool OllamaChatConfigCommand::HandleOllamaPersonalityGetCommand(ChatHandler* han
         return true;
     }
     
-    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    if (!PlayerbotsMgr::instance().GetPlayerbotAI(bot))
     {
         handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
         return true;
@@ -361,7 +361,7 @@ bool OllamaChatConfigCommand::HandleOllamaPersonalitySetCommand(ChatHandler* han
         return true;
     }
     
-    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    if (!PlayerbotsMgr::instance().GetPlayerbotAI(bot))
     {
         handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
         return true;
