@@ -84,7 +84,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
     {
         Player* player = itr.second;
         if (!player->IsInWorld()) continue;
-        if (!sPlayerbotsMgr->GetPlayerbotAI(player))
+        if (!sPlayerbotsMgr.GetPlayerbotAI(player))
             realPlayers.push_back(player);
     }
 
@@ -93,7 +93,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
     for (auto const& itr : allPlayers)
     {
         Player* bot = itr.second;
-        PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
+        PlayerbotAI* ai = sPlayerbotsMgr.GetPlayerbotAI(bot);
         if (!ai) continue;
         if (!bot->IsInWorld() || bot->IsBeingTeleported()) continue;
         if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue;
@@ -108,7 +108,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 Player* player = pair.second;
                 if (!player || !player->IsInWorld())
                     continue;
-                if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                if (sPlayerbotsMgr.GetPlayerbotAI(player))
                     continue;
                 if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
                 {
@@ -149,7 +149,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
             {
                 Player* member = ref->GetSource();
-                if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
+                if (member && !sPlayerbotsMgr.GetPlayerbotAI(member))
                 {
                     hasRealPlayerInParty = true;
                     break;
@@ -458,7 +458,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     Player* player = pair.second;
                     if (!player || !player->IsInWorld())
                         continue;
-                    if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                    if (sPlayerbotsMgr.GetPlayerbotAI(player))
                         continue;
                     if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
                     {
@@ -566,7 +566,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             auto prompt = [bot, &environmentInfo]()
             {
-                PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(bot);
+                PlayerbotAI* botAI = sPlayerbotsMgr.GetPlayerbotAI(bot);
                 if (!botAI)
                     return std::string("Error, no bot AI");
 
@@ -627,7 +627,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     }
                     botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
-                    PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                    PlayerbotAI* botAI = sPlayerbotsMgr.GetPlayerbotAI(botPtr);
                     if (!botAI) return;
                     
                     // Simulate typing delay if enabled
@@ -642,7 +642,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         // Reacquire pointers after delay
                         botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                         if (!botPtr) return;
-                        botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                        botAI = sPlayerbotsMgr.GetPlayerbotAI(botPtr);
                         if (!botAI) return;
                     }
                     
@@ -659,7 +659,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (!player || !player->IsInWorld())
                                 continue;
                                 
-                            if (sPlayerbotsMgr->GetPlayerbotAI(player))
+                            if (sPlayerbotsMgr.GetPlayerbotAI(player))
                                 continue;
                                 
                             if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())

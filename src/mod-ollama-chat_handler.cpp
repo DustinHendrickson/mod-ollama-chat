@@ -1,4 +1,4 @@
-#include "Log.h"
+﻿#include "Log.h"
 #include "Language.h"
 #include "Player.h"
 #include "Chat.h"
@@ -214,13 +214,13 @@ bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uin
             return true;
 
         // Check if sender is a bot - if so, don't trigger Ollama responses for bot-to-bot whispers
-        PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+        PlayerbotAI* senderAI = sPlayerbotsMgr.GetPlayerbotAI(player);
         if (senderAI && senderAI->IsBotAI())
         {
             return true;
         }
 
-        PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
+        PlayerbotAI* receiverAI = sPlayerbotsMgr.GetPlayerbotAI(receiver);
         if (!receiverAI || !receiverAI->IsBotAI())
             return true;
     }
@@ -694,7 +694,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         }
     }
              
-    PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+    PlayerbotAI* senderAI = sPlayerbotsMgr.GetPlayerbotAI(player);
     bool senderIsBot = (senderAI && senderAI->IsBotAI());
     
     std::vector<Player*> eligibleBots;
@@ -725,7 +725,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         }
         
         // For whispers, only the receiver bot can respond (if it's a bot)
-        PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
+        PlayerbotAI* receiverAI = sPlayerbotsMgr.GetPlayerbotAI(receiver);
         if (receiverAI && receiverAI->IsBotAI())
         {
             eligibleBots.push_back(receiver);
@@ -767,7 +767,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
                 
             // Skip non-bots early
-            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+            PlayerbotAI* candidateAI = sPlayerbotsMgr.GetPlayerbotAI(candidate);
             if (!candidateAI || !candidateAI->IsBotAI())
                 continue;
                 
@@ -833,7 +833,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             Player* candidate = itr.second;
             if (candidate->IsInWorld() && candidate != player)
             {
-                PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+                PlayerbotAI* candidateAI = sPlayerbotsMgr.GetPlayerbotAI(candidate);
                 if (candidateAI && candidateAI->IsBotAI())
                 {
                     eligibleBots.push_back(candidate);
@@ -879,7 +879,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
             {
                 Player* member = ref->GetSource();
-                if (member && !sPlayerbotsMgr->GetPlayerbotAI(member))
+                if (member && !sPlayerbotsMgr.GetPlayerbotAI(member))
                 {
                     hasRealPlayer = true;
                     break;
@@ -925,7 +925,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
             if (!candidate->IsInWorld())
                 continue;
-            if (!sPlayerbotsMgr->GetPlayerbotAI(candidate))
+            if (!sPlayerbotsMgr.GetPlayerbotAI(candidate))
             {
                 realPlayerNearby = true;
                 break;
@@ -1075,7 +1075,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     }
                     return;
                 }
-                PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                PlayerbotAI* botAI = sPlayerbotsMgr.GetPlayerbotAI(botPtr);
                 if (!botAI)
                 {
                     if(g_DebugEnabled)
@@ -1097,7 +1097,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     // Reacquire pointers after delay
                     botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
-                    botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                    botAI = sPlayerbotsMgr.GetPlayerbotAI(botPtr);
                     if (!botAI) return;
                     senderPtr = ObjectAccessor::FindPlayer(ObjectGuid(senderGuid));
                     if (!senderPtr) return;
@@ -1239,14 +1239,14 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
 {
     if (!bot || !player || bot == player)
         return false;
-    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    if (!sPlayerbotsMgr.GetPlayerbotAI(bot))
         return false;
         
     // For whispers, only the specific receiver should respond
     if (source == SRC_WHISPER_LOCAL)
     {
         // Don't allow bot-to-bot whisper responses
-        PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+        PlayerbotAI* senderAI = sPlayerbotsMgr.GetPlayerbotAI(player);
         if (senderAI && senderAI->IsBotAI())
         {
             return false;
@@ -1351,7 +1351,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     if (!bot || !player) {
         return "";
     }
-    PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(bot);
+    PlayerbotAI* botAI = sPlayerbotsMgr.GetPlayerbotAI(bot);
     if (botAI == nullptr) {
         return "";
     }
