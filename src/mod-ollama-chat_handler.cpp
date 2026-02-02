@@ -931,94 +931,11 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     }
     
     uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
-    if (senderIsBot)
+    
+    if(g_DebugEnabled)
     {
-        // Prevent bot spam when no real players can observe the conversation
-        bool realPlayerCanObserve = false;
-        
-        // For party/raid, check if sender's group has any real players (online and in party)
-        if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
-        {
-            Group* senderGroup = player->GetGroup();
-            if (senderGroup)
-            {
-                for (GroupReference* ref = senderGroup->GetFirstMember(); ref; ref = ref->next())
-                {
-                    Player* member = ref->GetSource();
-                    if (member && member != player && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
-                    {
-                        realPlayerCanObserve = true;
-                        break;
-                    }
-                }
-            }
-        }
-        // For guild/officer chat, check if any real player is in the guild and online (regardless of location)
-        else if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
-        {
-            uint32_t guildId = player->GetGuildId();
-            if (guildId > 0)
-            {
-                for (auto const& itr : ObjectAccessor::GetPlayers())
-                {
-                    Player* candidate = itr.second;
-                    if (candidate == player || !candidate->IsInWorld())
-                        continue;
-                    if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
-                    {
-                        if (candidate->GetGuildId() == guildId)
-                        {
-                            realPlayerCanObserve = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        // For proximity-based chat, check configured distance thresholds
-        else if (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL)
-        {
-            float threshold = (sourceLocal == SRC_SAY_LOCAL) ? g_SayDistance : g_YellDistance;
-            if (threshold > 0.0f)
-            {
-                for (auto const& itr : ObjectAccessor::GetPlayers())
-                {
-                    Player* candidate = itr.second;
-                    if (candidate == player || !candidate->IsInWorld())
-                        continue;
-                    if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
-                    {
-                        if (player->GetDistance(candidate) <= threshold)
-                        {
-                            realPlayerCanObserve = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        // For channels, check if any real player is in the same channel
-        else if (channel != nullptr)
-        {
-            for (auto const& itr : ObjectAccessor::GetPlayers())
-            {
-                Player* candidate = itr.second;
-                if (candidate == player || !candidate->IsInWorld())
-                    continue;
-                if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
-                {
-                    // Check if the candidate is actually in the same channel instance
-                    if (candidate->IsInChannel(channel))
-                    {
-                        realPlayerCanObserve = true;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        if (!realPlayerCanObserve)
-            chance = 0;
+        LOG_INFO("server.loading", "[Ollama Chat] Sender: {} ({}), Channel: {}, Reply Chance: {}%, Candidate Bots: {}",
+                player->GetName(), senderIsBot ? "BOT" : "PLAYER", ChatChannelSourceLocalStr[sourceLocal], chance, candidateBots.size());
     }
     
     std::vector<Player*> finalCandidates;
@@ -1077,11 +994,24 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             {
                 if (g_DisableRepliesInCombat && bot->IsInCombat())
                 {
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipped - in combat", bot->GetName());
+                    }
                     continue;
                 }
-                if (urand(0, 99) < chance)
+                uint32_t roll = urand(0, 99);
+                if (roll < chance)
                 {
                     finalCandidates.push_back(bot);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} PASSED chance roll ({} < {}%)", bot->GetName(), roll, chance);
+                    }
+                }
+                else if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} FAILED chance roll ({} >= {}%)", bot->GetName(), roll, chance);
                 }
             }
         }
@@ -1092,6 +1022,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     {
         if(g_DebugEnabled)
         {
+            LOG_INFO("server.loading", "[Ollama Chat] *** NO BOTS RESPONDING *** to {} from {} in {} channel. "
+                    "Eligible: {}, Candidates: {}, Final: 0, Chance: {}%",
+                    senderIsBot ? "BOT" : "PLAYER", player->GetName(), ChatChannelSourceLocalStr[sourceLocal],
+                    eligibleBots.size(), candidateBots.size(), chance);
             LOG_INFO("server.loading", "[Ollama Chat] No eligible bots found to respond to message '{}'. "
                     "Source: {}, Eligible bots: {}, Candidate bots: {}, Combat disabled: {}",
                     msg, ChatChannelSourceLocalStr[sourceLocal], eligibleBots.size(), 
@@ -1106,7 +1040,24 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         std::mt19937 g(rd());
         std::shuffle(finalCandidates.begin(), finalCandidates.end(), g);
         uint32_t countToPick = urand(1, g_MaxBotsToPick);
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Limiting {} bots to {} (MaxBotsToPick)", finalCandidates.size(), countToPick);
+        }
         finalCandidates.resize(countToPick);
+    }
+    
+    if(g_DebugEnabled && !finalCandidates.empty())
+    {
+        std::string botNames;
+        for (Player* bot : finalCandidates)
+        {
+            if (!botNames.empty()) botNames += ", ";
+            botNames += bot->GetName();
+        }
+        LOG_INFO("server.loading", "[Ollama Chat] *** {} BOTS RESPONDING *** to {} from {} in {}: [{}]",
+                finalCandidates.size(), senderIsBot ? "BOT" : "PLAYER", player->GetName(),
+                ChatChannelSourceLocalStr[sourceLocal], botNames);
     }
     
     uint64_t senderGuid = player->GetGUID().GetRawValue();
