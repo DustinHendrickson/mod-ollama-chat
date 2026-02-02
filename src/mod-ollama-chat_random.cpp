@@ -648,10 +648,19 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Random Message Prompt: {} ", prompt);
+            }
+
+            uint64_t botGuid = bot->GetGUID().GetRawValue();
+
             std::thread([botGuid, prompt, isGuildComment]() {
                 try {
                     Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
+                    
+                    // Generate response from LLM
                     std::string response = QueryOllamaAPI(prompt);
                     if (response.empty())
                     {
@@ -659,6 +668,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             LOG_INFO("server.loading", "[OllamaChat] Bot skipped random chatter due to API error");
                         return;
                     }
+                    
                     botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
                     PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(botPtr);
@@ -716,8 +726,33 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     }
                     else
                     {
-                        // For solo bots, randomly pick between Say and General channel
-                        std::vector<std::string> channels = {"General", "Say"};
+                        // For solo bots, check if any real player is within Say distance
+                        bool realPlayerInSayDistance = false;
+                        for (auto const& pair : ObjectAccessor::GetPlayers())
+                        {
+                            Player* player = pair.second;
+                            if (!player || !player->IsInWorld())
+                                continue;
+                                
+                            if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                                continue;
+                                
+                            if (botPtr->GetDistance(player) <= g_SayDistance)
+                            {
+                                realPlayerInSayDistance = true;
+                                break;
+                            }
+                        }
+                        
+                        // Build channel list - only include Say if real player is close enough
+                        std::vector<std::string> channels;
+                        channels.push_back("General");
+                        if (realPlayerInSayDistance)
+                        {
+                            channels.push_back("Say");
+                        }
+                        
+                        // Pick random channel
                         std::random_device rd;
                         std::mt19937 gen(rd());
                         std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
@@ -725,7 +760,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (selectedChannel == "Say") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say: {}", botPtr->GetName(), response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say (real player within {} yards): {}", botPtr->GetName(), g_SayDistance, response);
                             botAI->Say(response);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
@@ -738,8 +773,15 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             
                             if (!sent)
                             {
-                                // Fallback to Say if channel message failed
-                                botAI->Say(response);
+                                // Fallback to Say if channel message failed (and real player is close enough)
+                                if (realPlayerInSayDistance)
+                                {
+                                    botAI->Say(response);
+                                }
+                                else if (g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} cannot send to General and no real player in Say range, message lost", botPtr->GetName());
+                                }
                             }
                         }
                     }
