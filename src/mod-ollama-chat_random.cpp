@@ -729,52 +729,17 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             botAI->Say(response);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} attempting Random Chatter to General channel: {}", botPtr->GetName(), response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter General: {}", botPtr->GetName(), response);
                             
-                            // First check if bot is in a General channel
-                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
-                            if (!cMgr)
+                            // Use playerbots' SayToChannel method - it handles channel lookup internally
+                            bool sent = botAI->SayToChannel(response, ChatChannelId::GENERAL);
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} SayToChannel result: {}", botPtr->GetName(), sent ? "success" : "failed, using Say fallback");
+                            
+                            if (!sent)
                             {
-                                if (g_DebugEnabled)
-                                    LOG_INFO("server.loading", "[Ollama Chat] No ChannelMgr for bot {}, falling back to Say", botPtr->GetName());
+                                // Fallback to Say if channel message failed
                                 botAI->Say(response);
-                            }
-                            else
-                            {
-                                // Try to find any General channel the bot is in
-                                Channel* generalChannel = nullptr;
-                                std::string zoneName = botPtr->GetZoneId() > 0 ? sObjectMgr->GetAreaName(botPtr->GetZoneId()) : "";
-                                
-                                // Try to get General channel for the bot's zone
-                                if (!zoneName.empty())
-                                {
-                                    std::string channelName = "General - " + zoneName;
-                                    generalChannel = cMgr->GetChannel(channelName, botPtr);
-                                    if (g_DebugEnabled)
-                                        LOG_INFO("server.loading", "[Ollama Chat] Attempting to find channel '{}' for bot {}: {}", 
-                                                channelName, botPtr->GetName(), generalChannel ? "found" : "not found");
-                                }
-                                
-                                if (generalChannel && botPtr->IsInChannel(generalChannel))
-                                {
-                                    // Bot is in the channel, send message
-                                    if (g_DebugEnabled)
-                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} sending to General channel: {}", botPtr->GetName(), response);
-                                    
-                                    if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
-                                    {
-                                        if (g_DebugEnabled)
-                                            LOG_INFO("server.loading", "[Ollama Chat] SayToChannel failed for bot {}, falling back to Say", botPtr->GetName());
-                                        botAI->Say(response);
-                                    }
-                                }
-                                else
-                                {
-                                    // Bot not in General channel, use Say instead
-                                    if (g_DebugEnabled)
-                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in General channel, using Say instead", botPtr->GetName());
-                                    botAI->Say(response);
-                                }
                             }
                         }
                     }
