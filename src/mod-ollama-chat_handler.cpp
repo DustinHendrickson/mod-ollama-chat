@@ -8,6 +8,7 @@
 #include "Config.h"
 #include "Common.h"
 #include "Guild.h"
+#include "GuildMgr.h"
 #include "ObjectAccessor.h"
 #include "World.h"
 #include "AiFactory.h"
