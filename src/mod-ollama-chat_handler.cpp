@@ -877,6 +877,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     }
     
     std::vector<Player*> candidateBots;
+    int notEligibleCount = 0;
     for (Player* bot : eligibleBots)
     {
         if (!bot)
@@ -960,7 +961,15 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             // For non-channel sources (Say/Yell/Guild/Party/Whisper), run the full eligibility check
             if (IsBotEligibleForChatChannelLocal(bot, player, sourceLocal, channel, receiver))
                 candidateBots.push_back(bot);
+            else
+                notEligibleCount++;
         }
+    }
+    
+    if (g_DebugEnabled && notEligibleCount > 0)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] {} bots not eligible for {} (distance/guild/party checks failed)", 
+                notEligibleCount, ChatChannelSourceLocalStr[sourceLocal]);
     }
     
     uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
@@ -1463,22 +1472,11 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
             if (threshold > 0.0f)
             {
                 if (!bot->IsInWorld() || !player->IsInWorld())
-                {
-                    if (g_DebugEnabled)
-                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not eligible for Say: IsInWorld check failed (bot={}, sender={})", 
-                                bot->GetName(), bot->IsInWorld(), player->IsInWorld());
                     return false;
-                }
                     
                 float distance = bot->GetDistance(player);
-                bool eligible = distance <= threshold;
-                if (g_DebugEnabled && !eligible)
-                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} not eligible for Say: distance {:.1f} > threshold {:.1f}", 
-                            bot->GetName(), distance, threshold);
-                return eligible;
+                return distance <= threshold;
             }
-            if (g_DebugEnabled)
-                LOG_INFO("server.loading", "[Ollama Chat] Bot {} not eligible for Say: threshold is 0 or negative", bot->GetName());
             return false;
             
         case SRC_YELL_LOCAL:   
