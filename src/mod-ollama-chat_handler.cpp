@@ -305,8 +305,26 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
     if (!bot || msg.empty())
         return;
         
+    // Convert ChatChannelSourceLocal back to chat type for ProcessChat
+    uint32_t type = 0;
+    switch (sourceLocal)
+    {
+        case SRC_SAY_LOCAL: type = CHAT_MSG_SAY; break;
+        case SRC_YELL_LOCAL: type = CHAT_MSG_YELL; break;
+        case SRC_PARTY_LOCAL: type = CHAT_MSG_PARTY; break;
+        case SRC_RAID_LOCAL: type = CHAT_MSG_RAID; break;
+        case SRC_GUILD_LOCAL: type = CHAT_MSG_GUILD; break;
+        case SRC_OFFICER_LOCAL: type = CHAT_MSG_OFFICER; break;
+        case SRC_WHISPER_LOCAL: type = CHAT_MSG_WHISPER; break;
+        case SRC_GENERAL_LOCAL: type = CHAT_MSG_CHANNEL; break;
+        default: type = CHAT_MSG_SAY; break;
+    }
+    
+    std::string mutableMsg = msg; // ProcessChat takes non-const reference
+    uint32_t lang = bot->GetTeamId() == TEAM_ALLIANCE ? LANG_COMMON : LANG_ORCISH;
+    
     // Call the main ProcessChat function with bot as sender
-    PlayerBotChatHandler::ProcessChat(bot, msg, sourceLocal, channel);
+    PlayerBotChatHandler::ProcessChat(bot, type, lang, mutableMsg, sourceLocal, channel, nullptr);
 }
 
 std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::string playerMessage)
