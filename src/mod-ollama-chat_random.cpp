@@ -8,6 +8,8 @@
 #include "PlayerbotMgr.h"
 #include "ObjectAccessor.h"
 #include "Chat.h"
+#include "ChannelMgr.h"
+#include "Channel.h"
 #include "fmt/core.h"
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_personality.h"

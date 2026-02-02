@@ -10,6 +10,8 @@
 #include "Guild.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+#include "ChannelMgr.h"
+#include "Channel.h"
 #include "AiFactory.h"
 #include "SpellMgr.h"
 #include "AchievementMgr.h"
