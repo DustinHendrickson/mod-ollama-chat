@@ -926,7 +926,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Prevent bot spam when no real players can observe the conversation
         bool realPlayerCanObserve = false;
         
-        // For party/raid, check if sender's group has any real players
+        // For party/raid, check if sender's group has any real players (online and in party)
         if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
         {
             Group* senderGroup = player->GetGroup();
@@ -939,6 +939,28 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     {
                         realPlayerCanObserve = true;
                         break;
+                    }
+                }
+            }
+        }
+        // For guild/officer chat, check if any real player is in the guild and online (regardless of location)
+        else if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
+        {
+            uint32_t guildId = player->GetGuildId();
+            if (guildId > 0)
+            {
+                for (auto const& itr : ObjectAccessor::GetPlayers())
+                {
+                    Player* candidate = itr.second;
+                    if (candidate == player || !candidate->IsInWorld())
+                        continue;
+                    if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
+                    {
+                        if (candidate->GetGuildId() == guildId)
+                        {
+                            realPlayerCanObserve = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -965,8 +987,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 }
             }
         }
-        // For channels and guild, check if any real player is in same zone
-        else if (channel != nullptr || sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
+        // For channels, check if any real player is in the same channel
+        else if (channel != nullptr)
         {
             for (auto const& itr : ObjectAccessor::GetPlayers())
             {
@@ -975,17 +997,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     continue;
                 if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
                 {
-                    // For guild, check guild membership
-                    if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
-                    {
-                        if (candidate->GetGuildId() == player->GetGuildId())
-                        {
-                            realPlayerCanObserve = true;
-                            break;
-                        }
-                    }
-                    // For channels, check zone
-                    else if (candidate->GetZoneId() == player->GetZoneId())
+                    // Check if the candidate is actually in the same channel instance
+                    if (channel->IsOn(candidate->GetGUID()))
                     {
                         realPlayerCanObserve = true;
                         break;

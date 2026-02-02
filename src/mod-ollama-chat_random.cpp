@@ -542,23 +542,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
-            bool IsaGuildComment = false;
-
             if (!candidateComments.empty())
             {
                 uint32_t index = candidateComments.size() == 1 ? 0 : urand(0, candidateComments.size() - 1);
                 environmentInfo = candidateComments[index];
-                if (!candidateComments.empty() && !environmentInfo.empty()) {
-                    // If guildComments was appended, check if environmentInfo is one of them
-                    if (!guildComments.empty()) {
-                        for (const auto& gc : guildComments) {
-                            if (environmentInfo == gc) {
-                                IsaGuildComment = true;
-                                break;
-                            }
-                        }
-                    }
-                }
             }
             else
             {
