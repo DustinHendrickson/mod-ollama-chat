@@ -810,6 +810,16 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 }
             }
             
+            // CHANNEL MEMBERSHIP CHECK: Verify bot is actually in the channel
+            if (!candidate->IsInChannel(channel))
+            {
+                if(g_DebugEnabled)
+                {
+                    //LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED channel membership check - Not in channel '{}'", candidate->GetName(), channel->GetName());
+                }
+                continue; // SKIP this bot - not in the channel
+            }
+            
             // ONLY add bots that passed ALL verifications
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)

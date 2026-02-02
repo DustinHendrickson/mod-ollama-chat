@@ -83,6 +83,7 @@ uint32_t    g_ConversationHistorySaveInterval = 10;
 // --------------------------------------------
 std::string g_RandomChatterPromptTemplate;
 std::vector<std::string> g_RandomChatterPromptVariations;
+std::vector<std::string> g_RandomChatterQuestionVariations;
 std::string g_EventChatterPromptTemplate;
 std::string g_ChatPromptTemplate;
 std::string g_ChatExtraInfoTemplate;
@@ -416,6 +417,22 @@ void LoadOllamaChatConfig()
             if (!variation.empty())
             {
                 g_RandomChatterPromptVariations.push_back(variation);
+            }
+        }
+    }
+
+    // Load random chatter question variations
+    std::string questionsStr = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterQuestionVariations", "");
+    g_RandomChatterQuestionVariations.clear();
+    if (!questionsStr.empty())
+    {
+        std::stringstream ss(questionsStr);
+        std::string question;
+        while (std::getline(ss, question, '|'))
+        {
+            if (!question.empty())
+            {
+                g_RandomChatterQuestionVariations.push_back(question);
             }
         }
     }

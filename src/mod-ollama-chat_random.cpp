@@ -606,11 +606,35 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     fmt::arg("environment_info", environmentInfo)
                 );
 
-                // Append a random prompt variation if available
-                if (!g_RandomChatterPromptVariations.empty())
+                // Randomly choose between statement variations and question variations
+                bool hasStatements = !g_RandomChatterPromptVariations.empty();
+                bool hasQuestions = !g_RandomChatterQuestionVariations.empty();
+                
+                if (hasStatements && hasQuestions)
                 {
+                    // 50/50 chance between statement and question
+                    if (urand(0, 1) == 0)
+                    {
+                        uint32_t varIdx = urand(0, g_RandomChatterPromptVariations.size() - 1);
+                        prompt += " " + g_RandomChatterPromptVariations[varIdx];
+                    }
+                    else
+                    {
+                        uint32_t qIdx = urand(0, g_RandomChatterQuestionVariations.size() - 1);
+                        prompt += " " + g_RandomChatterQuestionVariations[qIdx];
+                    }
+                }
+                else if (hasStatements)
+                {
+                    // Only statements available
                     uint32_t varIdx = urand(0, g_RandomChatterPromptVariations.size() - 1);
                     prompt += " " + g_RandomChatterPromptVariations[varIdx];
+                }
+                else if (hasQuestions)
+                {
+                    // Only questions available
+                    uint32_t qIdx = urand(0, g_RandomChatterQuestionVariations.size() - 1);
+                    prompt += " " + g_RandomChatterQuestionVariations[qIdx];
                 }
 
                 return prompt;
@@ -701,19 +725,56 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (selectedChannel == "Say") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Say: {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say: {}", botPtr->GetName(), response);
                             botAI->Say(response);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} attempting Random Chatter to General channel: {}", botPtr->GetName(), response);
                             
-                            // Use playerbots' SayToChannel method if available, otherwise use direct channel access
-                            if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
+                            // First check if bot is in a General channel
+                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                            if (!cMgr)
                             {
-                                // Fallback to Say if channel message failed
                                 if (g_DebugEnabled)
-                                    LOG_INFO("server.loading", "[Ollama Chat] Failed to send to General channel, falling back to Say");
+                                    LOG_INFO("server.loading", "[Ollama Chat] No ChannelMgr for bot {}, falling back to Say", botPtr->GetName());
                                 botAI->Say(response);
+                            }
+                            else
+                            {
+                                // Try to find any General channel the bot is in
+                                Channel* generalChannel = nullptr;
+                                std::string zoneName = botPtr->GetZoneId() > 0 ? sObjectMgr->GetAreaName(botPtr->GetZoneId()) : "";
+                                
+                                // Try to get General channel for the bot's zone
+                                if (!zoneName.empty())
+                                {
+                                    std::string channelName = "General - " + zoneName;
+                                    generalChannel = cMgr->GetChannel(channelName, botPtr);
+                                    if (g_DebugEnabled)
+                                        LOG_INFO("server.loading", "[Ollama Chat] Attempting to find channel '{}' for bot {}: {}", 
+                                                channelName, botPtr->GetName(), generalChannel ? "found" : "not found");
+                                }
+                                
+                                if (generalChannel && botPtr->IsInChannel(generalChannel))
+                                {
+                                    // Bot is in the channel, send message
+                                    if (g_DebugEnabled)
+                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} sending to General channel: {}", botPtr->GetName(), response);
+                                    
+                                    if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
+                                    {
+                                        if (g_DebugEnabled)
+                                            LOG_INFO("server.loading", "[Ollama Chat] SayToChannel failed for bot {}, falling back to Say", botPtr->GetName());
+                                        botAI->Say(response);
+                                    }
+                                }
+                                else
+                                {
+                                    // Bot not in General channel, use Say instead
+                                    if (g_DebugEnabled)
+                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in General channel, using Say instead", botPtr->GetName());
+                                    botAI->Say(response);
+                                }
                             }
                         }
                     }
