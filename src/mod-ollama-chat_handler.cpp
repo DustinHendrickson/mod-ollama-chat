@@ -1209,7 +1209,33 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 notEligibleCount, ChatChannelSourceLocalStr[sourceLocal]);
     }
     
-    uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
+    // Determine reply chance based on channel type
+    uint32_t chance;
+    if (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL)
+    {
+        // Say/Yell channel type
+        chance = senderIsBot ? g_BotReplyChance_Say : g_PlayerReplyChance_Say;
+    }
+    else if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
+    {
+        // Party/Raid channel type
+        chance = senderIsBot ? g_BotReplyChance_Party : g_PlayerReplyChance_Party;
+    }
+    else if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
+    {
+        // Guild/Officer channel type
+        chance = senderIsBot ? g_BotReplyChance_Guild : g_PlayerReplyChance_Guild;
+    }
+    else if (sourceLocal == SRC_GENERAL_LOCAL)
+    {
+        // General/Trade/Custom channel type
+        chance = senderIsBot ? g_BotReplyChance_Channel : g_PlayerReplyChance_Channel;
+    }
+    else
+    {
+        // Default fallback (whispers, etc.) - use Say chances
+        chance = senderIsBot ? g_BotReplyChance_Say : g_PlayerReplyChance_Say;
+    }
     
     if(g_DebugEnabled)
     {

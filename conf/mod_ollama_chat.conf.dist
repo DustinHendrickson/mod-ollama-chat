@@ -141,15 +141,45 @@ OllamaChat.ThinkModeEnableForModule = 0
 # GENERAL CHATTER / RESPONSE LOGIC
 # --------------------------------------------
 
-# OllamaChat.PlayerReplyChance
-#     Description: The percent chance (0-100) that an eligible bot replies when the sender is a player.
+# OllamaChat.PlayerReplyChance.Say
+#     Description: The percent chance (0-100) that an eligible bot replies to a player in Say/Yell channels.
 #     Default:     90
-OllamaChat.PlayerReplyChance = 90
+OllamaChat.PlayerReplyChance.Say = 90
 
-# OllamaChat.BotReplyChance
-#     Description: The percent chance (0-100) that an eligible bot replies when the sender is an AI bot.
+# OllamaChat.BotReplyChance.Say
+#     Description: The percent chance (0-100) that an eligible bot replies to another bot in Say/Yell channels.
 #     Default:     10
-OllamaChat.BotReplyChance = 10
+OllamaChat.BotReplyChance.Say = 10
+
+# OllamaChat.PlayerReplyChance.Channel
+#     Description: The percent chance (0-100) that an eligible bot replies to a player in custom channels (General, Trade, etc.).
+#     Default:     50
+OllamaChat.PlayerReplyChance.Channel = 50
+
+# OllamaChat.BotReplyChance.Channel
+#     Description: The percent chance (0-100) that an eligible bot replies to another bot in custom channels (General, Trade, etc.).
+#     Default:     5
+OllamaChat.BotReplyChance.Channel = 5
+
+# OllamaChat.PlayerReplyChance.Party
+#     Description: The percent chance (0-100) that an eligible bot replies to a player in Party/Raid chat.
+#     Default:     90
+OllamaChat.PlayerReplyChance.Party = 90
+
+# OllamaChat.BotReplyChance.Party
+#     Description: The percent chance (0-100) that an eligible bot replies to another bot in Party/Raid chat.
+#     Default:     25
+OllamaChat.BotReplyChance.Party = 25
+
+# OllamaChat.PlayerReplyChance.Guild
+#     Description: The percent chance (0-100) that an eligible bot replies to a player in Guild/Officer chat.
+#     Default:     70
+OllamaChat.PlayerReplyChance.Guild = 70
+
+# OllamaChat.BotReplyChance.Guild
+#     Description: The percent chance (0-100) that an eligible bot replies to another bot in Guild/Officer chat.
+#     Default:     5
+OllamaChat.BotReplyChance.Guild = 5
 
 # OllamaChat.EnableWhisperReplies
 #     Description: Enable or disable bot responses to whisper messages.
