@@ -94,15 +94,24 @@ static std::string FormatPlayerRace(uint8_t raceId)
 
 const char* ChatChannelSourceLocalStr[] =
 {
-    "Undefined",
-    "Say",
-    "Party",
-    "Raid", 
-    "Guild",
-    "Officer",
-    "Yell",
-    "Whisper",
-    "General"
+    "Undefined",  // 0
+    "Say",        // 1
+    "Party",      // 2
+    "Raid",       // 3
+    "Guild",      // 4
+    "Officer",    // 5
+    "Yell",       // 6
+    "Whisper",    // 7
+    "Unknown8",   // 8
+    "Unknown9",   // 9
+    "Unknown10",  // 10
+    "Unknown11",  // 11
+    "Unknown12",  // 12
+    "Unknown13",  // 13
+    "Unknown14",  // 14
+    "Unknown15",  // 15
+    "Unknown16",  // 16
+    "General"     // 17
 };
 
 std::string GetConversationEntryKey(uint64_t botGuid, uint64_t playerGuid, const std::string& playerMessage, const std::string& botReply)

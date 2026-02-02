@@ -153,13 +153,13 @@ OllamaChat.BotReplyChance.Say = 10
 
 # OllamaChat.PlayerReplyChance.Channel
 #     Description: The percent chance (0-100) that an eligible bot replies to a player in custom channels (General, Trade, etc.).
-#     Default:     50
-OllamaChat.PlayerReplyChance.Channel = 50
+#     Default:     60
+OllamaChat.PlayerReplyChance.Channel = 60
 
 # OllamaChat.BotReplyChance.Channel
 #     Description: The percent chance (0-100) that an eligible bot replies to another bot in custom channels (General, Trade, etc.).
-#     Default:     5
-OllamaChat.BotReplyChance.Channel = 5
+#     Default:     3
+OllamaChat.BotReplyChance.Channel = 3
 
 # OllamaChat.PlayerReplyChance.Party
 #     Description: The percent chance (0-100) that an eligible bot replies to a player in Party/Raid chat.
