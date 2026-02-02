@@ -606,6 +606,13 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     fmt::arg("environment_info", environmentInfo)
                 );
 
+                // Append a random prompt variation if available
+                if (!g_RandomChatterPromptVariations.empty())
+                {
+                    uint32_t varIdx = urand(0, g_RandomChatterPromptVariations.size() - 1);
+                    prompt += " " + g_RandomChatterPromptVariations[varIdx];
+                }
+
                 return prompt;
 
             }();

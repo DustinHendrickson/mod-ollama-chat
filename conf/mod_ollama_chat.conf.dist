@@ -232,6 +232,15 @@ OllamaChat.RandomChatterMaxBotsPerPlayer = 2
 #   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
 OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
 
+# OllamaChat.RandomChatterPromptVariations
+#   Description: Pipe-separated (|) list of additional prompt instructions that will be randomly selected and appended to the RandomChatterPromptTemplate.
+#                This adds variety to bot responses by changing the angle or focus of their random chatter.
+#                One variation is randomly chosen each time a bot generates random chatter.
+#                Leave empty to disable variations and use only the base template.
+#   Example:     "Talk about the weather or environment.|Comment on your current task or goal.|Make an observation about nearby creatures or players."
+#   Default:     (see below for Wrath-era appropriate variations)
+OllamaChat.RandomChatterPromptVariations = "Share your thoughts on your current surroundings.|Comment on something you've recently experienced.|Mention something related to your class or role.|Talk about the faction conflict or recent battles.|Make an observation about the zone you're in.|Discuss your plans or next objective.|Comment on the local wildlife or enemies.|Share your opinion on a dungeon or raid.|Talk about your gear or a recent upgrade.|Mention something about your profession or skills.|Comment on the weather or atmosphere.|Discuss grouping up or finding a party.|Talk about gold farming or making money.|Share your thoughts on PvP or battlegrounds.|Talk about the Scourge threat or Lich King.|Mention Death Knights or the new class.|Discuss achievements you're working on.|Talk about emblems or badges you need."
+
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
 # --------------------------------------------
@@ -589,7 +598,7 @@ OllamaChat.EnableGuildRandomAmbientChatter = 1
 # OllamaChat.GuildRandomChatterChance
 #     Description: Percent chance (0-100) for a bot to send a random guild chat message when eligible.
 #     Default:     10
-OllamaChat.GuildRandomChatterChance = 10
+OllamaChat.GuildRandomChatterChance = 85
 
 # OllamaChat.EnableGuildEventChatter
 #     Description: Enable guild-specific random chatter for bots in guilds with real players.
