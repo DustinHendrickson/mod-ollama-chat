@@ -10,6 +10,8 @@
 #include "Guild.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+#include "ChannelMgr.h"
+#include "Channel.h"
 #include "AiFactory.h"
 #include "SpellMgr.h"
 #include "AchievementMgr.h"
@@ -375,12 +377,45 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
                 if (!botAI) return;
             }
 
+            // Route response to random appropriate channel
             if (isGuildEvent && botPtr->GetGuild())
+            {
                 botAI->SayToGuild(response);
+            }
             else if (botPtr->GetGroup())
+            {
                 botAI->SayToParty(response);
+            }
             else
-                botAI->Say(response);
+            {
+                // For solo bots, randomly pick between Say and General channel
+                std::vector<std::string> channels = {"General", "Say"};
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
+                std::string selectedChannel = channels[dist(gen)];
+                
+                if (selectedChannel == "Say")
+                {
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot Event Chatter Say: {}", response);
+                    botAI->Say(response);
+                }
+                else if (selectedChannel == "General")
+                {
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot Event Chatter General: {}", response);
+                    
+                    // Use playerbots' SayToChannel method if available, otherwise use direct channel access
+                    if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
+                    {
+                        // Fallback to Say if channel message failed
+                        if (g_DebugEnabled)
+                            LOG_INFO("server.loading", "[Ollama Chat] Failed to send to General channel, falling back to Say");
+                        botAI->Say(response);
+                    }
+                }
+            }
         }
         catch (const std::exception& e)
         {

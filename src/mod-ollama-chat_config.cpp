@@ -82,6 +82,8 @@ uint32_t    g_ConversationHistorySaveInterval = 10;
 // Prompt Templates
 // --------------------------------------------
 std::string g_RandomChatterPromptTemplate;
+std::vector<std::string> g_RandomChatterPromptVariations;
+std::vector<std::string> g_RandomChatterQuestionVariations;
 std::string g_EventChatterPromptTemplate;
 std::string g_ChatPromptTemplate;
 std::string g_ChatExtraInfoTemplate;
@@ -402,6 +404,38 @@ void LoadOllamaChatConfig()
     g_EnableRPPersonalities           = sConfigMgr->GetOption<bool>("OllamaChat.EnableRPPersonalities", false);
 
     g_RandomChatterPromptTemplate     = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterPromptTemplate", "");
+
+    // Load random chatter prompt variations
+    std::string variationsStr = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterPromptVariations", "");
+    g_RandomChatterPromptVariations.clear();
+    if (!variationsStr.empty())
+    {
+        std::stringstream ss(variationsStr);
+        std::string variation;
+        while (std::getline(ss, variation, '|'))
+        {
+            if (!variation.empty())
+            {
+                g_RandomChatterPromptVariations.push_back(variation);
+            }
+        }
+    }
+
+    // Load random chatter question variations
+    std::string questionsStr = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterQuestionVariations", "");
+    g_RandomChatterQuestionVariations.clear();
+    if (!questionsStr.empty())
+    {
+        std::stringstream ss(questionsStr);
+        std::string question;
+        while (std::getline(ss, question, '|'))
+        {
+            if (!question.empty())
+            {
+                g_RandomChatterQuestionVariations.push_back(question);
+            }
+        }
+    }
 
     g_EventChatterPromptTemplate     = sConfigMgr->GetOption<std::string>("OllamaChat.EventChatterPromptTemplate", "");
 

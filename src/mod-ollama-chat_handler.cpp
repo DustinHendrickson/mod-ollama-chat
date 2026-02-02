@@ -1,4 +1,4 @@
-#include "Log.h"
+﻿#include "Log.h"
 #include "Language.h"
 #include "Player.h"
 #include "Chat.h"
@@ -810,6 +810,16 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 }
             }
             
+            // CHANNEL MEMBERSHIP CHECK: Verify bot is actually in the channel
+            if (!candidate->IsInChannel(channel))
+            {
+                if(g_DebugEnabled)
+                {
+                    //LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED channel membership check - Not in channel '{}'", candidate->GetName(), channel->GetName());
+                }
+                continue; // SKIP this bot - not in the channel
+            }
+            
             // ONLY add bots that passed ALL verifications
             eligibleBots.push_back(candidate);
             if(g_DebugEnabled)
@@ -891,9 +901,15 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
             }
             
-            // When party restriction is enabled, only allow party/raid/whisper chat responses
-            // Block guild, say, yell, and other non-party communication
-            if (sourceLocal != SRC_PARTY_LOCAL && sourceLocal != SRC_RAID_LOCAL && sourceLocal != SRC_WHISPER_LOCAL)
+            // When party restriction is enabled, control which communication channels are allowed
+            // Allow: Party, Raid, Whisper, Say (proximity), and General channel
+            // Block: Guild, Officer, Yell, and other non-party/non-general communication
+            bool isAllowedChannel = (channel != nullptr && 
+                                    (channel->GetName().find("General") != std::string::npos || 
+                                     channel->GetName().find("LookingForGroup") != std::string::npos));
+            
+            if (sourceLocal != SRC_PARTY_LOCAL && sourceLocal != SRC_RAID_LOCAL && 
+                sourceLocal != SRC_WHISPER_LOCAL && sourceLocal != SRC_SAY_LOCAL && !isAllowedChannel)
             {
                 continue;
             }
@@ -917,21 +933,91 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
     if (senderIsBot)
     {
-        bool realPlayerNearby = false;
-        for (auto const& itr : ObjectAccessor::GetPlayers())
+        // Prevent bot spam when no real players can observe the conversation
+        bool realPlayerCanObserve = false;
+        
+        // For party/raid, check if sender's group has any real players (online and in party)
+        if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
         {
-            Player* candidate = itr.second;
-            if (candidate == player)
-                continue;
-            if (!candidate->IsInWorld())
-                continue;
-            if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
+            Group* senderGroup = player->GetGroup();
+            if (senderGroup)
             {
-                realPlayerNearby = true;
-                break;
+                for (GroupReference* ref = senderGroup->GetFirstMember(); ref; ref = ref->next())
+                {
+                    Player* member = ref->GetSource();
+                    if (member && member != player && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
+                    {
+                        realPlayerCanObserve = true;
+                        break;
+                    }
+                }
             }
         }
-        if (!realPlayerNearby)
+        // For guild/officer chat, check if any real player is in the guild and online (regardless of location)
+        else if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
+        {
+            uint32_t guildId = player->GetGuildId();
+            if (guildId > 0)
+            {
+                for (auto const& itr : ObjectAccessor::GetPlayers())
+                {
+                    Player* candidate = itr.second;
+                    if (candidate == player || !candidate->IsInWorld())
+                        continue;
+                    if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
+                    {
+                        if (candidate->GetGuildId() == guildId)
+                        {
+                            realPlayerCanObserve = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // For proximity-based chat, check configured distance thresholds
+        else if (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL)
+        {
+            float threshold = (sourceLocal == SRC_SAY_LOCAL) ? g_SayDistance : g_YellDistance;
+            if (threshold > 0.0f)
+            {
+                for (auto const& itr : ObjectAccessor::GetPlayers())
+                {
+                    Player* candidate = itr.second;
+                    if (candidate == player || !candidate->IsInWorld())
+                        continue;
+                    if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
+                    {
+                        if (player->GetDistance(candidate) <= threshold)
+                        {
+                            realPlayerCanObserve = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // For channels, check if any real player is in the same channel
+        else if (channel != nullptr)
+        {
+            for (auto const& itr : ObjectAccessor::GetPlayers())
+            {
+                Player* candidate = itr.second;
+                if (candidate == player || !candidate->IsInWorld())
+                    continue;
+                if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
+                {
+                    // Check if the candidate is actually in the same channel instance
+                    if (candidate->IsInChannel(channel))
+                    {
+                        realPlayerCanObserve = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!realPlayerCanObserve)
             chance = 0;
     }
     

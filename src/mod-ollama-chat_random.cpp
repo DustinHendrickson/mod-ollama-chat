@@ -8,6 +8,8 @@
 #include "PlayerbotMgr.h"
 #include "ObjectAccessor.h"
 #include "Chat.h"
+#include "ChannelMgr.h"
+#include "Channel.h"
 #include "fmt/core.h"
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_personality.h"
@@ -540,20 +542,21 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
-            bool IsaGuildComment = false;
-
+            bool isGuildComment = false;
             if (!candidateComments.empty())
             {
                 uint32_t index = candidateComments.size() == 1 ? 0 : urand(0, candidateComments.size() - 1);
                 environmentInfo = candidateComments[index];
-                if (!candidateComments.empty() && !environmentInfo.empty()) {
-                    // If guildComments was appended, check if environmentInfo is one of them
-                    if (!guildComments.empty()) {
-                        for (const auto& gc : guildComments) {
-                            if (environmentInfo == gc) {
-                                IsaGuildComment = true;
-                                break;
-                            }
+                
+                // Check if the selected comment is from guild-specific comments
+                if (!guildComments.empty())
+                {
+                    for (const auto& gc : guildComments)
+                    {
+                        if (environmentInfo == gc)
+                        {
+                            isGuildComment = true;
+                            break;
                         }
                     }
                 }
@@ -603,6 +606,37 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     fmt::arg("environment_info", environmentInfo)
                 );
 
+                // Randomly choose between statement variations and question variations
+                bool hasStatements = !g_RandomChatterPromptVariations.empty();
+                bool hasQuestions = !g_RandomChatterQuestionVariations.empty();
+                
+                if (hasStatements && hasQuestions)
+                {
+                    // 50/50 chance between statement and question
+                    if (urand(0, 1) == 0)
+                    {
+                        uint32_t varIdx = urand(0, g_RandomChatterPromptVariations.size() - 1);
+                        prompt += " " + g_RandomChatterPromptVariations[varIdx];
+                    }
+                    else
+                    {
+                        uint32_t qIdx = urand(0, g_RandomChatterQuestionVariations.size() - 1);
+                        prompt += " " + g_RandomChatterQuestionVariations[qIdx];
+                    }
+                }
+                else if (hasStatements)
+                {
+                    // Only statements available
+                    uint32_t varIdx = urand(0, g_RandomChatterPromptVariations.size() - 1);
+                    prompt += " " + g_RandomChatterPromptVariations[varIdx];
+                }
+                else if (hasQuestions)
+                {
+                    // Only questions available
+                    uint32_t qIdx = urand(0, g_RandomChatterQuestionVariations.size() - 1);
+                    prompt += " " + g_RandomChatterQuestionVariations[qIdx];
+                }
+
                 return prompt;
 
             }();
@@ -614,7 +648,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-            std::thread([botGuid, prompt]() {
+            std::thread([botGuid, prompt, isGuildComment]() {
                 try {
                     Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
@@ -647,9 +681,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     }
                     
                     if (botPtr->GetGroup())
-                        botAI->SayToParty(response);
-                    else if (botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
                     {
+                        botAI->SayToParty(response);
+                    }
+                    else if (isGuildComment && botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
+                    {
+                        // Only send to guild chat if the comment was guild-specific
                         // Check if there are real players in the guild
                         bool hasRealPlayerInGuild = false;
                         Guild* guild = botPtr->GetGuild();
@@ -671,26 +708,39 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (hasRealPlayerInGuild)
                         {
-                            // Guilded bots only speak in /guild
+                            // Guild-specific comments go to /guild chat
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild (guild-specific): {}", response);
                             botAI->SayToGuild(response);
                         }
                     }
-                    else {
+                    else
+                    {
+                        // For solo bots, randomly pick between Say and General channel
                         std::vector<std::string> channels = {"General", "Say"};
                         std::random_device rd;
                         std::mt19937 gen(rd());
                         std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
                         std::string selectedChannel = channels[dist(gen)];
+                        
                         if (selectedChannel == "Say") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Say: {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say: {}", botPtr->GetName(), response);
                             botAI->Say(response);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
-                            botAI->SayToChannel(response, ChatChannelId::GENERAL);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter General: {}", botPtr->GetName(), response);
+                            
+                            // Use playerbots' SayToChannel method - it handles channel lookup internally
+                            bool sent = botAI->SayToChannel(response, ChatChannelId::GENERAL);
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} SayToChannel result: {}", botPtr->GetName(), sent ? "success" : "failed, using Say fallback");
+                            
+                            if (!sent)
+                            {
+                                // Fallback to Say if channel message failed
+                                botAI->Say(response);
+                            }
                         }
                     }
                 } catch (const std::exception& e) {
