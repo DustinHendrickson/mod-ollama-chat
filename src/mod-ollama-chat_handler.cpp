@@ -1310,9 +1310,18 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
 static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatChannelSourceLocal source, Channel* channel, Player* receiver)
 {
     if (!bot || !player || bot == player)
+    {
+        if (g_DebugEnabled)
+            LOG_INFO("server.loading", "[Ollama Chat] IsBotEligible: FAILED basic check - bot={}, player={}, same={}", 
+                    (void*)bot, (void*)player, (bot == player));
         return false;
+    }
     if (!PlayerbotsMgr::instance().GetPlayerbotAI(bot))
+    {
+        if (g_DebugEnabled)
+            LOG_INFO("server.loading", "[Ollama Chat] IsBotEligible: Bot {} FAILED - no PlayerbotAI", bot->GetName());
         return false;
+    }
         
     // For whispers, only the specific receiver should respond
     if (source == SRC_WHISPER_LOCAL)
@@ -1327,8 +1336,10 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
         return (receiver && bot == receiver);
     }
     
-    // Check team compatibility for non-whisper chats (except channels which can be cross-faction)
-    if (!channel && bot->GetTeamId() != player->GetTeamId())
+    // Check team compatibility for non-proximity chats (except channels which can be cross-faction)
+    // Say and Yell are proximity-based and don't require same faction
+    bool isProximityChatSource = (source == SRC_SAY_LOCAL || source == SRC_YELL_LOCAL);
+    if (!channel && !isProximityChatSource && bot->GetTeamId() != player->GetTeamId())
         return false;
     
     // For channels, check if bot is in the specific channel instance
@@ -1386,7 +1397,15 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
     {
         case SRC_SAY_LOCAL:    
             threshold = g_SayDistance;
-            return (threshold > 0.0f && player->GetDistance(bot) <= threshold);
+            if (threshold > 0.0f)
+            {
+                if (!bot->IsInWorld() || !player->IsInWorld())
+                    return false;
+                    
+                float distance = bot->GetDistance(player);
+                return distance <= threshold;
+            }
+            return false;
             
         case SRC_YELL_LOCAL:   
             threshold = g_YellDistance;
