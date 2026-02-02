@@ -1199,27 +1199,21 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     {
                         case SRC_GUILD_LOCAL: 
                             botAI->SayToGuild(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_GUILD_LOCAL, nullptr);
                             break;
                         case SRC_OFFICER_LOCAL: 
                             botAI->SayToGuild(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_OFFICER_LOCAL, nullptr);
                             break;
                         case SRC_PARTY_LOCAL: 
                             botAI->SayToParty(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_PARTY_LOCAL, nullptr);
                             break;
                         case SRC_RAID_LOCAL:  
                             botAI->SayToRaid(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_RAID_LOCAL, nullptr);
                             break;
                         case SRC_SAY_LOCAL:   
                             botAI->Say(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                             break;
                         case SRC_YELL_LOCAL:  
                             botAI->Yell(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_YELL_LOCAL, nullptr);
                             break;
                         case SRC_WHISPER_LOCAL:
                             // For whispers, find the original sender and whisper back
@@ -1243,7 +1237,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             break;
                         default:              
                             botAI->Say(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                             break;
                     }
                 }
