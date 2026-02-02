@@ -1275,14 +1275,22 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Handle non-whisper chats with normal multi-bot logic
         std::vector<std::pair<size_t, Player*>> mentionedBots;
 
-        // Helper lambda to check if a bot name is mentioned as a complete word
-        auto isBotNameMentioned = [&trimmedMsg](const std::string& botName) -> size_t {
-            size_t pos = 0;
-            std::string lowerMsg = trimmedMsg;
-            std::string lowerBotName = botName;
-            std::transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
-            std::transform(lowerBotName.begin(), lowerBotName.end(), lowerBotName.begin(), ::tolower);
+        // Helper to convert string to lowercase safely
+        auto toLowerStr = [](const std::string& str) -> std::string {
+            std::string result = str;
+            for (char& c : result)
+            {
+                c = std::tolower(static_cast<unsigned char>(c));
+            }
+            return result;
+        };
+
+        // Helper to check if a bot name is mentioned as a complete word
+        auto isBotNameMentioned = [&trimmedMsg, &toLowerStr](const std::string& botName) -> size_t {
+            std::string lowerMsg = toLowerStr(trimmedMsg);
+            std::string lowerBotName = toLowerStr(botName);
             
+            size_t pos = 0;
             while ((pos = lowerMsg.find(lowerBotName, pos)) != std::string::npos)
             {
                 // Check if it's a word boundary before the name
@@ -1326,7 +1334,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         {
             // Sort by position to get the first mentioned bot
             std::sort(mentionedBots.begin(), mentionedBots.end(),
-                      [](auto &a, auto &b) { return a.first < b.first; });
+                      [](const std::pair<size_t, Player*> &a, const std::pair<size_t, Player*> &b) { return a.first < b.first; });
             Player* chosen = mentionedBots.front().second;
             if (!(g_DisableRepliesInCombat && chosen->IsInCombat()))
             {
