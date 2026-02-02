@@ -310,11 +310,10 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
     {
         // Look up the General channel for this bot's faction
         std::string channelName = "General";
-        uint32_t channelId = 1; // General channel ID
         ChannelMgr* cMgr = ChannelMgr::forTeam(bot->GetTeamId());
         if (cMgr)
         {
-            channel = cMgr->GetChannel(channelId, channelName, bot);
+            channel = cMgr->GetChannel(channelName, bot);
             if (g_DebugEnabled)
             {
                 if (channel)
