@@ -1330,6 +1330,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                                             botPtr->GetName(), channelName);
                                 }
                                 targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
+                                ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, targetChannel);
                                 if(g_DebugEnabled)
                                 {
                                     LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded in channel {}: {}", 
