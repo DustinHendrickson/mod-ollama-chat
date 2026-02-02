@@ -678,11 +678,13 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         }
                     }
                     else {
+                        // For solo bots, randomly pick between Say and General channel
                         std::vector<std::string> channels = {"General", "Say"};
                         std::random_device rd;
                         std::mt19937 gen(rd());
                         std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
                         std::string selectedChannel = channels[dist(gen)];
+                        
                         if (selectedChannel == "Say") {
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Say: {}", response);
@@ -690,7 +692,19 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
-                            botAI->SayToChannel(response, ChatChannelId::GENERAL);
+                            
+                            // Get General channel for bot's faction and send message
+                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                            if (cMgr) {
+                                std::string generalChannelName = "General";
+                                Channel* generalChannel = cMgr->GetChannel(generalChannelName, botPtr);
+                                if (generalChannel && botPtr->IsInChannel(generalChannel)) {
+                                    generalChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
+                                } else {
+                                    // Fallback to Say if not in General
+                                    botAI->Say(response);
+                                }
+                            }
                         }
                     }
                 } catch (const std::exception& e) {
