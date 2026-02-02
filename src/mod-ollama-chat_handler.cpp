@@ -305,6 +305,130 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
     if (!bot || msg.empty())
         return;
         
+    // If channel is nullptr but this is a channel-type message, try to find the channel
+    if (!channel && sourceLocal == SRC_GENERAL_LOCAL)
+    {
+        // Look up the General channel for this bot's faction
+        std::string channelName = "General";
+        uint32_t channelId = 1; // General channel ID
+        ChannelMgr* cMgr = ChannelMgr::forTeam(bot->GetTeamId());
+        if (cMgr)
+        {
+            channel = cMgr->GetChannel(channelId, channelName, bot);
+            if (g_DebugEnabled)
+            {
+                if (channel)
+                    LOG_INFO("server.loading", "[Ollama Chat] ProcessBotChatMessage: Found General channel for bot {}", bot->GetName());
+                else
+                    LOG_ERROR("server.loading", "[Ollama Chat] ProcessBotChatMessage: Could not find General channel for bot {}", bot->GetName());
+            }
+        }
+    }
+    
+    // Validate that bot is actually in the relevant chat group before triggering replies
+    bool canSendMessage = false;
+    switch (sourceLocal)
+    {
+        case SRC_SAY_LOCAL:
+        case SRC_YELL_LOCAL:
+            // Distance checks will be applied during eligibility filtering
+            canSendMessage = true;
+            break;
+            
+        case SRC_GENERAL_LOCAL:
+            // Must have a channel object
+            canSendMessage = (channel != nullptr);
+            if (!canSendMessage && g_DebugEnabled)
+                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot send to General - no channel found", bot->GetName());
+            break;
+            
+        case SRC_GUILD_LOCAL:
+        case SRC_OFFICER_LOCAL:
+            // Must be in a guild with at least one real player online
+            if (bot->GetGuildId() != 0)
+            {
+                Guild* guild = sGuildMgr->GetGuildById(bot->GetGuildId());
+                if (guild)
+                {
+                    // Check if any real (non-bot) players are online in this guild
+                    bool hasRealPlayer = false;
+                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                    {
+                        Player* member = pair.second;
+                        if (member && member->GetGuildId() == bot->GetGuildId())
+                        {
+                            if (!PlayerbotsMgr::instance().GetPlayerbotAI(member))
+                            {
+                                hasRealPlayer = true;
+                                break;
+                            }
+                        }
+                    }
+                    canSendMessage = hasRealPlayer;
+                    if (!canSendMessage && g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} cannot send to Guild - no real players online in guild", bot->GetName());
+                }
+                else
+                {
+                    canSendMessage = false;
+                    if (g_DebugEnabled)
+                        LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot send to Guild - guild not found", bot->GetName());
+                }
+            }
+            else
+            {
+                canSendMessage = false;
+                if (g_DebugEnabled)
+                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot send to Guild - not in a guild", bot->GetName());
+            }
+            break;
+            
+        case SRC_PARTY_LOCAL:
+        case SRC_RAID_LOCAL:
+            // Must be in a group with at least one real player
+            if (bot->GetGroup())
+            {
+                Group* group = bot->GetGroup();
+                bool hasRealPlayer = false;
+                for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                {
+                    Player* member = ref->GetSource();
+                    if (member && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
+                    {
+                        hasRealPlayer = true;
+                        break;
+                    }
+                }
+                canSendMessage = hasRealPlayer;
+                if (!canSendMessage && g_DebugEnabled)
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} cannot send to Party - no real players in group", bot->GetName());
+            }
+            else
+            {
+                canSendMessage = false;
+                if (g_DebugEnabled)
+                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot send to Party - not in a group", bot->GetName());
+            }
+            break;
+            
+        case SRC_WHISPER_LOCAL:
+            // Whispers are handled separately
+            canSendMessage = true;
+            break;
+            
+        default:
+            canSendMessage = true;
+            break;
+    }
+    
+    if (!canSendMessage)
+    {
+        if (g_DebugEnabled)
+            LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot send message to {} - validation failed", 
+                    bot->GetName(), ChatChannelSourceLocalStr[sourceLocal]);
+        return;
+    }
+        
     // Convert ChatChannelSourceLocal back to chat type for ProcessChat
     uint32_t type = 0;
     switch (sourceLocal)
@@ -1216,23 +1340,20 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             {
                                 if(g_DebugEnabled)
                                 {
-                                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check", 
+                                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check - skipping reply", 
                                                 botPtr->GetName(), channelName);
                                 }
-                                // Fallback to normal bot speech
-                                botAI->Say(response);
+                                // Don't fallback to Say - if bot isn't in the channel, don't reply at all
                             }
                         }
                         else
                         {
                             if(g_DebugEnabled)
                             {
-                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot find channel '{}' (ID: {}) for team {}", 
+                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot find channel '{}' (ID: {}) for team {} - skipping reply", 
                                          botPtr->GetName(), channelName, channelId, (int)botPtr->GetTeamId());
                             }
-                            // Fallback to normal bot speech
-                            botAI->Say(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
+                            // Don't fallback to Say - if channel doesn't exist, don't reply at all
                         }
                     }
                 }
