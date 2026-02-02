@@ -755,6 +755,9 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say (real player within {} yards): {}", botPtr->GetName(), g_SayDistance, response);
                             botAI->Say(response);
+                            
+                            // Trigger bot-to-bot reply processing
+                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter General: {}", botPtr->GetName(), response);
@@ -770,10 +773,22 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                                 if (realPlayerInSayDistance)
                                 {
                                     botAI->Say(response);
+                                    ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                                 }
                                 else if (g_DebugEnabled)
                                 {
                                     LOG_INFO("server.loading", "[Ollama Chat] Bot {} cannot send to General and no real player in Say range, message lost", botPtr->GetName());
+                                }
+                            }
+                            else
+                            {
+                                // Successfully sent to channel - trigger bot-to-bot reply processing
+                                // Get the actual channel instance
+                                ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                                if (cMgr)
+                                {
+                                    Channel* generalChannel = cMgr->GetChannel(ChatChannelId::GENERAL, botPtr);
+                                    ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, generalChannel);
                                 }
                             }
                         }

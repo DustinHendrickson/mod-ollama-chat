@@ -23,6 +23,7 @@ std::string rtrim(const std::string& s);
 ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type);
 
 void SaveBotConversationHistoryToDB();
+void ProcessBotChatMessage(Player* bot, const std::string& message, ChatChannelSourceLocal sourceLocal, Channel* channel = nullptr);
 
 class PlayerBotChatHandler : public PlayerScript
 {
@@ -40,7 +41,6 @@ public:
     bool OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Guild* guild);
     bool OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Channel* channel);
 
-private:
     void ProcessChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel = nullptr, Player* receiver = nullptr);
 };
 

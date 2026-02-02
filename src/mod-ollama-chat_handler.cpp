@@ -298,6 +298,33 @@ void SaveBotConversationHistoryToDB()
     CharacterDatabase.Execute(SafeFormat(cleanupQuery, g_MaxConversationHistory));
 }
 
+void ProcessBotChatMessage(Player* bot, const std::string& message, ChatChannelSourceLocal sourceLocal, Channel* channel)
+{
+    if (!bot || message.empty() || !g_Enable)
+        return;
+
+    std::string msg = message;
+    uint32_t lang = LANG_UNIVERSAL;
+    uint32_t type = CHAT_MSG_SAY;
+    
+    switch (sourceLocal)
+    {
+        case SRC_SAY_LOCAL: type = CHAT_MSG_SAY; break;
+        case SRC_YELL_LOCAL: type = CHAT_MSG_YELL; break;
+        case SRC_PARTY_LOCAL: type = CHAT_MSG_PARTY; break;
+        case SRC_RAID_LOCAL: type = CHAT_MSG_RAID; break;
+        case SRC_GUILD_LOCAL: type = CHAT_MSG_GUILD; break;
+        case SRC_OFFICER_LOCAL: type = CHAT_MSG_OFFICER; break;
+        case SRC_WHISPER_LOCAL: type = CHAT_MSG_WHISPER; break;
+        case SRC_GENERAL_LOCAL: type = CHAT_MSG_CHANNEL; break;
+        default: type = CHAT_MSG_SAY; break;
+    }
+    
+    // Access the script instance
+    PlayerBotChatHandler handler;
+    handler.ProcessChat(bot, type, lang, msg, sourceLocal, channel, nullptr);
+}
+
 
 std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::string playerMessage)
 {
@@ -1198,22 +1225,28 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     switch (sourceLocal)
                     {
                         case SRC_GUILD_LOCAL: 
-                            botAI->SayToGuild(response); 
+                            botAI->SayToGuild(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_GUILD_LOCAL, nullptr);
                             break;
                         case SRC_OFFICER_LOCAL: 
-                            botAI->SayToGuild(response); 
+                            botAI->SayToGuild(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_OFFICER_LOCAL, nullptr);
                             break;
                         case SRC_PARTY_LOCAL: 
-                            botAI->SayToParty(response); 
+                            botAI->SayToParty(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_PARTY_LOCAL, nullptr);
                             break;
                         case SRC_RAID_LOCAL:  
-                            botAI->SayToRaid(response); 
+                            botAI->SayToRaid(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_RAID_LOCAL, nullptr);
                             break;
                         case SRC_SAY_LOCAL:   
-                            botAI->Say(response); 
+                            botAI->Say(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                             break;
                         case SRC_YELL_LOCAL:  
-                            botAI->Yell(response); 
+                            botAI->Yell(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_YELL_LOCAL, nullptr);
                             break;
                         case SRC_WHISPER_LOCAL:
                             // For whispers, find the original sender and whisper back
@@ -1227,6 +1260,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                                                 botPtr->GetName(), response, originalSender->GetName());
                                     }
                                     botAI->Whisper(response, originalSender->GetName());
+                                    // Don't trigger ProcessBotChatMessage for whispers - they're private
                                 }
                                 else if(g_DebugEnabled)
                                 {
@@ -1235,7 +1269,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             }
                             break;
                         default:              
-                            botAI->Say(response); 
+                            botAI->Say(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                             break;
                     }
                 }
