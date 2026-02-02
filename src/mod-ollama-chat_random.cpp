@@ -755,6 +755,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter Say (real player within {} yards): {}", botPtr->GetName(), g_SayDistance, response);
                             botAI->Say(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                         } else if (selectedChannel == "General") {
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter General: {}", botPtr->GetName(), response);
@@ -764,12 +765,16 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} SayToChannel result: {}", botPtr->GetName(), sent ? "success" : "failed, using Say fallback");
                             
+                            if (sent)
+                                ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, nullptr);
+                            
                             if (!sent)
                             {
                                 // Fallback to Say if channel message failed (and real player is close enough)
                                 if (realPlayerInSayDistance)
                                 {
                                     botAI->Say(response);
+                                    ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
                                 }
                                 else if (g_DebugEnabled)
                                 {

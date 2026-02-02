@@ -21,6 +21,7 @@ extern const char* ChatChannelSourceLocalStr[];
 
 std::string rtrim(const std::string& s);
 ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type);
+void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel);
 
 void SaveBotConversationHistoryToDB();
 
