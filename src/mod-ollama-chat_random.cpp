@@ -721,19 +721,22 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     {
                         // For solo bots, check if any real player is within Say distance
                         bool realPlayerInSayDistance = false;
-                        for (auto const& pair : ObjectAccessor::GetPlayers())
+                        if (botPtr->IsInWorld())
                         {
-                            Player* player = pair.second;
-                            if (!player || !player->IsInWorld())
-                                continue;
-                                
-                            if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
-                                continue;
-                                
-                            if (botPtr->GetDistance(player) <= g_SayDistance)
+                            for (auto const& pair : ObjectAccessor::GetPlayers())
                             {
-                                realPlayerInSayDistance = true;
-                                break;
+                                Player* player = pair.second;
+                                if (!player || !player->IsInWorld())
+                                    continue;
+                                    
+                                if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                                    continue;
+                                    
+                                if (botPtr->GetDistance(player) <= g_SayDistance)
+                                {
+                                    realPlayerInSayDistance = true;
+                                    break;
+                                }
                             }
                         }
                         
@@ -743,6 +746,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         if (realPlayerInSayDistance)
                         {
                             channels.push_back("Say");
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} adding Say to random chatter options (real player within {} yards)", botPtr->GetName(), g_SayDistance);
+                        }
+                        else if (g_DebugEnabled)
+                        {
+                            LOG_INFO("server.loading", "[Ollama Chat] Bot {} NOT adding Say to random chatter (no real player within {} yards)", botPtr->GetName(), g_SayDistance);
                         }
                         
                         // Pick random channel

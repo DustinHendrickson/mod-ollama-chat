@@ -1247,13 +1247,69 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             botAI->SayToRaid(response);
                             ProcessBotChatMessage(botPtr, response, SRC_RAID_LOCAL, nullptr);
                             break;
-                        case SRC_SAY_LOCAL:   
-                            botAI->Say(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
+                        case SRC_SAY_LOCAL:
+                            // Only send Say if someone (real player or bot) is within say distance
+                            {
+                                bool someoneCanHear = false;
+                                if (botPtr->IsInWorld())
+                                {
+                                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                                    {
+                                        Player* nearbyPlayer = pair.second;
+                                        if (nearbyPlayer && nearbyPlayer != botPtr && nearbyPlayer->IsInWorld())
+                                        {
+                                            if (botPtr->GetDistance(nearbyPlayer) <= g_SayDistance)
+                                            {
+                                                someoneCanHear = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (someoneCanHear)
+                                {
+                                    botAI->Say(response);
+                                    ProcessBotChatMessage(botPtr, response, SRC_SAY_LOCAL, nullptr);
+                                }
+                                else if (g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping Say reply - no one within {} yards to hear it", 
+                                            botPtr->GetName(), g_SayDistance);
+                                }
+                            }
                             break;
-                        case SRC_YELL_LOCAL:  
-                            botAI->Yell(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_YELL_LOCAL, nullptr);
+                        case SRC_YELL_LOCAL:
+                            // Only send Yell if someone is within yell distance
+                            {
+                                bool someoneCanHear = false;
+                                if (botPtr->IsInWorld())
+                                {
+                                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                                    {
+                                        Player* nearbyPlayer = pair.second;
+                                        if (nearbyPlayer && nearbyPlayer != botPtr && nearbyPlayer->IsInWorld())
+                                        {
+                                            if (botPtr->GetDistance(nearbyPlayer) <= g_YellDistance)
+                                            {
+                                                someoneCanHear = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (someoneCanHear)
+                                {
+                                    botAI->Yell(response);
+                                    ProcessBotChatMessage(botPtr, response, SRC_YELL_LOCAL, nullptr);
+                                }
+                                else if (g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping Yell reply - no one within {} yards to hear it", 
+                                            botPtr->GetName(), g_YellDistance);
+                                }
+                            }
                             break;
                         case SRC_WHISPER_LOCAL:
                             // For whispers, find the original sender and whisper back
