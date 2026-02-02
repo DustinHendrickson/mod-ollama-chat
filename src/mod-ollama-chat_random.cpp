@@ -769,13 +769,27 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} Random Chatter General: {}", botPtr->GetName(), response);
                             
+                            // Look up the General channel BEFORE sending
+                            Channel* generalChannel = nullptr;
+                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                            if (cMgr)
+                            {
+                                generalChannel = cMgr->GetChannel("General", botPtr);
+                            }
+                            
                             // Use playerbots' SayToChannel method - it handles channel lookup internally
                             bool sent = botAI->SayToChannel(response, ChatChannelId::GENERAL);
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot {} SayToChannel result: {}", botPtr->GetName(), sent ? "success" : "failed, using Say fallback");
                             
-                            if (sent)
-                                ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, nullptr);
+                            if (sent && generalChannel)
+                            {
+                                ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, generalChannel);
+                            }
+                            else if (sent && !generalChannel && g_DebugEnabled)
+                            {
+                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} sent to General but could not find channel for triggering replies", botPtr->GetName());
+                            }
                             
                             if (!sent)
                             {

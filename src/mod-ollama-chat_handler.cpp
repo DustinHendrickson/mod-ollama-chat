@@ -945,6 +945,16 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             }
             // For global channels like World, no zone restriction
             
+            // CHANNEL MEMBERSHIP CHECK: Bot must actually be in the channel
+            if (!candidate->IsInChannel(channel))
+            {
+                if(g_DebugEnabled)
+                {
+                    //LOG_INFO("server.loading", "[Ollama Chat] Bot {} not in channel '{}', skipping", candidate->GetName(), channel->GetName());
+                }
+                continue;
+            }
+            
             // FACTION CHECK: For non-global channels, ensure same faction
             if (candidate->GetTeamId() != player->GetTeamId())
             {
@@ -966,6 +976,31 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     //LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED channel membership check - Not in channel '{}'", candidate->GetName(), channel->GetName());
                 }
                 continue; // SKIP this bot - not in the channel
+            }
+            
+            // REAL PLAYER CHECK: Channel must have at least one real player
+            bool hasRealPlayerInChannel = false;
+            for (auto const& playerItr : allPlayers)
+            {
+                Player* potentialRealPlayer = playerItr.second;
+                if (potentialRealPlayer && potentialRealPlayer->IsInChannel(channel))
+                {
+                    PlayerbotAI* realPlayerAI = PlayerbotsMgr::instance().GetPlayerbotAI(potentialRealPlayer);
+                    if (!realPlayerAI || !realPlayerAI->IsBotAI())
+                    {
+                        hasRealPlayerInChannel = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!hasRealPlayerInChannel)
+            {
+                if(g_DebugEnabled)
+                {
+                    //LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipped - no real players in channel '{}'", candidate->GetName(), channel->GetName());
+                }
+                continue;
             }
             
             // ONLY add bots that passed ALL verifications
@@ -994,6 +1029,84 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 PlayerbotAI* candidateAI = PlayerbotsMgr::instance().GetPlayerbotAI(candidate);
                 if (candidateAI && candidateAI->IsBotAI())
                 {
+                    // For Guild/Party, verify there's a real player in that guild/party
+                    if (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
+                    {
+                        if (candidate->GetGuildId() != 0)
+                        {
+                            // Check if any real player is online in this guild
+                            bool hasRealPlayerInGuild = false;
+                            for (auto const& guildPlayerItr : allPlayers)
+                            {
+                                Player* guildMember = guildPlayerItr.second;
+                                if (guildMember && guildMember->GetGuildId() == candidate->GetGuildId())
+                                {
+                                    PlayerbotAI* memberAI = PlayerbotsMgr::instance().GetPlayerbotAI(guildMember);
+                                    if (!memberAI || !memberAI->IsBotAI())
+                                    {
+                                        hasRealPlayerInGuild = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!hasRealPlayerInGuild)
+                                continue; // Skip bot - no real players in guild
+                        }
+                    }
+                    else if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
+                    {
+                        Group* group = candidate->GetGroup();
+                        if (group)
+                        {
+                            // Check if any real player is in this group
+                            bool hasRealPlayerInGroup = false;
+                            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                            {
+                                Player* member = ref->GetSource();
+                                if (member)
+                                {
+                                    PlayerbotAI* memberAI = PlayerbotsMgr::instance().GetPlayerbotAI(member);
+                                    if (!memberAI || !memberAI->IsBotAI())
+                                    {
+                                        hasRealPlayerInGroup = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!hasRealPlayerInGroup)
+                                continue; // Skip bot - no real players in group
+                        }
+                    }
+                    else if (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL)
+                    {
+                        // For Say/Yell, require a real player within hearing distance
+                        float threshold = (sourceLocal == SRC_SAY_LOCAL) ? g_SayDistance : g_YellDistance;
+                        bool hasRealPlayerNearby = false;
+                        
+                        if (candidate->IsInWorld() && threshold > 0.0f)
+                        {
+                            for (auto const& nearbyPlayerItr : allPlayers)
+                            {
+                                Player* nearbyPlayer = nearbyPlayerItr.second;
+                                if (nearbyPlayer && nearbyPlayer->IsInWorld())
+                                {
+                                    PlayerbotAI* nearbyAI = PlayerbotsMgr::instance().GetPlayerbotAI(nearbyPlayer);
+                                    if (!nearbyAI || !nearbyAI->IsBotAI())
+                                    {
+                                        if (candidate->GetDistance(nearbyPlayer) <= threshold)
+                                        {
+                                            hasRealPlayerNearby = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!hasRealPlayerNearby)
+                            continue; // Skip bot - no real player can hear Say/Yell
+                    }
+                    
                     eligibleBots.push_back(candidate);
                 }
             }
