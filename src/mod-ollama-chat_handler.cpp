@@ -320,9 +320,7 @@ void ProcessBotChatMessage(Player* bot, const std::string& message, ChatChannelS
         default: type = CHAT_MSG_SAY; break;
     }
     
-    // Access the script instance
-    PlayerBotChatHandler handler;
-    handler.ProcessChat(bot, type, lang, msg, sourceLocal, channel, nullptr);
+    PlayerBotChatHandler::ProcessChat(bot, type, lang, msg, sourceLocal, channel, nullptr);
 }
 
 
