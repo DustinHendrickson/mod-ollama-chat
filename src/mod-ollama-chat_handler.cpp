@@ -1275,6 +1275,31 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Handle non-whisper chats with normal multi-bot logic
         std::vector<std::pair<size_t, Player*>> mentionedBots;
 
+        // Helper lambda to check if a bot name is mentioned as a complete word
+        auto isBotNameMentioned = [&trimmedMsg](const std::string& botName) -> size_t {
+            size_t pos = 0;
+            std::string lowerMsg = trimmedMsg;
+            std::string lowerBotName = botName;
+            std::transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
+            std::transform(lowerBotName.begin(), lowerBotName.end(), lowerBotName.begin(), ::tolower);
+            
+            while ((pos = lowerMsg.find(lowerBotName, pos)) != std::string::npos)
+            {
+                // Check if it's a word boundary before the name
+                bool validStart = (pos == 0 || !std::isalnum(static_cast<unsigned char>(lowerMsg[pos - 1])));
+                // Check if it's a word boundary after the name
+                size_t endPos = pos + lowerBotName.length();
+                bool validEnd = (endPos >= lowerMsg.length() || !std::isalnum(static_cast<unsigned char>(lowerMsg[endPos])));
+                
+                if (validStart && validEnd)
+                {
+                    return pos; // Found a valid word-boundary match
+                }
+                pos++; // Continue searching
+            }
+            return std::string::npos;
+        };
+
         for (Player* bot : candidateBots)
         {
             if (!bot)
@@ -1285,21 +1310,32 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             {
                 continue;
             }
-            size_t pos = trimmedMsg.find(bot->GetName());
+            
+            size_t pos = isBotNameMentioned(bot->GetName());
             if (pos != std::string::npos)
             {
                 mentionedBots.emplace_back(pos, bot);
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} mentioned at position {} in message", bot->GetName(), pos);
+                }
             }
         }
 
         if (!mentionedBots.empty())
         {
+            // Sort by position to get the first mentioned bot
             std::sort(mentionedBots.begin(), mentionedBots.end(),
                       [](auto &a, auto &b) { return a.first < b.first; });
             Player* chosen = mentionedBots.front().second;
             if (!(g_DisableRepliesInCombat && chosen->IsInCombat()))
             {
                 finalCandidates.push_back(chosen);
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} selected (mentioned first at position {})", 
+                            chosen->GetName(), mentionedBots.front().first);
+                }
             }
         }
         else
