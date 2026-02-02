@@ -998,7 +998,8 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 if (!PlayerbotsMgr::instance().GetPlayerbotAI(candidate))
                 {
                     // Check if the candidate is actually in the same channel instance
-                    if (channel->IsOn(candidate->GetGUID()))
+                    // GetPlayerFlags returns 0 if player is not in the channel
+                    if (channel->GetPlayerFlags(candidate->GetGUID()) != 0)
                     {
                         realPlayerCanObserve = true;
                         break;
