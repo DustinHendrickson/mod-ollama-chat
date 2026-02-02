@@ -406,17 +406,13 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
                     if (g_DebugEnabled)
                         LOG_INFO("server.loading", "[Ollama Chat] Bot Event Chatter General: {}", response);
                     
-                    // Get General channel for bot's faction and send message
-                    ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
-                    if (cMgr) {
-                        std::string generalChannelName = "General";
-                        Channel* generalChannel = cMgr->GetChannel(generalChannelName, botPtr);
-                        if (generalChannel && botPtr->IsInChannel(generalChannel)) {
-                            generalChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
-                        } else {
-                            // Fallback to Say if not in General
-                            botAI->Say(response);
-                        }
+                    // Use playerbots' SayToChannel method if available, otherwise use direct channel access
+                    if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
+                    {
+                        // Fallback to Say if channel message failed
+                        if (g_DebugEnabled)
+                            LOG_INFO("server.loading", "[Ollama Chat] Failed to send to General channel, falling back to Say");
+                        botAI->Say(response);
                     }
                 }
             }

@@ -542,10 +542,24 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
+            bool isGuildComment = false;
             if (!candidateComments.empty())
             {
                 uint32_t index = candidateComments.size() == 1 ? 0 : urand(0, candidateComments.size() - 1);
                 environmentInfo = candidateComments[index];
+                
+                // Check if the selected comment is from guild-specific comments
+                if (!guildComments.empty())
+                {
+                    for (const auto& gc : guildComments)
+                    {
+                        if (environmentInfo == gc)
+                        {
+                            isGuildComment = true;
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
@@ -603,7 +617,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-            std::thread([botGuid, prompt]() {
+            std::thread([botGuid, prompt, isGuildComment]() {
                 try {
                     Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
@@ -636,9 +650,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     }
                     
                     if (botPtr->GetGroup())
-                        botAI->SayToParty(response);
-                    else if (botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
                     {
+                        botAI->SayToParty(response);
+                    }
+                    else if (isGuildComment && botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
+                    {
+                        // Only send to guild chat if the comment was guild-specific
                         // Check if there are real players in the guild
                         bool hasRealPlayerInGuild = false;
                         Guild* guild = botPtr->GetGuild();
@@ -660,13 +677,14 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (hasRealPlayerInGuild)
                         {
-                            // Guilded bots only speak in /guild
+                            // Guild-specific comments go to /guild chat
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild (guild-specific): {}", response);
                             botAI->SayToGuild(response);
                         }
                     }
-                    else {
+                    else
+                    {
                         // For solo bots, randomly pick between Say and General channel
                         std::vector<std::string> channels = {"General", "Say"};
                         std::random_device rd;
@@ -682,17 +700,13 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
                             
-                            // Get General channel for bot's faction and send message
-                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
-                            if (cMgr) {
-                                std::string generalChannelName = "General";
-                                Channel* generalChannel = cMgr->GetChannel(generalChannelName, botPtr);
-                                if (generalChannel && botPtr->IsInChannel(generalChannel)) {
-                                    generalChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
-                                } else {
-                                    // Fallback to Say if not in General
-                                    botAI->Say(response);
-                                }
+                            // Use playerbots' SayToChannel method if available, otherwise use direct channel access
+                            if (!botAI->SayToChannel(response, ChatChannelId::GENERAL))
+                            {
+                                // Fallback to Say if channel message failed
+                                if (g_DebugEnabled)
+                                    LOG_INFO("server.loading", "[Ollama Chat] Failed to send to General channel, falling back to Say");
+                                botAI->Say(response);
                             }
                         }
                     }
