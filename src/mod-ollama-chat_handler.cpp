@@ -770,10 +770,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             PlayerbotAI* candidateAI = PlayerbotsMgr::instance().GetPlayerbotAI(candidate);
             if (!candidateAI || !candidateAI->IsBotAI())
                 continue;
-                
-            // Only include regular player accounts
-            if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
-                continue;
             
             // Check if this is a local or global channel
             bool isLocalChannel = (channel->GetName().find("General -") != std::string::npos || 
@@ -860,8 +856,11 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             continue;
         }
         
-        // Apply party restriction for all messages
-        if (g_RestrictBotsToPartyMembers)
+        // Apply party restriction for all messages EXCEPT proximity-based channels (Say/Yell)
+        // For Say/Yell, the distance check is sufficient - no need to require party membership
+        bool isProximityChat = (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL);
+        
+        if (g_RestrictBotsToPartyMembers && !isProximityChat)
         {
             Group* botGroup = bot->GetGroup();
             Group* playerGroup = player->GetGroup();
@@ -902,14 +901,15 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             }
             
             // When party restriction is enabled, control which communication channels are allowed
-            // Allow: Party, Raid, Whisper, Say (proximity), and General channel
-            // Block: Guild, Officer, Yell, and other non-party/non-general communication
+            // Allow: Party, Raid, Whisper, and General channel
+            // Block: Guild, Officer, and other non-party/non-general communication
+            // Note: Say/Yell are handled separately above and skip this entire block
             bool isAllowedChannel = (channel != nullptr && 
                                     (channel->GetName().find("General") != std::string::npos || 
                                      channel->GetName().find("LookingForGroup") != std::string::npos));
             
             if (sourceLocal != SRC_PARTY_LOCAL && sourceLocal != SRC_RAID_LOCAL && 
-                sourceLocal != SRC_WHISPER_LOCAL && sourceLocal != SRC_SAY_LOCAL && !isAllowedChannel)
+                sourceLocal != SRC_WHISPER_LOCAL && !isAllowedChannel)
             {
                 continue;
             }
@@ -1357,10 +1357,6 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
             }
             return false;
         }
-        
-        // Early security check before expensive channel lookup
-        if (!AccountMgr::IsPlayerAccount(bot->GetSession()->GetSecurity()))
-            return false;
             
         // ONLY use exact channel instance check - NO Player::IsInChannel() anymore
         ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
