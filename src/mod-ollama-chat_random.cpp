@@ -783,13 +783,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             else
                             {
                                 // Successfully sent to channel - trigger bot-to-bot reply processing
-                                // Get the actual channel instance
-                                ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
-                                if (cMgr)
-                                {
-                                    Channel* generalChannel = cMgr->GetChannel(ChatChannelId::GENERAL, botPtr);
-                                    ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, generalChannel);
-                                }
+                                ProcessBotChatMessage(botPtr, response, SRC_GENERAL_LOCAL, nullptr);
                             }
                         }
                     }
