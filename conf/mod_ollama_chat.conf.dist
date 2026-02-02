@@ -211,8 +211,8 @@ OllamaChat.MaxRandomInterval = 180
 
 # OllamaChat.RandomChatterRealPlayerDistance
 #     Description: The maximum distance (in game units) a real player must be within for random bot chatter to trigger.
-#     Default:     40
-OllamaChat.RandomChatterRealPlayerDistance = 40.0
+#     Default:     200.0
+OllamaChat.RandomChatterRealPlayerDistance = 200.0
 
 # OllamaChat.RandomChatterBotCommentChance
 #     Description: The percent chance (0-100) that an AI bot will add a comment when random chatter is triggered.
@@ -242,7 +242,6 @@ OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: 
 OllamaChat.RandomChatterPromptVariations = "Complain about something typical WoW players complain about.|Make a casual observation about leveling or grinding.|Share your opinion on Horde vs Alliance.|Comment on how tough or easy the zone feels.|Make a joke or sarcastic remark about WoW.|Mention something about the Lich King expansion.|Talk about wanting better gear or loot.|Comment on flying mounts or Northrend travel.|Complain about repair costs or gold.|Make an observation about your class in general.|Comment on dungeon finder or group content.|Talk about daily quests or reputation grinds.|Mention Death Knights being OP or annoying.|Share your thoughts on arena or battlegrounds.|Complain about nerfed abilities or changes.|Talk about needing to farm materials or gold.|Comment on the cold weather in Northrend.|Mention wanting to raid or do heroics.|Talk about achievements being too grindy.|Make a casual remark about quest objectives."
 
 # OllamaChat.RandomChatterQuestionVariations
-<<<<<<< HEAD
 #   Description: Pipe-separated (|) list of prompt instructions telling the LLM to generate questions that will stimulate OTHER bots or players to respond.
 #                When a bot uses one of these variations, the LLM will generate a question based on the prompt instruction.
 #                These questions are meant to encourage other bots (via BotReplyChance) and real players to engage in conversation.
@@ -252,16 +251,6 @@ OllamaChat.RandomChatterPromptVariations = "Complain about something typical WoW
 #   Example:     "Ask about dungeon preferences.|Ask if anyone wants to PvP.|Ask about raid progression."
 #   Default:     (see below for engaging Wrath-era question prompts designed to stimulate bot-to-bot and player-to-bot conversations)
 OllamaChat.RandomChatterQuestionVariations = "Ask if others think this zone is difficult.|Ask about favorite dungeons.|Ask about Icecrown Citadel progression.|Ask about daily quest frustrations.|Ask about Naxxramas difficulty compared to original.|Ask what spec people are running.|Ask about Death Knight popularity.|Ask about upcoming Death Knight nerfs.|Ask about gold-making strategies in Wrath.|Ask if anyone is farming badges.|Ask about excitement for Ulduar.|Ask if dual spec was worth the cost.|Ask about opinions on the old talent trees.|Ask about favorite raid bosses.|Ask if flying mounts ruined world PvP.|Ask who's doing arena this season.|Ask about arena ratings.|Ask about Wintergrasp balance.|Ask about Oculus dungeon opinions.|Ask which professions make the most gold.|Ask about old-world flying possibilities.|Ask about reputation mount farming.|Ask which heroic dungeon is hardest.|Ask if emblems are too easy to get."
-=======
-#   Description: Pipe-separated (|) list of questions that bots can ask to stimulate conversation with other bots or players.
-#                These questions are designed to encourage responses and create more interactive chatter.
-#                When a bot generates random chatter, it will randomly choose between making a statement (RandomChatterPromptVariations)
-#                or asking a question (RandomChatterQuestionVariations).
-#                Leave empty to disable question variations and only use statement variations.
-#   Example:     "What's your favorite dungeon?|Anyone up for some PvP?|Think we'll ever down the Lich King?"
-#   Default:     (see below for engaging Wrath-era questions)
-OllamaChat.RandomChatterQuestionVariations = "Anyone else think this zone is overtuned?|What's everyone's favorite dungeon so far?|Think we'll ever make it to Icecrown Citadel?|Who else is sick of daily quests?|Anyone remember when Naxx was actually hard?|What spec are you running these days?|Anyone else rolling a Death Knight?|Think Blizzard will nerf Death Knights soon?|What's the best way to make gold in Wrath?|Anyone farming badges for gear?|Who's ready for Ulduar when it drops?|Think dual spec was worth the gold?|Anyone else miss the old talent trees?|What's your favorite raid boss so far?|Think flying mounts ruined world PvP?|Anyone doing arena this season?|What's your 2v2 or 3v3 rating?|Think Wintergrasp is balanced?|Anyone else hate Occulus?|What profession's making the most gold?|Think we'll ever see old-world flying?|Anyone farming rep for that sweet mount?|What's the hardest heroic dungeon?|Think emblems are too easy to get now?"
->>>>>>> main
 
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
