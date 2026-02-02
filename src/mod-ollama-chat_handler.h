@@ -23,7 +23,6 @@ std::string rtrim(const std::string& s);
 ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type);
 
 void SaveBotConversationHistoryToDB();
-void ProcessBotChatMessage(Player* bot, const std::string& message, ChatChannelSourceLocal sourceLocal, Channel* channel = nullptr);
 
 class PlayerBotChatHandler : public PlayerScript
 {

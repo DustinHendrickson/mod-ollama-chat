@@ -298,31 +298,6 @@ void SaveBotConversationHistoryToDB()
     CharacterDatabase.Execute(SafeFormat(cleanupQuery, g_MaxConversationHistory));
 }
 
-void ProcessBotChatMessage(Player* bot, const std::string& message, ChatChannelSourceLocal sourceLocal, Channel* channel)
-{
-    if (!bot || message.empty() || !g_Enable)
-        return;
-
-    std::string msg = message;
-    uint32_t lang = LANG_UNIVERSAL;
-    uint32_t type = CHAT_MSG_SAY;
-    
-    switch (sourceLocal)
-    {
-        case SRC_SAY_LOCAL: type = CHAT_MSG_SAY; break;
-        case SRC_YELL_LOCAL: type = CHAT_MSG_YELL; break;
-        case SRC_PARTY_LOCAL: type = CHAT_MSG_PARTY; break;
-        case SRC_RAID_LOCAL: type = CHAT_MSG_RAID; break;
-        case SRC_GUILD_LOCAL: type = CHAT_MSG_GUILD; break;
-        case SRC_OFFICER_LOCAL: type = CHAT_MSG_OFFICER; break;
-        case SRC_WHISPER_LOCAL: type = CHAT_MSG_WHISPER; break;
-        case SRC_GENERAL_LOCAL: type = CHAT_MSG_CHANNEL; break;
-        default: type = CHAT_MSG_SAY; break;
-    }
-    
-    PlayerBotChatHandler::ProcessChat(bot, type, lang, msg, sourceLocal, channel, nullptr);
-}
-
 
 std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::string playerMessage)
 {
