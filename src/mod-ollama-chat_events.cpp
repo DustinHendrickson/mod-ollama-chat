@@ -26,46 +26,6 @@
 static OllamaBotEventChatter eventChatter;
 static std::unordered_map<Player*, std::chrono::steady_clock::time_point> botEventCooldowns;
 
-// Helper function to check if a bot is allowed to respond in restricted mode
-static bool IsBotAllowedForRestrictedMode(Player* bot, Player* source)
-{
-    if (!g_RestrictBotsToPartyMembers)
-        return true;
-        
-    if (!bot || !source)
-        return false;
-        
-    // Get groups for both bot and source
-    Group* botGroup = bot->GetGroup();
-    Group* sourceGroup = source->GetGroup();
-    
-    // Both must be in a group
-    if (!botGroup || !sourceGroup)
-        return false;
-        
-    // Must be the same group
-    if (botGroup != sourceGroup)
-        return false;
-        
-    // Group must not be a raid (battleground raids are allowed)
-    if (botGroup->isRaidGroup() && !botGroup->isBGGroup())
-        return false;
-        
-    // At least one real player must be in the group
-    bool hasRealPlayer = false;
-    for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (member && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
-        {
-            hasRealPlayer = true;
-            break;
-        }
-    }
-    
-    return hasRealPlayer;
-}
-
 void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, std::string detail)
 {
     if (!g_Enable || !g_EnableEventChatter)
@@ -199,12 +159,6 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
     auto now = std::chrono::steady_clock::now();
     for (auto it = candidateBots.begin(); it != candidateBots.end(); ) {
         Player* bot = *it;
-        
-        // Apply party restriction for all events
-        if (!IsBotAllowedForRestrictedMode(bot, source)) {
-            it = candidateBots.erase(it);
-            continue;
-        }
         
         auto lastEventTime = botEventCooldowns[bot]; // Track last event time for any event
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastEventTime).count() < g_EventCooldownTime) {
@@ -380,16 +334,53 @@ void OllamaBotEventChatter::QueueEvent(Player* bot, std::string type, std::strin
             // Route response to random appropriate channel
             if (isGuildEvent && botPtr->GetGuild())
             {
+                // Check if guild chat is disabled
+                if (g_DisableForGuild)
+                {
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Guild event chatter skipped (guild channels disabled)");
+                    return;
+                }
+                
                 botAI->SayToGuild(response);
             }
             else if (botPtr->GetGroup())
             {
+                // Check if party chat is disabled
+                if (g_DisableForParty)
+                {
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Party event chatter skipped (party channels disabled)");
+                    return;
+                }
+                
                 botAI->SayToParty(response);
             }
             else
             {
                 // For solo bots, randomly pick between Say and General channel
-                std::vector<std::string> channels = {"General", "Say"};
+                std::vector<std::string> channels;
+                
+                // Only add General if custom channels are not disabled
+                if (!g_DisableForCustomChannels)
+                {
+                    channels.push_back("General");
+                }
+                
+                // Only add Say if not disabled
+                if (!g_DisableForSayYell)
+                {
+                    channels.push_back("Say");
+                }
+                
+                // If no channels are available, skip event chatter
+                if (channels.empty())
+                {
+                    if (g_DebugEnabled)
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping event chatter (all available channels disabled)", botPtr->GetName());
+                    return;
+                }
+                
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);

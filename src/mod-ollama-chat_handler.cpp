@@ -854,6 +854,43 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             return;
         }
     }
+    
+    // Check if this channel type is disabled
+    if (sourceLocal == SRC_GENERAL_LOCAL && g_DisableForCustomChannels)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Custom channels are disabled, skipping");
+        }
+        return;
+    }
+    
+    if ((sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL) && g_DisableForSayYell)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Say/Yell channels are disabled, skipping");
+        }
+        return;
+    }
+    
+    if ((sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL) && g_DisableForGuild)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Guild channels are disabled, skipping");
+        }
+        return;
+    }
+    
+    if ((sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL) && g_DisableForParty)
+    {
+        if (g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Party/Raid channels are disabled, skipping");
+        }
+        return;
+    }
              
     PlayerbotAI* senderAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
     bool senderIsBot = (senderAI && senderAI->IsBotAI());
@@ -1129,65 +1166,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         if (!bot)
         {
             continue;
-        }
-        
-        // Apply party restriction for all messages EXCEPT proximity-based channels (Say/Yell)
-        // For Say/Yell, the distance check is sufficient - no need to require party membership
-        bool isProximityChat = (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL);
-        
-        if (g_RestrictBotsToPartyMembers && !isProximityChat)
-        {
-            Group* botGroup = bot->GetGroup();
-            Group* playerGroup = player->GetGroup();
-            
-            // Both must be in a group
-            if (!botGroup || !playerGroup)
-            {
-                continue;
-            }
-            
-            // Must be the same group
-            if (botGroup != playerGroup)
-            {
-                continue;
-            }
-            
-            // Group must not be a raid (battleground raids are allowed)
-            if (botGroup->isRaidGroup() && !botGroup->isBGGroup())
-            {
-                continue;
-            }
-            
-            // At least one real player must be in the group (should be true since player is real)
-            bool hasRealPlayer = false;
-            for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (member && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
-                {
-                    hasRealPlayer = true;
-                    break;
-                }
-            }
-            
-            if (!hasRealPlayer)
-            {
-                continue;
-            }
-            
-            // When party restriction is enabled, control which communication channels are allowed
-            // Allow: Party, Raid, Whisper, and General channel
-            // Block: Guild, Officer, and other non-party/non-general communication
-            // Note: Say/Yell are handled separately above and skip this entire block
-            bool isAllowedChannel = (channel != nullptr && 
-                                    (channel->GetName().find("General") != std::string::npos || 
-                                     channel->GetName().find("LookingForGroup") != std::string::npos));
-            
-            if (sourceLocal != SRC_PARTY_LOCAL && sourceLocal != SRC_RAID_LOCAL && 
-                sourceLocal != SRC_WHISPER_LOCAL && !isAllowedChannel)
-            {
-                continue;
-            }
         }
         
         // For channel messages, bots in eligibleBots have already passed STRICT channel checks

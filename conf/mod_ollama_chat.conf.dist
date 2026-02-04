@@ -209,11 +209,29 @@ OllamaChat.SayDistance = 30.0
 #     Default:     100.0
 OllamaChat.YellDistance = 100.0
 
-# OllamaChat.RestrictBotsToPartyMembers
-#     Description: When enabled (1), bots will only respond to real player messages/events when they are in the same non-raid party.
-#                  Bot-to-bot communication within parties is still allowed. This helps reduce spam while maintaining party functionality.
+# OllamaChat.DisableForCustomChannels
+#     Description: When enabled (1), disables Ollama bot replies, random chatter, and events in custom channels (General, Trade, LookingForGroup, etc.).
+#                  This allows you to reduce spam in public channels while keeping bot interactions in other chat types.
 #     Default:     0 (false)
-OllamaChat.RestrictBotsToPartyMembers = 0
+OllamaChat.DisableForCustomChannels = 0
+
+# OllamaChat.DisableForSayYell
+#     Description: When enabled (1), disables Ollama bot replies, random chatter, and events in Say and Yell channels.
+#                  Useful if you want bots to be silent in proximity-based chats.
+#     Default:     0 (false)
+OllamaChat.DisableForSayYell = 0
+
+# OllamaChat.DisableForGuild
+#     Description: When enabled (1), disables Ollama bot replies, random chatter, and events in Guild and Officer channels.
+#                  Useful for keeping guild chat focused without bot chatter.
+#     Default:     0 (false)
+OllamaChat.DisableForGuild = 0
+
+# OllamaChat.DisableForParty
+#     Description: When enabled (1), disables Ollama bot replies, random chatter, and events in Party and Raid channels.
+#                  Useful if you want party chat to be bot-free.
+#     Default:     0 (false)
+OllamaChat.DisableForParty = 0
 
 # --------------------------------------------
 # RANDOM CHATTER SYSTEM

@@ -264,9 +264,12 @@ extern std::string g_EventTypeUsedObject;         // "used object"
 extern uint32_t g_EventCooldownTime;
 
 // --------------------------------------------
-// Party Restriction Settings
+// Channel Disable Settings
 // --------------------------------------------
-extern bool g_RestrictBotsToPartyMembers;
+extern bool g_DisableForCustomChannels;
+extern bool g_DisableForSayYell;
+extern bool g_DisableForGuild;
+extern bool g_DisableForParty;
 
 // --------------------------------------------
 // Typing Simulation Settings

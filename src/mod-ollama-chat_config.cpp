@@ -264,9 +264,12 @@ int g_GuildEventTypeDungeonComplete_Chance = 0;
 uint32_t g_EventCooldownTime = 10;
 
 // --------------------------------------------
-// Party Restriction Settings
+// Channel Disable Settings
 // --------------------------------------------
-bool g_RestrictBotsToPartyMembers = false;
+bool g_DisableForCustomChannels = false;
+bool g_DisableForSayYell = false;
+bool g_DisableForGuild = false;
+bool g_DisableForParty = false;
 
 // --------------------------------------------
 // Typing Simulation Settings
@@ -622,8 +625,11 @@ void LoadOllamaChatConfig()
     // Cooldown time for events
     g_EventCooldownTime = sConfigMgr->GetOption<uint32_t>("OllamaChat.EventCooldownTime", 10);
 
-    // Party restriction settings
-    g_RestrictBotsToPartyMembers = sConfigMgr->GetOption<bool>("OllamaChat.RestrictBotsToPartyMembers", false);
+    // Channel disable settings
+    g_DisableForCustomChannels = sConfigMgr->GetOption<bool>("OllamaChat.DisableForCustomChannels", false);
+    g_DisableForSayYell = sConfigMgr->GetOption<bool>("OllamaChat.DisableForSayYell", false);
+    g_DisableForGuild = sConfigMgr->GetOption<bool>("OllamaChat.DisableForGuild", false);
+    g_DisableForParty = sConfigMgr->GetOption<bool>("OllamaChat.DisableForParty", false);
 
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "

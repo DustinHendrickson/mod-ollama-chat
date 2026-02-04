@@ -136,37 +136,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
         if (!allowWithoutProximity && !nearRealPlayer)
             continue;
 
-        // Apply party restriction for random chatter
-        if (g_RestrictBotsToPartyMembers)
-        {
-            Group* botGroup = bot->GetGroup();
-            if (!botGroup || (botGroup->isRaidGroup() && !botGroup->isBGGroup()))
-            {
-                // Bot is not in a valid party, skip
-                continue;
-            }
-            
-            // Check if there's at least one real player in the group
-            bool hasRealPlayerInParty = false;
-            for (GroupReference* ref = botGroup->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (member && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
-                {
-                    hasRealPlayerInParty = true;
-                    break;
-                }
-            }
-            
-            if (!hasRealPlayerInParty)
-            {
-                // No real players in party, skip
-                continue;
-            }
-        }
-
-            uint64_t guid = bot->GetGUID().GetRawValue();
-            processedBotsThisTick.insert(guid);
+        uint64_t guid = bot->GetGUID().GetRawValue();
+        processedBotsThisTick.insert(guid);
 
             time_t now = time(nullptr);
 
@@ -685,10 +656,26 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     
                     if (botPtr->GetGroup())
                     {
+                        // Check if party chat is disabled
+                        if (g_DisableForParty)
+                        {
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Party random chatter skipped (party channels disabled)");
+                            return;
+                        }
+                        
                         botAI->SayToParty(response);
                     }
                     else if (isGuildComment && botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
                     {
+                        // Check if guild chat is disabled
+                        if (g_DisableForGuild)
+                        {
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Guild random chatter skipped (guild channels disabled)");
+                            return;
+                        }
+                        
                         // Only send to guild chat if the comment was guild-specific
                         // Check if there are real players in the guild
                         bool hasRealPlayerInGuild = false;
@@ -742,8 +729,15 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         // Build channel list - only include Say if real player is close enough
                         std::vector<std::string> channels;
-                        channels.push_back("General");
-                        if (realPlayerInSayDistance)
+                        
+                        // Only add General if custom channels are not disabled
+                        if (!g_DisableForCustomChannels)
+                        {
+                            channels.push_back("General");
+                        }
+                        
+                        // Only add Say if not disabled and real player is close enough
+                        if (!g_DisableForSayYell && realPlayerInSayDistance)
                         {
                             channels.push_back("Say");
                             if (g_DebugEnabled)
@@ -751,7 +745,18 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         }
                         else if (g_DebugEnabled)
                         {
-                            LOG_INFO("server.loading", "[Ollama Chat] Bot {} NOT adding Say to random chatter (no real player within {} yards)", botPtr->GetName(), g_SayDistance);
+                            if (g_DisableForSayYell)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} NOT adding Say to random chatter (Say/Yell disabled)", botPtr->GetName());
+                            else
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} NOT adding Say to random chatter (no real player within {} yards)", botPtr->GetName(), g_SayDistance);
+                        }
+                        
+                        // If no channels are available, skip random chatter
+                        if (channels.empty())
+                        {
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping random chatter (all available channels disabled)", botPtr->GetName());
+                            return;
                         }
                         
                         // Pick random channel
