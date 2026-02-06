@@ -664,10 +664,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             return;
                         }
                         
+                        if (g_DebugEnabled)
+                            LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Party: {}", response);
                         botAI->SayToParty(response);
                         ProcessBotChatMessage(botPtr, response, SRC_PARTY_LOCAL, nullptr);
                     }
-                    else if (isGuildComment && botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
+                    else if (botPtr->GetGuild())
                     {
                         // Check if guild chat is disabled
                         if (g_DisableForGuild)
@@ -677,7 +679,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             return;
                         }
                         
-                        // Only send to guild chat if the comment was guild-specific
                         // Check if there are real players in the guild
                         bool hasRealPlayerInGuild = false;
                         Guild* guild = botPtr->GetGuild();
@@ -699,11 +700,15 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         
                         if (hasRealPlayerInGuild)
                         {
-                            // Guild-specific comments go to /guild chat
+                            // Send to guild chat regardless of comment type
                             if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild (guild-specific): {}", response);
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
                             botAI->SayToGuild(response);
                             ProcessBotChatMessage(botPtr, response, SRC_GUILD_LOCAL, nullptr);
+                        }
+                        else if (g_DebugEnabled)
+                        {
+                            LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping guild random chatter (no real players in guild)", botPtr->GetName());
                         }
                     }
                     else
