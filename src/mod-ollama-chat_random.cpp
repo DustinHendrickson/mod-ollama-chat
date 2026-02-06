@@ -665,6 +665,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         }
                         
                         botAI->SayToParty(response);
+                        ProcessBotChatMessage(botPtr, response, SRC_PARTY_LOCAL, nullptr);
                     }
                     else if (isGuildComment && botPtr->GetGuild() && g_EnableGuildRandomAmbientChatter)
                     {
@@ -702,6 +703,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (g_DebugEnabled)
                                 LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild (guild-specific): {}", response);
                             botAI->SayToGuild(response);
+                            ProcessBotChatMessage(botPtr, response, SRC_GUILD_LOCAL, nullptr);
                         }
                     }
                     else
