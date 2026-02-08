@@ -612,6 +612,100 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             }();
 
+            // Pre-validate that we have a valid destination channel before making API call
+            bool hasValidDestination = false;
+            
+            if (isGuildComment && bot->GetGuild())
+            {
+                // Check if guild message can be sent
+                if (!g_DisableForGuild)
+                {
+                    // Check if there are real players in the guild
+                    Guild* guild = bot->GetGuild();
+                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                    {
+                        Player* player = pair.second;
+                        if (!player || !player->IsInWorld())
+                            continue;
+                        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                            continue;
+                        if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
+                        {
+                            hasValidDestination = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            else if (bot->GetGroup())
+            {
+                // Check if party message can be sent
+                if (!g_DisableForParty)
+                {
+                    hasValidDestination = true;
+                }
+            }
+            else
+            {
+                // For non-party, non-guild-comment messages, check if real player can hear
+                bool realPlayerInSayDistance = false;
+                bool realPlayerInGeneral = false;
+                
+                // Check Say distance
+                if (!g_DisableForSayYell && bot->IsInWorld())
+                {
+                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                    {
+                        Player* player = pair.second;
+                        if (!player || !player->IsInWorld())
+                            continue;
+                        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                            continue;
+                        if (bot->GetDistance(player) <= g_SayDistance)
+                        {
+                            realPlayerInSayDistance = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Check General channel
+                if (!g_DisableForCustomChannels)
+                {
+                    ChannelMgr* cMgr = ChannelMgr::forTeam(bot->GetTeamId());
+                    if (cMgr)
+                    {
+                        Channel* generalChannel = cMgr->GetChannel("General", bot);
+                        if (generalChannel)
+                        {
+                            for (auto const& pair : ObjectAccessor::GetPlayers())
+                            {
+                                Player* player = pair.second;
+                                if (!player || !player->IsInWorld())
+                                    continue;
+                                if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                                    continue;
+                                if (generalChannel->IsOn(player->GetGUID()))
+                                {
+                                    realPlayerInGeneral = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                hasValidDestination = realPlayerInSayDistance || realPlayerInGeneral;
+            }
+            
+            if (!hasValidDestination)
+            {
+                if (g_DebugEnabled)
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping random chatter (no real player can hear the message)", bot->GetName());
+                nextRandomChatTime[guid] = now + urand(g_MinRandomInterval, g_MaxRandomInterval);
+                continue;
+            }
+
             if(g_DebugEnabled)
             {
                 LOG_INFO("server.loading", "[Ollama Chat] Random Message Prompt: {} ", prompt);
@@ -732,13 +826,45 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             }
                         }
                         
-                        // Build channel list - only include Say if real player is close enough
+                        // Build channel list - only include channels with real players
                         std::vector<std::string> channels;
                         
-                        // Only add General if custom channels are not disabled
+                        // Check if any real player is in the General channel
+                        bool realPlayerInGeneral = false;
                         if (!g_DisableForCustomChannels)
                         {
-                            channels.push_back("General");
+                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                            if (cMgr)
+                            {
+                                Channel* generalChannel = cMgr->GetChannel("General", botPtr);
+                                if (generalChannel)
+                                {
+                                    for (auto const& pair : ObjectAccessor::GetPlayers())
+                                    {
+                                        Player* player = pair.second;
+                                        if (!player || !player->IsInWorld())
+                                            continue;
+                                        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                                            continue;
+                                        if (generalChannel->IsOn(player->GetGUID()))
+                                        {
+                                            realPlayerInGeneral = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (realPlayerInGeneral)
+                            {
+                                channels.push_back("General");
+                                if (g_DebugEnabled)
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} adding General to random chatter options (real player in channel)", botPtr->GetName());
+                            }
+                            else if (g_DebugEnabled)
+                            {
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} NOT adding General to random chatter (no real player in channel)", botPtr->GetName());
+                            }
                         }
                         
                         // Only add Say if not disabled and real player is close enough
