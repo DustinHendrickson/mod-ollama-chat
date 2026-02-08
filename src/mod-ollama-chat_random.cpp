@@ -619,7 +619,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-            std::thread([botGuid, prompt, isGuildComment]() {
+            std::thread([botGuid, prompt]() {
                 try {
                     Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                     if (!botPtr) return;
@@ -669,51 +669,9 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         botAI->SayToParty(response);
                         ProcessBotChatMessage(botPtr, response, SRC_PARTY_LOCAL, nullptr);
                     }
-                    else if (botPtr->GetGuild())
-                    {
-                        // Check if guild chat is disabled
-                        if (g_DisableForGuild)
-                        {
-                            if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Guild random chatter skipped (guild channels disabled)");
-                            return;
-                        }
-                        
-                        // Check if there are real players in the guild
-                        bool hasRealPlayerInGuild = false;
-                        Guild* guild = botPtr->GetGuild();
-                        for (auto const& pair : ObjectAccessor::GetPlayers())
-                        {
-                            Player* player = pair.second;
-                            if (!player || !player->IsInWorld())
-                                continue;
-                                
-                            if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
-                                continue;
-                                
-                            if (player->GetGuild() && player->GetGuild()->GetId() == guild->GetId())
-                            {
-                                hasRealPlayerInGuild = true;
-                                break;
-                            }
-                        }
-                        
-                        if (hasRealPlayerInGuild)
-                        {
-                            // Send to guild chat regardless of comment type
-                            if (g_DebugEnabled)
-                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Guild: {}", response);
-                            botAI->SayToGuild(response);
-                            ProcessBotChatMessage(botPtr, response, SRC_GUILD_LOCAL, nullptr);
-                        }
-                        else if (g_DebugEnabled)
-                        {
-                            LOG_INFO("server.loading", "[Ollama Chat] Bot {} skipping guild random chatter (no real players in guild)", botPtr->GetName());
-                        }
-                    }
                     else
                     {
-                        // For solo bots, check if any real player is within Say distance
+                        // For bots not in a party, check if any real player is within Say distance
                         bool realPlayerInSayDistance = false;
                         if (botPtr->IsInWorld())
                         {
