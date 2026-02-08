@@ -669,28 +669,22 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     }
                 }
                 
-                // Check General channel
+                // Check General channel - verify real player is in same zone/faction (General is zone-based)
                 if (!g_DisableForCustomChannels)
                 {
-                    ChannelMgr* cMgr = ChannelMgr::forTeam(bot->GetTeamId());
-                    if (cMgr)
+                    for (auto const& pair : ObjectAccessor::GetPlayers())
                     {
-                        Channel* generalChannel = cMgr->GetChannel("General", bot);
-                        if (generalChannel)
+                        Player* player = pair.second;
+                        if (!player || !player->IsInWorld())
+                            continue;
+                        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                            continue;
+                        // General channel is faction and zone specific
+                        if (player->GetTeamId() == bot->GetTeamId() && 
+                            player->GetZoneId() == bot->GetZoneId())
                         {
-                            for (auto const& pair : ObjectAccessor::GetPlayers())
-                            {
-                                Player* player = pair.second;
-                                if (!player || !player->IsInWorld())
-                                    continue;
-                                if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
-                                    continue;
-                                if (generalChannel->IsOn(player->GetGUID()))
-                                {
-                                    realPlayerInGeneral = true;
-                                    break;
-                                }
-                            }
+                            realPlayerInGeneral = true;
+                            break;
                         }
                     }
                 }
@@ -829,29 +823,23 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         // Build channel list - only include channels with real players
                         std::vector<std::string> channels;
                         
-                        // Check if any real player is in the General channel
+                        // Check if any real player is in the General channel (same zone and faction)
                         bool realPlayerInGeneral = false;
                         if (!g_DisableForCustomChannels)
                         {
-                            ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
-                            if (cMgr)
+                            for (auto const& pair : ObjectAccessor::GetPlayers())
                             {
-                                Channel* generalChannel = cMgr->GetChannel("General", botPtr);
-                                if (generalChannel)
+                                Player* player = pair.second;
+                                if (!player || !player->IsInWorld())
+                                    continue;
+                                if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+                                    continue;
+                                // General channel is faction and zone specific
+                                if (player->GetTeamId() == botPtr->GetTeamId() && 
+                                    player->GetZoneId() == botPtr->GetZoneId())
                                 {
-                                    for (auto const& pair : ObjectAccessor::GetPlayers())
-                                    {
-                                        Player* player = pair.second;
-                                        if (!player || !player->IsInWorld())
-                                            continue;
-                                        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
-                                            continue;
-                                        if (generalChannel->IsOn(player->GetGUID()))
-                                        {
-                                            realPlayerInGeneral = true;
-                                            break;
-                                        }
-                                    }
+                                    realPlayerInGeneral = true;
+                                    break;
                                 }
                             }
                             
