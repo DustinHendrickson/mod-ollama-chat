@@ -1316,11 +1316,20 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             Player* chosen = mentionedBots.front().second;
             if (!(g_DisableRepliesInCombat && chosen->IsInCombat()))
             {
-                finalCandidates.push_back(chosen);
-                if(g_DebugEnabled)
+                uint32_t mentionRoll = urand(0, 99);
+                if (mentionRoll < g_BotMentionReplyChance)
                 {
-                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} selected (mentioned first at position {})", 
-                            chosen->GetName(), mentionedBots.front().first);
+                    finalCandidates.push_back(chosen);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} selected (mentioned first at position {}, roll {} < {}%)",
+                                chosen->GetName(), mentionedBots.front().first, mentionRoll, g_BotMentionReplyChance);
+                    }
+                }
+                else if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} mentioned but skipped by chance roll ({} >= {}%)",
+                            chosen->GetName(), mentionRoll, g_BotMentionReplyChance);
                 }
             }
         }

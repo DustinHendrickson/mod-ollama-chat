@@ -181,6 +181,13 @@ OllamaChat.PlayerReplyChance.Guild = 70
 #     Default:     5
 OllamaChat.BotReplyChance.Guild = 5
 
+# OllamaChat.BotMentionReplyChance
+#     Description: The percent chance (0-100) that a bot actually replies when its name is explicitly mentioned
+#                  in a message. Setting this below 100 breaks the guaranteed-reply loop that can occur when
+#                  two bots keep mentioning each other's names in their LLM-generated responses.
+#     Default:     50
+OllamaChat.BotMentionReplyChance = 50
+
 # OllamaChat.EnableWhisperReplies
 #     Description: Enable or disable bot responses to whisper messages.
 #                  When set to 0 (false), bots will not reply to any whispers.

@@ -30,6 +30,8 @@ uint32_t   g_BotReplyChance_Party      = 10;
 uint32_t   g_PlayerReplyChance_Guild   = 70;
 uint32_t   g_BotReplyChance_Guild      = 5;
 
+uint32_t   g_BotMentionReplyChance     = 50;
+
 uint32_t   g_MaxBotsToPick     = 2;
 uint32_t   g_RandomChatterBotCommentChance   = 5;
 uint32_t   g_RandomChatterMaxBotsPerPlayer   = 2;
@@ -383,6 +385,8 @@ void LoadOllamaChatConfig()
     g_PlayerReplyChance_Guild         = sConfigMgr->GetOption<uint32_t>("OllamaChat.PlayerReplyChance.Guild", 70);
     g_BotReplyChance_Guild            = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotReplyChance.Guild", 5);
     
+    g_BotMentionReplyChance           = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotMentionReplyChance", 50);
+
     g_MaxBotsToPick                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
     g_OllamaUrl                       = sConfigMgr->GetOption<std::string>("OllamaChat.Url", "http://localhost:11434/api/generate");
     g_OllamaModel                     = sConfigMgr->GetOption<std::string>("OllamaChat.Model", "llama3.2:1b");
