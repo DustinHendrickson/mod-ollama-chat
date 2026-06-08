@@ -64,3 +64,6 @@ compile_commands.json
 Thumbs.db
 
 .vscode/
+
+# Personal live config (contains server-specific host/IP); kept local.
+my-custom-config.conf
