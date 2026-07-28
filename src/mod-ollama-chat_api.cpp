@@ -131,6 +131,10 @@ std::string QueryOllamaAPI(const std::string& prompt)
         requestData["think"] = true;
         requestData["hidethinking"] = true;
     }
+    else
+    {
+        requestData["think"] = false;
+    }
 
     std::string requestDataStr = requestData.dump();
 
