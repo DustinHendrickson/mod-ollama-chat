@@ -123,7 +123,7 @@
 5. **Configuration:**
    Copy the default configuration file to your server configuration directory and change to match your setup (if not already done):
    ```bash
-   cp /path/to/azerothcore/modules/mod-ollama-chat/mod-ollama-chat.conf.dist /path/to/azerothcore/etc/config/mod-ollama-chat.conf
+   cp /path/to/azerothcore/modules/mod-ollama-chat/conf/mod_ollama_chat.conf.dist /path/to/azerothcore/env/dist/etc/modules/mod_ollama_chat.conf
    ```
 
 6. **Restart the Server:**
