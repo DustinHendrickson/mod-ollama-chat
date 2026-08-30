@@ -97,3 +97,22 @@ WHERE `key` = 'EDGE_LORD';
 - Manually assigned personalities persist across server restarts (stored in database)
 - The `.ollama reload` command reloads personality templates from the database
 - Bots with manually assigned personalities keep them even if personalities are reloaded
+
+## Related Diagnostic Commands
+
+These are not personality commands, but they are the fastest way to work out why
+a bot is not saying anything:
+
+### `.ollama status`
+
+Endpoint and model, whether think mode is supported and why, dispatcher queue
+and worker state, delivery and drop counters, and the governor's breakdown of
+*why* replies were suppressed (cooldown, rate limit, repetition, chain depth, no
+audience).
+
+### `.ollama test <prompt>`
+
+One round trip to Ollama, with the raw and post-processed output written side by
+side to the `module.ollamachat` log.
+
+See the main README for the full description.

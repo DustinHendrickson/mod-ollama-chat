@@ -24,7 +24,7 @@ std::string GetBotPersonality(Player* bot)
         }
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second, bot->GetName());
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second, bot->GetName());
         }
         return it->second;
     }
@@ -51,7 +51,7 @@ std::string GetBotPersonality(Player* bot)
 
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] Using database personality '{}' for bot {}", dbPersonality, bot->GetName());
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Using database personality '{}' for bot {}", dbPersonality, bot->GetName());
         }
         return dbPersonality;
     }
@@ -66,7 +66,7 @@ std::string GetBotPersonality(Player* bot)
         "SELECT * FROM information_schema.tables WHERE table_schema = 'acore_characters' AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
     if (!tableExists)
     {
-        LOG_INFO("server.loading", "[Ollama Chat] Please source the required database table first");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Please source the required database table first");
     }
     else
     {
@@ -75,7 +75,7 @@ std::string GetBotPersonality(Player* bot)
 
     if(g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[Ollama Chat] Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());
     }
     return chosenPersonality;
 }
@@ -111,7 +111,7 @@ bool SetBotPersonality(Player* bot, const std::string& personality)
     
     if(g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[Ollama Chat] Set personality '{}' for bot {}", personality, bot->GetName());
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Set personality '{}' for bot {}", personality, bot->GetName());
     }
     
     return true;
@@ -134,6 +134,6 @@ void ClearAllBotPersonalities()
     g_BotPersonalityList.clear();
     if(g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[Ollama Chat] Cleared all bot personality assignments due to RP personalities being disabled");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Cleared all bot personality assignments due to RP personalities being disabled");
     }
 }

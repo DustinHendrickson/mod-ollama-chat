@@ -30,13 +30,28 @@ void SetBotPlayerSentiment(uint64_t botGuid, uint64_t playerGuid, float sentimen
  * @param message The message to analyze
  * @return Sentiment adjustment (-1.0 to 1.0)
  */
-float AnalyzeMessageSentiment(const std::string& message);
+float AnalyzeMessageSentiment(const std::string& prompt);
 
 /**
- * Update sentiment based on a player's message to a bot
- * @param bot The bot receiving the message
- * @param player The player sending the message
- * @param message The message content
+ * Run the sentiment analysis LLM call and store the result.
+ *
+ * BLOCKING -- this performs an HTTP request. Call it from a dispatcher worker,
+ * never from the world thread. It touches only the mutex-guarded sentiment map
+ * and async DB writes, so it needs no world-thread access of its own.
+ */
+void ApplySentimentAnalysis(uint64_t botGuid, uint64_t playerGuid,
+                            const std::string& message, const std::string& prompt);
+
+// Format the sentiment prompt. World thread only -- it reads the config
+// template, which reload rewrites.
+std::string BuildSentimentPrompt(const std::string& message);
+
+/**
+ * Queue a sentiment update for a player's message to a bot.
+ *
+ * Non-blocking: hands the work to the dispatcher. The old version called
+ * AnalyzeMessageSentiment() inline, which would stall whichever thread it ran
+ * on for a full LLM round trip.
  */
 void UpdateBotPlayerSentiment(Player* bot, Player* player, const std::string& message);
 

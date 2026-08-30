@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat-utilities.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
@@ -43,31 +44,38 @@ void SetBotPlayerSentiment(uint64_t botGuid, uint64_t playerGuid, float sentimen
     
     if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Set sentiment between bot {} and player {} to {:.2f}", 
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Set sentiment between bot {} and player {} to {:.2f}", 
                  botGuid, playerGuid, sentimentValue);
     }
 }
 
-float AnalyzeMessageSentiment(const std::string& message)
+std::string BuildSentimentPrompt(const std::string& message)
 {
-    if (!g_EnableSentimentTracking || message.empty())
-        return 0.0f;
+    if (!g_EnableSentimentTracking || message.empty() || g_SentimentAnalysisPrompt.empty())
+        return "";
 
-    // Format the sentiment analysis prompt
-    std::string prompt = SafeFormat(g_SentimentAnalysisPrompt, fmt::arg("message", message));
+    return SafeFormat(g_SentimentAnalysisPrompt, fmt::arg("message", message));
+}
+
+float AnalyzeMessageSentiment(const std::string& prompt)
+{
+    if (!g_EnableSentimentTracking || prompt.empty())
+        return 0.0f;
     
     if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Sentiment analysis prompt: {}", prompt);
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Sentiment analysis prompt: {}", prompt);
     }
     
-    // Query the LLM for sentiment analysis
-    std::string response = QueryOllamaAPI(prompt);
-    
+    // Sentiment is a judgement call and is never shown to players, so this is
+    // the one request kind that auto think-mode turns reasoning ON for.
+    OllamaApiResult api = QueryOllama(prompt, OllamaRequestKind::Sentiment);
+    std::string response = api.ok ? api.text : std::string();
+
     if (response.empty())
     {
         if (g_DebugEnabled)
-            LOG_INFO("server.loading", "[OllamaChat] Empty sentiment analysis response");
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Empty sentiment analysis response");
         return 0.0f;
     }
     
@@ -89,38 +97,46 @@ float AnalyzeMessageSentiment(const std::string& message)
     
     if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Sentiment analysis: '{}' -> adjustment: {:.2f}", 
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Sentiment analysis: '{}' -> adjustment: {:.2f}", 
                  response, adjustment);
     }
     
     return adjustment;
 }
 
-void UpdateBotPlayerSentiment(Player* bot, Player* player, const std::string& message)
+void ApplySentimentAnalysis(uint64_t botGuid, uint64_t playerGuid,
+                            const std::string& message, const std::string& prompt)
 {
-    if (!g_EnableSentimentTracking || !bot || !player)
+    if (!g_EnableSentimentTracking || message.empty() || prompt.empty())
         return;
 
-    uint64_t botGuid = bot->GetGUID().GetRawValue();
-    uint64_t playerGuid = player->GetGUID().GetRawValue();
-    
-    // Get current sentiment
-    float currentSentiment = GetBotPlayerSentiment(botGuid, playerGuid);
-    
-    // Analyze the message sentiment
-    float adjustment = AnalyzeMessageSentiment(message);
-    
-    // Apply the adjustment
-    float newSentiment = currentSentiment + adjustment;
-    
-    // Set the updated sentiment
+    const float currentSentiment = GetBotPlayerSentiment(botGuid, playerGuid);
+    const float adjustment       = AnalyzeMessageSentiment(prompt);
+
+    if (adjustment == 0.0f)
+        return;
+
+    const float newSentiment = currentSentiment + adjustment;
     SetBotPlayerSentiment(botGuid, playerGuid, newSentiment);
-    
-    if (g_DebugEnabled && adjustment != 0.0f)
+
+    if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Updated sentiment: {} -> {} ({:+.2f}) for bot {} and player {}", 
-                 currentSentiment, newSentiment, adjustment, bot->GetName(), player->GetName());
+        LOG_INFO("module.ollamachat",
+                 "[Ollama Chat] Sentiment {:.2f} -> {:.2f} ({:+.2f}) for bot {} toward player {}",
+                 currentSentiment, newSentiment, adjustment, botGuid, playerGuid);
     }
+}
+
+void UpdateBotPlayerSentiment(Player* bot, Player* player, const std::string& message)
+{
+    if (!g_EnableSentimentTracking || !bot || !player || message.empty())
+        return;
+
+    // Hand off rather than block. This used to run the LLM call inline, on
+    // whatever thread happened to be delivering the reply.
+    OllamaDispatch_SubmitSentiment(bot->GetGUID().GetRawValue(),
+                                   player->GetGUID().GetRawValue(),
+                                   message);
 }
 
 std::string GetSentimentPromptAddition(Player* bot, Player* player)
@@ -152,7 +168,7 @@ void LoadBotPlayerSentimentsFromDB()
     
     if (!result)
     {
-        LOG_INFO("server.loading", "[OllamaChat] No existing sentiment data found in database");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] No existing sentiment data found in database");
         return;
     }
     
@@ -169,7 +185,7 @@ void LoadBotPlayerSentimentsFromDB()
         
     } while (result->NextRow());
     
-    LOG_INFO("server.loading", "[OllamaChat] Loaded {} sentiment records from database", count);
+    LOG_INFO("module.ollamachat", "[Ollama Chat] Loaded {} sentiment records from database", count);
 }
 
 void SaveBotPlayerSentimentsToDB()
@@ -196,7 +212,7 @@ void SaveBotPlayerSentimentsToDB()
     
     if (g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Saved sentiment data to database");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Saved sentiment data to database");
     }
 }
 
@@ -204,11 +220,11 @@ void InitializeSentimentTracking()
 {
     if (!g_EnableSentimentTracking)
     {
-        LOG_INFO("server.loading", "[OllamaChat] Sentiment tracking is disabled");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Sentiment tracking is disabled");
         return;
     }
     
-    LOG_INFO("server.loading", "[OllamaChat] Initializing sentiment tracking system...");
+    LOG_INFO("module.ollamachat", "[Ollama Chat] Initializing sentiment tracking system...");
     
     // Load existing sentiment data from database
     LoadBotPlayerSentimentsFromDB();
@@ -216,5 +232,5 @@ void InitializeSentimentTracking()
     // Initialize the last save time
     g_LastSentimentSaveTime = time(nullptr);
     
-    LOG_INFO("server.loading", "[OllamaChat] Sentiment tracking system initialized");
+    LOG_INFO("module.ollamachat", "[Ollama Chat] Sentiment tracking system initialized");
 }

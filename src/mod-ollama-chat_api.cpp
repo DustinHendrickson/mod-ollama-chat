@@ -1,240 +1,283 @@
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_capability.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_httpclient.h"
 #include "mod-ollama-chat-utilities.h"
+
 #include "Log.h"
-#include <sstream>
+
+#include <algorithm>
+#include <chrono>
 #include <nlohmann/json.hpp>
-#include <fmt/core.h>
-#include <thread>
 #include <mutex>
-#include <queue>
-#include <future>
+#include <sstream>
 
-std::string ExtractTextBetweenDoubleQuotes(const std::string& response)
+namespace
 {
-    size_t first = response.find('"');
-    size_t second = response.find('"', first + 1);
-    if (first != std::string::npos && second != std::string::npos) {
-        return response.substr(first + 1, second - first - 1);
-    }
-    return response;
-}
+    // One client per worker thread; the client itself pools keep-alive sockets.
+    thread_local OllamaHttpClient t_httpClient;
 
-// Function to perform the API call.
-std::string QueryOllamaAPI(const std::string& prompt)
-{
-    // Initialize our custom HTTP client
-    static OllamaHttpClient httpClient;
-    
-    if (!httpClient.IsAvailable())
+    std::mutex             g_settingsMutex;
+    OllamaEndpointSettings g_settings;
+
+    nlohmann::json BuildRequest(const OllamaEndpointSettings& cfg,
+                                const std::string& prompt, bool think)
     {
-        LOG_ERROR("server.loading", "[OllamaChat] ERROR: HTTP client not available. Check if Ollama service is running and accessible.");
-        if(g_DebugEnabled)
+        nlohmann::json request = {
+            { "model",  cfg.model },
+            { "prompt", SanitizeUTF8(prompt) },
+            { "stream", false },
+        };
+
+        nlohmann::json options;
+        bool hasOptions = false;
+
+        auto setOpt = [&](const char* key, auto value)
         {
-            LOG_INFO("server.loading", "[OllamaChat] Debug: HTTP client initialization failed.");
-        }
-        return "";
-    }
-
-    std::string url   = g_OllamaUrl;
-    std::string model = g_OllamaModel;
-
-    // Sanitize the prompt to ensure it's valid UTF-8 before creating JSON
-    std::string sanitizedPrompt = SanitizeUTF8(prompt);
-
-    nlohmann::json requestData = {
-        {"model",  model},
-        {"prompt", sanitizedPrompt},
-        {"stream", false}
-    };
-
-    // Create options object for model parameters
-    nlohmann::json options;
-    bool hasOptions = false;
-
-    // Only include if set (do not send defaults if user did not set them)
-    if (g_OllamaNumPredict > 0) {
-        options["num_predict"] = g_OllamaNumPredict;
-        hasOptions = true;
-    }
-    if (g_OllamaTemperature != 0.8f) {
-        options["temperature"] = g_OllamaTemperature;
-        hasOptions = true;
-    }
-    if (g_OllamaTopP != 0.95f) {
-        options["top_p"] = g_OllamaTopP;
-        hasOptions = true;
-    }
-    if (g_OllamaRepeatPenalty != 1.1f) {
-        options["repeat_penalty"] = g_OllamaRepeatPenalty;
-        hasOptions = true;
-    }
-    if (g_OllamaNumCtx > 0) {
-        options["num_ctx"] = g_OllamaNumCtx;
-        hasOptions = true;
-    }
-    if (g_OllamaNumThreads > 0) {
-        options["num_thread"] = g_OllamaNumThreads;
-        hasOptions = true;
-        if(g_DebugEnabled) {
-            //LOG_INFO("server.loading", "[Ollama Chat] Setting num_thread to: {}", g_OllamaNumThreads);
-        }
-    } else if(g_DebugEnabled) {
-        //LOG_INFO("server.loading", "[Ollama Chat] g_OllamaNumThreads is: {} (not sending num_thread)", g_OllamaNumThreads);
-    }
-    if (!g_OllamaSeed.empty()) {
-        try {
-            int seedValue = std::stoi(g_OllamaSeed);
-            options["seed"] = seedValue; 
+            options[key] = value;
             hasOptions = true;
-        } catch (const std::exception& e) {
-            if(g_DebugEnabled) {
-                LOG_INFO("server.loading", "[Ollama Chat] Invalid seed value: {}", g_OllamaSeed);
+        };
+
+        if (cfg.numPredict > 0)          setOpt("num_predict", cfg.numPredict);
+        if (cfg.temperature != 0.8f)     setOpt("temperature", cfg.temperature);
+        if (cfg.topP != 0.95f)           setOpt("top_p", cfg.topP);
+        if (cfg.repeatPenalty != 1.1f)   setOpt("repeat_penalty", cfg.repeatPenalty);
+        if (cfg.numCtx > 0)              setOpt("num_ctx", cfg.numCtx);
+        if (cfg.numThreads > 0)          setOpt("num_thread", cfg.numThreads);
+
+        // Optional diversity controls. Omitted entirely unless the operator
+        // opted in, so the model's own defaults apply and nothing changes for
+        // anyone who leaves them alone.
+        if (cfg.topK >= 0)                    setOpt("top_k", cfg.topK);
+        if (cfg.minP >= 0.0f)                 setOpt("min_p", cfg.minP);
+        if (cfg.presencePenalty > -999.0f)    setOpt("presence_penalty", cfg.presencePenalty);
+        if (cfg.frequencyPenalty > -999.0f)   setOpt("frequency_penalty", cfg.frequencyPenalty);
+
+        if (!cfg.seed.empty())
+        {
+            try
+            {
+                setOpt("seed", std::stoi(cfg.seed));
+            }
+            catch (const std::exception&)
+            {
+                if (g_DebugEnabled)
+                    LOG_INFO("module.ollamachat", "[Ollama Chat] Invalid seed value: {}", cfg.seed);
             }
         }
-    }
 
-    // Add options object if any options were set
-    if (hasOptions) {
-        requestData["options"] = options;
-    }
+        if (hasOptions)
+            request["options"] = options;
 
-    // Root-level parameters (these stay at root level)
-    if (!g_OllamaStop.empty()) {
-        // If comma-separated, convert to array
-        std::vector<std::string> stopSeqs;
-        std::stringstream ss(g_OllamaStop);
-        std::string item;
-        while (std::getline(ss, item, ',')) {
-            // trim whitespace
-            size_t start = item.find_first_not_of(" \t");
-            size_t end = item.find_last_not_of(" \t");
-            if (start != std::string::npos && end != std::string::npos)
-                stopSeqs.push_back(item.substr(start, end - start + 1));
-        }
-        if (!stopSeqs.empty())
-            requestData["stop"] = stopSeqs;
-    }
-    if (!g_OllamaSystemPrompt.empty())
-    {
-        // Sanitize system prompt as well
-        requestData["system"] = SanitizeUTF8(g_OllamaSystemPrompt);
-    }
-
-    if (g_ThinkModeEnableForModule)
-    {
-        if(g_DebugEnabled)
+        if (!cfg.stop.empty())
         {
-            LOG_INFO("server.loading", "[Ollama Chat] LLM set to Think mode.");
+            std::vector<std::string> stopSeqs;
+            std::stringstream ss(cfg.stop);
+            std::string item;
+            while (std::getline(ss, item, ','))
+            {
+                const size_t start = item.find_first_not_of(" \t");
+                const size_t end   = item.find_last_not_of(" \t");
+                if (start != std::string::npos && end != std::string::npos)
+                    stopSeqs.push_back(item.substr(start, end - start + 1));
+            }
+            if (!stopSeqs.empty())
+                request["stop"] = stopSeqs;
         }
-        requestData["think"] = true;
-        requestData["hidethinking"] = true;
+
+        if (!cfg.systemPrompt.empty())
+            request["system"] = SanitizeUTF8(cfg.systemPrompt);
+
+        // Always explicit. Some models keep reasoning switched on unless they
+        // are told otherwise, so omitting the field is not the same as
+        // disabling it. The old code also sent "hidethinking", which Ollama
+        // does not define and silently ignored.
+        request["think"] = think;
+
+        return request;
     }
 
-    std::string requestDataStr = requestData.dump();
-
-    // Make HTTP POST request using our custom client
-    std::string responseBuffer = httpClient.Post(url, requestDataStr);
-
-    if (responseBuffer.empty())
+    // Ollama answers non-streaming requests with a single JSON object, but the
+    // streaming shape (one object per line) still shows up behind some proxies,
+    // so accumulate across lines either way.
+    void ParseGenerateBody(const std::string& body, std::string& outText,
+                           std::string& outThinking, std::string& outError)
     {
-        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Failed to reach Ollama API at {}. Check URL configuration and network connectivity.", url);
-        if(g_DebugEnabled)
-        {
-            LOG_INFO("server.loading", "[OllamaChat] Debug: Empty response buffer from HTTP client. Model: {}", model);
-        }
-        return "";
-    }
+        std::ostringstream text;
+        std::ostringstream thinking;
+        bool parsedAny = false;
 
-    std::stringstream ss(responseBuffer);
-    std::string line;
-    std::ostringstream extractedResponse;
+        std::stringstream ss(body);
+        std::string line;
 
-    try
-    {
         while (std::getline(ss, line))
         {
-            if (line.empty() || std::all_of(line.begin(), line.end(), isspace))
+            if (line.empty() || std::all_of(line.begin(), line.end(),
+                                            [](unsigned char c) { return std::isspace(c); }))
                 continue;
 
-            nlohmann::json jsonResponse = nlohmann::json::parse(line);
-
-            if (jsonResponse.contains("response") && !jsonResponse["response"].get<std::string>().empty())
+            try
             {
-                extractedResponse << jsonResponse["response"].get<std::string>();
+                nlohmann::json parsed = nlohmann::json::parse(line);
+                parsedAny = true;
+
+                if (parsed.contains("error") && parsed["error"].is_string())
+                {
+                    outError = parsed["error"].get<std::string>();
+                    continue;
+                }
+
+                if (parsed.contains("response") && parsed["response"].is_string())
+                    text << parsed["response"].get<std::string>();
+
+                // Native reasoning arrives here, separate from "response".
+                if (parsed.contains("thinking") && parsed["thinking"].is_string())
+                    thinking << parsed["thinking"].get<std::string>();
+            }
+            catch (const std::exception& e)
+            {
+                if (outError.empty())
+                    outError = std::string("JSON parse failure: ") + e.what();
             }
         }
+
+        if (!parsedAny && outError.empty())
+            outError = "no JSON object in response body";
+
+        outText     = text.str();
+        outThinking = thinking.str();
     }
-    catch (const std::exception& e)
+
+    OllamaApiResult PerformOnce(const OllamaEndpointSettings& cfg,
+                                const std::string& prompt, bool think)
     {
-        LOG_ERROR("server.loading", "[OllamaChat] ERROR: JSON parsing failed. Exception: {}", e.what());
-        if(g_DebugEnabled)
+        OllamaApiResult result;
+        result.thinkUsed = think;
+
+        const nlohmann::json request = BuildRequest(cfg, prompt, think);
+
+        const auto started = std::chrono::steady_clock::now();
+        OllamaHttpResult http = t_httpClient.PostEx(cfg.url, request.dump());
+        const auto finished = std::chrono::steady_clock::now();
+
+        result.latencyMs = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(finished - started).count());
+
+        result.status = http.status;
+
+        if (!http.error.empty())
         {
-            LOG_INFO("server.loading", "[OllamaChat] Debug: Response buffer content: {}", responseBuffer);
+            result.error = http.error;
+            return result;
         }
-        return "";
-    }
 
-    std::string botReply = extractedResponse.str();
-
-    botReply = ExtractTextBetweenDoubleQuotes(botReply);
-
-    // Check for unclosed think tags
-    if (botReply.find("<think>") != std::string::npos || botReply.find("</think>") != std::string::npos)
-    {
-        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Unclosed <think> tags detected in response. This usually means the model's output was truncated.");
-        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.ThinkModeEnableForModule = 1' in mod_ollama_chat.conf");
-        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.NumPredict = 0' (unlimited tokens) in mod_ollama_chat.conf");
-        LOG_ERROR("server.loading", "[OllamaChat] SOLUTION: Set 'OllamaChat.NumCtx = 0' (model default context) in mod_ollama_chat.conf");
-        if(g_DebugEnabled)
+        if (!http.ok())
         {
-            LOG_INFO("server.loading", "[OllamaChat] Debug: Partial response with think tags: {}", botReply);
+            result.error = "HTTP " + std::to_string(http.status);
+            if (!http.body.empty())
+                result.error += ": " + http.body;
+            return result;
         }
-        return "";
-    }
 
-    if (botReply.empty())
-    {
-        LOG_ERROR("server.loading", "[OllamaChat] ERROR: Empty response extracted from API. Model may not have generated any output.");
-        if(g_DebugEnabled)
+        std::string parseError;
+        ParseGenerateBody(http.body, result.text, result.thinking, parseError);
+
+        if (!parseError.empty())
         {
-            LOG_INFO("server.loading", "[OllamaChat] Debug: Raw extracted response was empty.");
+            result.error = parseError;
+            return result;
         }
-        return "";
+
+        result.ok = true;
+        return result;
     }
-
-    if(g_DebugEnabled)
-    {
-        LOG_INFO("server.loading", "[Ollama Chat] Parsed bot response: {}", botReply);
-
-        if (g_ThinkModeEnableForModule)
-        {
-            if(g_DebugEnabled)
-            {
-                LOG_INFO("server.loading", "[Ollama Chat] Bot used think.");
-            }
-        }
-    }
-
-    return botReply;
 }
 
-// Helper function to check if a response is valid (not empty and not an error)
+// --------------------------------------------------------------------------
+
+void OllamaConfig_Publish()
+{
+    OllamaEndpointSettings next;
+    next.url              = g_OllamaUrl;
+    next.model            = g_OllamaModel;
+    next.systemPrompt     = g_OllamaSystemPrompt;
+    next.stop             = g_OllamaStop;
+    next.seed             = g_OllamaSeed;
+    next.numPredict       = g_OllamaNumPredict;
+    next.numCtx           = g_OllamaNumCtx;
+    next.numThreads       = g_OllamaNumThreads;
+    next.temperature      = g_OllamaTemperature;
+    next.topP             = g_OllamaTopP;
+    next.repeatPenalty    = g_OllamaRepeatPenalty;
+    next.topK             = g_OllamaTopK;
+    next.minP             = g_OllamaMinP;
+    next.presencePenalty  = g_OllamaPresencePenalty;
+    next.frequencyPenalty = g_OllamaFrequencyPenalty;
+
+    std::lock_guard<std::mutex> lock(g_settingsMutex);
+    g_settings = std::move(next);
+}
+
+OllamaEndpointSettings OllamaConfig_Snapshot()
+{
+    std::lock_guard<std::mutex> lock(g_settingsMutex);
+    return g_settings;
+}
+
+OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
+{
+    OllamaApiResult result;
+
+    if (prompt.empty())
+    {
+        result.error = "empty prompt";
+        return result;
+    }
+
+    const OllamaEndpointSettings cfg = OllamaConfig_Snapshot();
+    const bool wantThink = OllamaCapability_ShouldThink(kind);
+
+    result = PerformOnce(cfg, prompt, wantThink);
+
+    // Self-heal: the model told us it cannot think. Remember that, and answer
+    // this request anyway instead of leaving the bot mute.
+    if (!result.ok && wantThink &&
+        OllamaCapability_IsThinkRejection(result.status, result.error))
+    {
+        OllamaCapability_NoteThinkRejected();
+        result = PerformOnce(cfg, prompt, false);
+    }
+
+    if (result.ok)
+        OllamaCapability_NoteLatency(result.latencyMs, result.thinkUsed);
+
+    if (!result.ok)
+    {
+        LOG_ERROR("module.ollamachat",
+                  "[Ollama Chat] Generation failed (model '{}', {}ms): {}",
+                  cfg.model, result.latencyMs,
+                  result.error.empty() ? "unknown error" : result.error);
+    }
+    else if (g_DebugEnabled)
+    {
+        LOG_INFO("module.ollamachat",
+                 "[Ollama Chat] Generation ok in {}ms (think={}), {} chars.",
+                 result.latencyMs, result.thinkUsed ? "yes" : "no", result.text.size());
+
+        if (g_DebugShowFullPrompt && !result.thinking.empty())
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Model reasoning: {}", result.thinking);
+    }
+
+    return result;
+}
+
+std::string QueryOllamaAPI(const std::string& prompt)
+{
+    OllamaApiResult r = QueryOllama(prompt, OllamaRequestKind::ChatReply);
+    return r.ok ? r.text : std::string();
+}
+
 bool IsValidAPIResponse(const std::string& response)
 {
-    if (response.empty())
-    {
-        return false;
-    }
-    // Response is valid if it's not empty
-    return true;
-}
-
-QueryManager g_queryManager;
-
-// Interface function to submit a query.
-std::future<std::string> SubmitQuery(const std::string& prompt)
-{
-    return g_queryManager.submitQuery(prompt);
+    return !response.empty();
 }

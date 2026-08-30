@@ -5,91 +5,121 @@
 #include "Player.h"
 #include <string>
 
+// --------------------------------------------------------------------------
+// Event chatter.
+//
+// Every hook below now carries `override`. Two of them previously did not, and
+// silently overrode nothing:
+//
+//   OnPlayerCompleteAchievement  -- the core's virtual is
+//                                   OnPlayerAchievementComplete (word order).
+//   OnGameObjectUse              -- never was a PlayerScript hook at all.
+//
+// Both compiled fine and simply never ran. With `override` a future core
+// rename becomes a build error instead of a feature that quietly stops working.
+// --------------------------------------------------------------------------
+
 class OllamaBotEventChatter
 {
 public:
     void DispatchGameEvent(Player* source, std::string type, std::string detail);
-    void QueueEvent(Player* bot, std::string type, std::string detail, std::string actorName, bool isGuildEvent = false);
-    std::string BuildPrompt(Player* bot, std::string promptTemplate, std::string eventType, std::string eventDetail, std::string actorName);
+
+    // World thread only -- reads live world state.
+    std::string BuildPrompt(Player* bot, std::string promptTemplate, std::string eventType,
+                            std::string eventDetail, std::string actorName);
 };
 
 class ChatOnKill : public PlayerScript
 {
 public:
     ChatOnKill();
-    void OnPlayerCreatureKill(Player* killer, Creature* victim);
-    void OnPlayerPVPKill(Player* killer, Player* killed);
-    void OnPlayerCreatureKilledByPet(Player* owner, Creature* victim);
+    void OnPlayerCreatureKill(Player* killer, Creature* victim) override;
+    void OnPlayerPVPKill(Player* killer, Player* killed) override;
+    void OnPlayerCreatureKilledByPet(Player* owner, Creature* victim) override;
 };
 
 class ChatOnLoot : public PlayerScript
 {
 public:
     ChatOnLoot();
-    void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count);
+    void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count) override;
 };
 
 class ChatOnDeath : public PlayerScript
 {
 public:
     ChatOnDeath();
-    void OnPlayerJustDied(Player* player);
+    void OnPlayerJustDied(Player* player) override;
 };
 
 class ChatOnQuest : public PlayerScript
 {
 public:
     ChatOnQuest();
-    void OnPlayerCompleteQuest(Player* player, Quest const* quest);
+    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
 };
 
 class ChatOnLearn : public PlayerScript
 {
 public:
     ChatOnLearn();
-    void OnPlayerLearnSpell(Player* player, uint32 spellID);
+    void OnPlayerLearnSpell(Player* player, uint32 spellID) override;
 };
 
 class ChatOnDuel : public PlayerScript
 {
 public:
     ChatOnDuel();
-    void OnPlayerDuelRequest(Player* target, Player* challenger);
-    void OnPlayerDuelStart(Player* player1, Player* player2);
-    void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type);
+    void OnPlayerDuelRequest(Player* target, Player* challenger) override;
+    void OnPlayerDuelStart(Player* player1, Player* player2) override;
+    void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type) override;
 };
 
-// Extra events:
 class ChatOnLevelUp : public PlayerScript
 {
 public:
     ChatOnLevelUp();
-    void OnPlayerLevelChanged(Player* player, uint8 oldLevel);
+    void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
 };
 
+// FIXED: was OnPlayerCompleteAchievement, which overrode nothing.
 class ChatOnAchievement : public PlayerScript
 {
 public:
     ChatOnAchievement();
-    void OnPlayerCompleteAchievement(Player* player, AchievementEntry const* achievement);
+    void OnPlayerAchievementComplete(Player* player, AchievementEntry const* achievement) override;
 };
 
-class ChatOnGameObjectUse : public PlayerScript
+// FIXED: gameobject interaction is not a PlayerScript hook. AzerothCore has no
+// generic "player used any gameobject" hook, so this uses the gossip-hello
+// path, which covers interactive objects. Returning false leaves normal
+// handling untouched.
+class ChatOnGameObjectUse : public AllGameObjectScript
 {
 public:
     ChatOnGameObjectUse();
-    void OnGameObjectUse(Player* player, GameObject* go);
+    bool CanGameObjectGossipHello(Player* player, GameObject* go) override;
 };
 
-class ChatOnGuildMemberChange : public PlayerScript
+// FIXED: OnGuildMember* were never AzerothCore hooks, and the class was never
+// even registered. These are the real guild hooks.
+class ChatOnGuild : public GuildScript
 {
 public:
-    ChatOnGuildMemberChange();
-    void OnGuildMemberJoin(Player* player, Guild* guild);
-    void OnGuildMemberLeave(Player* player, Guild* guild);
-    void OnGuildMemberRankChange(Player* player, Guild* guild, uint8 oldRank, uint8 newRank);
-    void OnGuildMemberLogin(Player* player, Guild* guild);
+    ChatOnGuild();
+    void OnAddMember(Guild* guild, Player* player, uint8& plRank) override;
+    void OnRemoveMember(Guild* guild, Player* player, bool isDisbanding, bool isKicked) override;
+    void OnEvent(Guild* guild, uint8 eventType, ObjectGuid::LowType playerGuid1,
+                 ObjectGuid::LowType playerGuid2, uint8 newRank) override;
 };
 
+// Guild login announcements: a login hook plus a guild check, since there is
+// no OnGuildMemberLogin in the core.
+class ChatOnGuildLogin : public PlayerScript
+{
+public:
+    ChatOnGuildLogin();
+    void OnPlayerLogin(Player* player) override;
+};
 
 #endif // MOD_OLLAMA_CHAT_EVENTS_H

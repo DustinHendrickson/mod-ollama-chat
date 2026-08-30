@@ -22,6 +22,23 @@ The sentiment tracking system enables bots to remember how players treat them ov
    - NEGATIVE messages decrease sentiment by the configured adjustment strength
    - NEUTRAL messages cause no change
 
+### Threading
+
+Sentiment analysis is an LLM round trip, so it never runs inline.
+`UpdateBotPlayerSentiment()` queues the work on the dispatcher and returns
+immediately; `ApplySentimentAnalysis()` performs the call on a worker thread.
+
+This matters because sentiment touches only the mutex-guarded in-memory map and
+async database writes — it needs no world-thread access, and it must never take
+any, since a blocking HTTP call on the world thread would stall the server.
+
+Sentiment requests are also capped at half the dispatcher queue depth, so they
+can never crowd out actual chat.
+
+Under `OllamaChat.ThinkMode = auto`, sentiment is the one request kind that
+*does* use think mode when the model supports it: it is a judgement call rather
+than a one-liner, and the result is never shown to players.
+
 ### Sentiment Integration
 - Sentiment information is automatically included in bot prompts
 - Bots receive context like: "Your relationship sentiment with PlayerName is 0.8 (0.0=hostile, 0.5=neutral, 1.0=friendly). Use this to guide your tone and response."

@@ -249,6 +249,22 @@ Lists all available personalities and their descriptions.
 > [!NOTE]
 > All commands can also be executed from the server console by replacing the leading dot (.) with the command prefix used in your console (typically none or a custom prefix).
 
+### `.ollama status`
+
+Shows what the module currently thinks it is doing. Reports the endpoint and
+model, whether think mode is supported and why, dispatcher queue depth and
+worker count, delivery and drop counters, governor state (including *why*
+replies were suppressed), and the last error.
+
+This is the first thing to run when bots go quiet.
+
+### `.ollama test <prompt>`
+
+Sends one prompt straight to Ollama and writes the raw output and the
+post-processed output side by side to the server log (`module.ollamachat`),
+along with the round-trip time and whether think mode was used. Turns "the bots
+aren't talking" into a one-command diagnosis.
+
 ## How It Works
 
 1. **Chat Filtering and Triggering**  
@@ -297,6 +313,152 @@ Visit the [Personality Packs Discussion Board](https://github.com/DustinHendrick
 For detailed logs of bot responses, prompt generation, and LLM interactions, enable debug mode via your server logs or module-specific settings.
 
 
+
+## Conversation Control
+
+Bot chat can run away in several different ways, so there are four independent
+brakes. All are configurable; see the `CONVERSATION GOVERNOR` section of the
+config file.
+
+| Brake | What it stops |
+|---|---|
+| **Chain depth + decay** | A bot replying to a bot replying to a bot. Each hop also multiplies the reply chance down, so chains lose energy before hitting the hard ceiling. |
+| **The audience rule** | Bots holding conversations with nobody listening. Bots may only reply to *other bots* while a real player has spoken in that channel recently. This does most of the work. |
+| **Cooldowns and rate limits** | One bot, or one crowd, dominating a channel. Per-bot, per-channel, and server-wide. The global limit also caps your LLM spend. |
+| **Repetition scoring** | The same line twice, and the same *opening phrase* twice. Candidate replies are scored against the bot's own recent lines and the channel's recent traffic. |
+
+If bots are looping, the setting to reach for first is
+`OllamaChat.BotConversation.RequireRecentHuman`.
+
+## What Bots Talk About
+
+Topics are chosen from weighted categories rather than uniformly, and each bot
+suppresses whatever it used in its last few picks.
+
+| Category | Default weight | Examples |
+|---|---|---|
+| **People** | 30 | Nearby players by name, class and what they are doing; group members; guildmates online; something the bot just watched happen |
+| **World** | 30 | The nearest *interesting* creature (elite, rare, or a real level threat — never a critter); named NPCs by role; landmarks; corpses; time of day |
+| **Activity** | 25 | Current quest objectives; danger assessment; group needs (someone low, someone out of mana) |
+| **Self** | 15 | Spells, equipped items, bag space — the original topics, kept but demoted |
+
+**Witnessed-event memory.** Bots keep a short memory of what they saw happen
+near them — kills, deaths, level-ups, loot. This is what lets a bot comment on
+the fight you were both just in rather than reciting a fact about itself.
+
+Note that `OllamaChat.Snapshot.IncludeSpells` now defaults to **0**. Listing
+every off-cooldown spell a bot knew put dozens of lines of the most quotable
+text in the prompt, which is why bots talked about their spellbook so much.
+
+## Memory and Relationships
+
+Conversation history is a sliding window. Once a line falls out of it the bot
+has no idea it ever happened, which is why bots otherwise feel like they meet
+you fresh every session. Two mechanisms give them continuity, both bounded so
+the prompt never grows without limit however long a character has been alive.
+
+**Memory.** History accumulates until it crosses a token budget. At that point
+the model condenses it into a handful of short narrator-style notes, each
+scored 1-10 for importance, and the raw history is cleared. At prompt-build
+time the most important notes are selected within a separate, smaller budget.
+A character gradually accumulates what mattered and forgets the small talk.
+
+**Relationships.** When a name comes up often enough in a bot's history, the
+model is asked to write -- or revise -- a sentence on how that bot feels about
+that person. That sentence goes into future prompts, so a character's attitude
+toward you persists and evolves rather than resetting. Whoever the bot is
+currently talking to is always listed first, so their own relationship never
+gets squeezed out by the budget.
+
+Both work in normal mode and in roleplay mode. They complement the numeric
+sentiment score rather than replacing it: sentiment is how warm the bot feels,
+these are *why*.
+
+Condensation and relationship writing are themselves LLM calls, so they run on
+the dispatcher's workers with a stricter queue allowance than replies get --
+background upkeep can never crowd out live conversation.
+
+Requires `data/sql/characters/base/2026_08_29_memory_relationships.sql`.
+Tune it under the `LONG-TERM MEMORY AND RELATIONSHIPS` section of the config.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `Memory.HistoryTokenLimit` | 1500 | How much history accumulates before it is distilled |
+| `Memory.PromptTokenBudget` | 400 | Hard stop on how much of the prompt memories may use |
+| `Memory.MaxPerBot` | 40 | Notes retained per character; least important dropped first |
+| `Relationship.MentionThreshold` | 8 | How often a name must come up before an opinion is written |
+| `Relationship.MaxPerPrompt` | 3 | Relationships included per prompt |
+
+## Roleplay Mode
+
+Off by default. Turn on with `OllamaChat.Roleplay.Enable`.
+
+Gives each race a speech register and cultural touchstones, and each class a
+worldview — what that character *notices*. A Tauren speaks slowly of the
+Earthmother and the balance; a Forsaken is dry and calls the living "breathers";
+a priest sees wounds, a hunter reads tracks, a rogue counts exits.
+
+`OllamaChat.Roleplay.Strictness` controls how far it goes:
+
+- **0** — Flavour only. Voices colour the prompt, nothing else changes.
+- **1** — In character. Out-of-world vocabulary (`dps`, `nerf`, `patch`, …) is
+  rejected rather than spoken, and faction attitude is applied.
+- **2** — Hard in character. In-world chatter lists replace the shipped
+  out-of-character ones, injuries and distances are described rather than
+  quoted as figures, and think mode is used where the model supports it.
+
+`OllamaChat.Roleplay.CrossFactionGibberish` (on by default in roleplay mode)
+stops bots answering across factions in say/yell — the client renders those as
+gibberish anyway, so a fluent reply is the most immersion-breaking thing the
+module can do.
+
+Race and class voices can be overridden per server in the
+`mod_ollama_chat_voice` table without a rebuild.
+
+## Body Language
+
+Replies are accompanied by movement so they read as conversation rather than as
+a log line.
+
+- **Facing** — the bot turns toward whoever it is answering, just before the
+  line lands. Skipped while moving, casting, in combat, in flight, on a
+  transport, or teleporting.
+- **Gestures** — the model may end a reply with `[emote:wave]`, `[emote:nod]`
+  and similar. The tag is parsed out and stripped before the line is spoken.
+  `*waves*` and a bare `/wave` are also recognised, because models emit those
+  unprompted. Emotes are played through the same code path the client uses, so
+  nearby players see both the animation and the "Bot waves at You." social text,
+  with the correct per-race and per-gender variant.
+- **Emote reactions** — bots react when a player emotes at them, either by
+  mirroring (wave gets a wave), countering (flex gets a laugh), or answering in
+  words. The first two cost no LLM call.
+
+## Think Mode
+
+`OllamaChat.ThinkMode` takes `auto` (default), `on`, or `off`.
+
+Under `auto` the module asks Ollama what the configured model can actually do
+and only ever sends `think` to a model that reports the capability — so a model
+that cannot think is never asked to. It then spends reasoning only where it
+changes the answer: off for short chat lines, on for sentiment analysis and
+strict roleplay replies.
+
+If a live request is ever rejected for asking to think, the module remembers
+that, logs it once, and retries without it. A latency guard
+(`OllamaChat.ThinkMaxLatencyMs`) backs think mode off for the session if it
+proves too slow for chat. You do not need to restart after swapping models —
+`.ollama reload` re-probes.
+
+## Threading Model
+
+Worker threads do HTTP and string work only. Every read or write of a `Player`,
+`Channel`, `Guild`, `Group` or `Map` happens on the world thread.
+
+Requests are built on the world thread, handed to a bounded worker pool
+(`OllamaChat.WorkerThreads`), and delivered back on the world thread by a
+completion queue drained each tick. Queue depth is capped
+(`OllamaChat.MaxQueueDepth`) so a slow Ollama sheds load instead of building a
+backlog of stale replies.
 
 ## License
 
