@@ -300,7 +300,7 @@ OllamaChat.RandomChatterMaxBotsPerPlayer = 2
 #   Description: The template string for random bot chatter prompts.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {environment_info}
 #   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
+OllamaChat.RandomChatterPromptTemplate = "You are a World of Warcraft player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
 
 # OllamaChat.RandomChatterPromptVariations
 #   Description: Pipe-separated (|) list of additional prompt instructions that will be randomly selected and appended to the RandomChatterPromptTemplate.
@@ -320,7 +320,7 @@ OllamaChat.RandomChatterPromptVariations = "Complain about something typical WoW
 #                Leave empty to disable question variations and only use statement variations.
 #   Example:     "Ask about dungeon preferences.|Ask if anyone wants to PvP.|Ask about raid progression."
 #   Default:     (see below for engaging Wrath-era question prompts designed to stimulate bot-to-bot and player-to-bot conversations)
-OllamaChat.RandomChatterQuestionVariations = "Ask if others think this zone is difficult.|Ask about favorite dungeons.|Ask about Icecrown Citadel progression.|Ask about daily quest frustrations.|Ask about Naxxramas difficulty compared to original.|Ask what spec people are running.|Ask about Death Knight popularity.|Ask about upcoming Death Knight nerfs.|Ask about gold-making strategies in Wrath.|Ask if anyone is farming badges.|Ask about excitement for Ulduar.|Ask if dual spec was worth the cost.|Ask about opinions on the old talent trees.|Ask about favorite raid bosses.|Ask if flying mounts ruined world PvP.|Ask who's doing arena this season.|Ask about arena ratings.|Ask about Wintergrasp balance.|Ask about Oculus dungeon opinions.|Ask which professions make the most gold.|Ask about old-world flying possibilities.|Ask about reputation mount farming.|Ask which heroic dungeon is hardest.|Ask if emblems are too easy to get."
+OllamaChat.RandomChatterQuestionVariations = "Ask if others think this zone is difficult.|Ask about favorite dungeons.|Ask about Icecrown Citadel progression.|Ask about daily quest frustrations.|Ask about Naxxramas difficulty compared to original.|Ask what spec people are running.|Ask about Death Knight popularity.|Ask about upcoming Death Knight nerfs.|Ask about gold-making strategies in WoW.|Ask if anyone is farming badges.|Ask about excitement for Ulduar.|Ask if dual spec was worth the cost.|Ask about opinions on the old talent trees.|Ask about favorite raid bosses.|Ask if flying mounts ruined world PvP.|Ask who's doing arena this season.|Ask about arena ratings.|Ask about Wintergrasp balance.|Ask about Oculus dungeon opinions.|Ask which professions make the most gold.|Ask about old-world flying possibilities.|Ask about reputation mount farming.|Ask which heroic dungeon is hardest.|Ask if emblems are too easy to get."
 
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
@@ -401,7 +401,7 @@ OllamaChat.EnableRPPersonalities = 0
 # OllamaChat.DefaultPersonalityPrompt
 #     Description: The fallback personality description used when a bot has no specific roleplay type assigned.
 #     Default:     Talk like a standard WoW player.
-OllamaChat.DefaultPersonalityPrompt = "Speak like a real WoW player from Wrath. Stay in character and use casual in-game tone."
+OllamaChat.DefaultPersonalityPrompt = "Speak like a real WoW player. Stay in character and use casual in-game tone."
 
 # --------------------------------------------
 # CONVERSATION HISTORY AND SNAPSHOT SYSTEM
@@ -502,7 +502,7 @@ OllamaChat.SentimentPromptTemplate = "Your relationship sentiment with {player_n
 #   Description: The main template for bot chat prompts sent to the LLM.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {bot_personality_name} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
 #   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
+OllamaChat.ChatPromptTemplate = "You're a WoW player familiar with 3.3.5 version of the game and before. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
 
 # OllamaChat.ChatExtraInfoTemplate
 #   Description: The context/details string about the bot and player, injected into the chat prompt as the last parameter.
