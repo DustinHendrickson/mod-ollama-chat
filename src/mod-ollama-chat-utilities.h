@@ -6,6 +6,7 @@
 #include "Log.h"
 #include <vector>
 #include <sstream>
+#include <cctype>
 
 // Safe formatting utility for the Ollama Chat module.
 // This will catch all fmt::format errors and log them.
@@ -17,6 +18,87 @@ inline std::string SafeFormat(const std::string& templ, Args&&... args) {
         LOG_ERROR("server.loading", "[Ollama Chat] Format error: {} | Template: {}", e.what(), templ);
         return "[Format Error]";
     }
+}
+
+// ChatHelper::FormatClass() builds a string for the WoW chat window, not for a
+// prompt. It comes back as
+//
+//     holy (0|h|cffffffff/0|h|cffffffff/0|h|cffffffff)|r priest
+//
+// The escape codes are the client's colour and hyperlink markup; a model just
+// sees noise, and it is repeated for both speakers in every prompt. The talent
+// counts go too -- "(0/0/0)" tells a roleplaying bot nothing.
+//
+// Leaves "holy priest".
+inline std::string CleanRoleForPrompt(const std::string& role)
+{
+    std::string out;
+    out.reserve(role.size());
+
+    // Strip |cAARRGGBB, |r, |h and |H.
+    for (size_t i = 0; i < role.size(); )
+    {
+        if (role[i] == '|' && i + 1 < role.size())
+        {
+            const char code = role[i + 1];
+
+            if (code == 'c')
+            {
+                i += 2;
+                for (size_t n = 0; n < 8 && i < role.size() &&
+                                   std::isxdigit(static_cast<unsigned char>(role[i])); ++n)
+                    ++i;
+                continue;
+            }
+
+            if (code == 'r' || code == 'h' || code == 'H')
+            {
+                i += 2;
+                continue;
+            }
+        }
+
+        out += role[i++];
+    }
+
+    // Drop a parenthesised talent spread, but only when that is all it holds.
+    const size_t open = out.find('(');
+    if (open != std::string::npos)
+    {
+        const size_t close = out.find(')', open);
+        if (close != std::string::npos && close > open + 1)
+        {
+            bool numeric = true;
+            for (size_t i = open + 1; i < close && numeric; ++i)
+            {
+                const char c = out[i];
+                if (!std::isdigit(static_cast<unsigned char>(c)) && c != '/' && c != ' ')
+                    numeric = false;
+            }
+
+            if (numeric)
+                out.erase(open, close - open + 1);
+        }
+    }
+
+    // Collapse the whitespace the removals left behind.
+    std::string collapsed;
+    collapsed.reserve(out.size());
+    bool prevSpace = false;
+    for (char c : out)
+    {
+        const bool isSpace = (c == ' ' || c == '	');
+        if (isSpace && (prevSpace || collapsed.empty()))
+            continue;
+
+        collapsed += isSpace ? ' ' : c;
+        prevSpace = isSpace;
+    }
+
+    while (!collapsed.empty() && collapsed.back() == ' ')
+        collapsed.pop_back();
+
+    return collapsed;
 }
 
 inline std::vector<std::string> SplitString(const std::string& str, char delim)

@@ -52,8 +52,32 @@ void OllamaCapability_Init(bool force = false);
 OllamaThinkSupport OllamaCapability_GetSupport();
 bool OllamaCapability_SupportsThinking();
 
-// The policy decision for one request.
+// The policy decision for one request: does this kind of request want the
+// model to reason at all?
 bool OllamaCapability_ShouldThink(OllamaRequestKind kind);
+
+// What actually goes into the request's "think" field.
+//
+// Ollama takes either a bool or, on models with reasoning-effort levels
+// (gpt-oss and other harmony builds), one of "low"/"medium"/"high". A model
+// that ignores `think: false` cannot be silenced -- but it can be turned down.
+// So for those models "off" resolves to the lowest level they accept rather
+// than to a false they have already demonstrated they ignore.
+struct OllamaThinkRequest
+{
+    bool        wanted  = false;   // did the policy want reasoning here?
+    bool        enabled = false;   // the bool to send when `level` is empty
+    std::string level;             // "low"/"medium"/"high", or empty for a bool
+};
+
+// Resolves policy plus everything learned about this model at runtime into the
+// field to send. This is the on-the-fly configuration: nothing else decides.
+OllamaThinkRequest OllamaCapability_ResolveThink(OllamaRequestKind kind);
+
+// Self-heal: Ollama refused a string reasoning level, so this model takes the
+// boolean form only. Falls back permanently for this model.
+void OllamaCapability_NoteEffortLevelRejected();
+bool OllamaCapability_EffortLevelsRejected();
 
 // True when an HTTP failure is Ollama telling us the model cannot think.
 bool OllamaCapability_IsThinkRejection(int status, const std::string& body);
@@ -61,6 +85,17 @@ bool OllamaCapability_IsThinkRejection(int status, const std::string& body);
 // Self-heal: called when a live request was rejected for asking to think.
 // Flips the cached support flag off and logs once.
 void OllamaCapability_NoteThinkRejected();
+
+// `think: false` is a request, not a guarantee. gpt-oss and other
+// harmony-format builds reason unconditionally, and Ollama counts those tokens
+// against num_predict -- so a small cap is spent entirely on reasoning and the
+// answer channel never opens. The result is HTTP 200 with an empty "response"
+// and a "thinking" field truncated mid-word.
+//
+// Noted the first time we see that shape, so every later request for this
+// model is budgeted with reasoning headroom from the start.
+void OllamaCapability_NoteUnconditionalReasoning();
+bool OllamaCapability_ReasonsUnconditionally();
 
 // Latency guard: feeds the rolling average that auto mode uses to back off
 // think mode when the model turns out to be too slow for chat.

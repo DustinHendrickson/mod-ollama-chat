@@ -46,7 +46,13 @@ OllamaChat.Model = llama3.2:1b
 # OllamaChat.NumPredict
 #     Description: Maximum number of tokens to generate in Ollama responses.
 #     0 = unlimited. Only set if you want a hard cap.
-#     Default: 40
+#     Default: 100
+#
+#     IMPORTANT: this cap covers reasoning AND the reply. On a reasoning model
+#     (gpt-oss, deepseek-r1, qwen3 thinking builds) the reasoning is emitted
+#     first, so a low cap is spent before the reply starts and the bot returns
+#     nothing. Those models reason even with think mode off -- "think": false
+#     is a request, not a guarantee. See OllamaChat.ReasoningTokenReserve.
 #
 #     | NumPredict | Approx. Words | Use Case                         |
 #     |:----------:|:-------------:|:---------------------------------|
@@ -57,6 +63,22 @@ OllamaChat.Model = llama3.2:1b
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
 OllamaChat.NumPredict = 100
+
+# OllamaChat.ReasoningTokenReserve
+#     Description: Extra num_predict headroom added when reasoning tokens are
+#                  expected -- either because think mode is on, or because the
+#                  model has been observed reasoning with think mode off.
+#
+#                  The module detects the second case on its own: an HTTP 200
+#                  carrying reasoning but an empty reply means the budget was
+#                  spent thinking. It retries that request with the reserve and
+#                  applies it to every later request for that model, so you
+#                  only lose the one reply while it works this out.
+#
+#                  Has no effect when NumPredict = 0 (already unlimited).
+#                  Set to 0 to disable the headroom and the retry.
+#     Default:     512
+OllamaChat.ReasoningTokenReserve = 512
 
 # OllamaChat.Temperature
 #     Description: Controls the "creativity" or randomness of the model’s output.
@@ -937,9 +959,27 @@ OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this info
 #        on  = always think, when the model supports it.
 #        off = never think.
 #
-#        If a live request is ever rejected for asking to think, the module
-#        remembers that, logs it once, and retries without thinking. You do not
-#        need to restart after swapping models.
+#        Everything below is detected at runtime and applied on the fly. You do
+#        not need to restart, or reconfigure, after swapping models:
+#
+#          * A request rejected for asking to think -> think is switched off
+#            for that model, logged once, and the request is retried without it.
+#
+#          * "think": false is a request, not a guarantee. gpt-oss and other
+#            harmony-format builds reason regardless, and Ollama charges those
+#            tokens to num_predict -- so a low cap is spent reasoning and the
+#            reply comes back empty. The module recognises that shape (HTTP 200,
+#            reasoning present, answer empty) and from then on:
+#                - sends "think": "low" instead of false for this model, which
+#                  is the closest to off such a model offers, and
+#                - adds ReasoningTokenReserve to num_predict.
+#            The request that triggered the detection is retried, so at most
+#            one reply is lost while the module works this out.
+#
+#          * If Ollama refuses the string level, the module falls back to the
+#            boolean form permanently for that model and logs it once.
+#
+#        ".ollama status" reports whatever has been detected so far.
 #        Default: auto
 OllamaChat.ThinkMode = "auto"
 

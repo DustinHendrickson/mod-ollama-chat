@@ -1838,7 +1838,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     std::string botMapName          = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
     std::string botClass            = botAI->GetChatHelper()->FormatClass(bot->getClass());
     std::string botRace             = botAI->GetChatHelper()->FormatRace(bot->getRace());
-    std::string botRole             = ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot));
+    std::string botRole             = CleanRoleForPrompt(ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot)));
     std::string botGender           = (botGenderByte == 0 ? "Male" : "Female");
     std::string botFaction          = (bot->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde");
     std::string botGuild            = (bot->GetGuild() ? bot->GetGuild()->GetName() : "No Guild");
@@ -1849,7 +1849,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     uint32_t playerLevel            = player->GetLevel();
     std::string playerClass         = botAI->GetChatHelper()->FormatClass(player->getClass());
     std::string playerRace          = botAI->GetChatHelper()->FormatRace(player->getRace());
-    std::string playerRole          = ChatHelper::FormatClass(player, AiFactory::GetPlayerSpecTab(player));
+    std::string playerRole          = CleanRoleForPrompt(ChatHelper::FormatClass(player, AiFactory::GetPlayerSpecTab(player)));
     uint8_t playerGenderByte        = player->getGender();
     std::string playerGender        = (playerGenderByte == 0 ? "Male" : "Female");
     std::string playerFaction       = (player->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde");

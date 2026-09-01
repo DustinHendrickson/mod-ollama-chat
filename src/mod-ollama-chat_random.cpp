@@ -130,7 +130,7 @@ namespace
             fmt::arg("bot_class", botAI->GetChatHelper()->FormatClass(bot->getClass())),
             fmt::arg("bot_race", botAI->GetChatHelper()->FormatRace(bot->getRace())),
             fmt::arg("bot_gender", bot->getGender() == 0 ? "Male" : "Female"),
-            fmt::arg("bot_role", ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot))),
+            fmt::arg("bot_role", CleanRoleForPrompt(ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot)))),
             fmt::arg("bot_faction", bot->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde"),
             fmt::arg("bot_area", area ? PlayerbotAI::GetLocalizedAreaName(area) : "UnknownArea"),
             fmt::arg("bot_zone", zone ? PlayerbotAI::GetLocalizedAreaName(zone) : "UnknownZone"),

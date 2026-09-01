@@ -25,6 +25,8 @@ namespace
 
     std::atomic<bool>     g_latencyDisabled{ false };
     std::atomic<bool>     g_rejectionLogged{ false };
+    std::atomic<bool>     g_reasonsUnconditionally{ false };
+    std::atomic<bool>     g_effortLevelsRejected{ false };
 
     // Guarded by g_latencyMutex rather than done with atomics: a running mean
     // needs sum and count to move together or the average is nonsense.
@@ -208,6 +210,8 @@ void OllamaCapability_Init(bool force)
 
     g_latencyDisabled.store(false);
     g_rejectionLogged.store(false);
+    g_reasonsUnconditionally.store(false);
+    g_effortLevelsRejected.store(false);
     {
         std::lock_guard<std::mutex> lock(g_latencyMutex);
         g_thinkSamples    = 0;
@@ -253,6 +257,57 @@ void OllamaCapability_NoteThinkRejected()
                  "off for this model. Requests are retried without it automatically.",
                  g_OllamaModel);
     }
+}
+
+void OllamaCapability_NoteUnconditionalReasoning()
+{
+    if (g_reasonsUnconditionally.exchange(true))
+        return;
+
+    LOG_INFO("module.ollamachat",
+             "[Ollama Chat] Model '{}' produced reasoning despite think being off, and spent "
+             "the whole NumPredict budget on it. Reasoning headroom is now added to every "
+             "request for this model (OllamaChat.ReasoningTokenReserve = {}).",
+             g_OllamaModel, g_ReasoningTokenReserve);
+}
+
+bool OllamaCapability_ReasonsUnconditionally()
+{
+    return g_reasonsUnconditionally.load();
+}
+
+void OllamaCapability_NoteEffortLevelRejected()
+{
+    if (g_effortLevelsRejected.exchange(true))
+        return;
+
+    LOG_INFO("module.ollamachat",
+             "[Ollama Chat] Model '{}' does not take a string reasoning level; falling back to "
+             "the boolean think field for the rest of this session.", g_OllamaModel);
+}
+
+bool OllamaCapability_EffortLevelsRejected()
+{
+    return g_effortLevelsRejected.load();
+}
+
+OllamaThinkRequest OllamaCapability_ResolveThink(OllamaRequestKind kind)
+{
+    OllamaThinkRequest req;
+    req.wanted  = OllamaCapability_ShouldThink(kind);
+    req.enabled = req.wanted;
+
+    // Reasoning was not wanted here, but this model has already shown it
+    // reasons regardless. Asking for the lowest effort level is the closest
+    // thing to off that such a model offers; a plain false is ignored.
+    if (!req.wanted &&
+        g_reasonsUnconditionally.load() &&
+        !g_effortLevelsRejected.load())
+    {
+        req.level = "low";
+    }
+
+    return req;
 }
 
 void OllamaCapability_NoteLatency(uint64_t milliseconds, bool thinkUsed)
@@ -348,6 +403,13 @@ std::string OllamaCapability_StatusText()
 
     std::string out = SafeFormat("policy={} support={} ({})",
                                  policyText, supportText, detail);
+
+    if (g_reasonsUnconditionally.load())
+    {
+        out += SafeFormat(" [model reasons unconditionally; +{} token reserve, off sent as {}]",
+                          g_ReasoningTokenReserve,
+                          g_effortLevelsRejected.load() ? "think:false" : "think:\"low\"");
+    }
 
     if (g_latencyDisabled.load())
     {

@@ -86,6 +86,7 @@ bool        g_DebugShowFullPrompt             = false;
 bool     g_ThinkModeEnableForModule      = false;
 uint8_t  g_ThinkModePolicy               = 0;      // OllamaThinkPolicy::Auto
 uint32_t g_ThinkMaxLatencyMs             = 12000;
+uint32_t g_ReasoningTokenReserve         = 512;
 uint32_t g_CapabilityProbeTimeoutSeconds = 10;
 
 // --------------------------------------------
@@ -678,6 +679,7 @@ void LoadOllamaChatConfig()
                                             sConfigMgr->GetOption<std::string>("OllamaChat.ThinkMode", "auto"),
                                             g_ThinkModeEnableForModule));
     g_ThinkMaxLatencyMs               = sConfigMgr->GetOption<uint32_t>("OllamaChat.ThinkMaxLatencyMs", 12000);
+    g_ReasoningTokenReserve           = sConfigMgr->GetOption<uint32_t>("OllamaChat.ReasoningTokenReserve", 512);
     g_CapabilityProbeTimeoutSeconds   = sConfigMgr->GetOption<uint32_t>("OllamaChat.CapabilityProbeTimeoutSeconds", 10);
 
     // --- HTTP / dispatcher ----------------------------------------------

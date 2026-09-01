@@ -21,7 +21,9 @@ namespace
     OllamaEndpointSettings g_settings;
 
     nlohmann::json BuildRequest(const OllamaEndpointSettings& cfg,
-                                const std::string& prompt, bool think)
+                                const std::string& prompt,
+                                const OllamaThinkRequest& think,
+                                uint32_t reasoningReserve)
     {
         nlohmann::json request = {
             { "model",  cfg.model },
@@ -38,7 +40,10 @@ namespace
             hasOptions = true;
         };
 
-        if (cfg.numPredict > 0)          setOpt("num_predict", cfg.numPredict);
+        // num_predict caps reasoning and answer together, so when reasoning
+        // tokens are expected the cap has to cover both or the answer never
+        // gets emitted. 0 already means unlimited; leave it alone.
+        if (cfg.numPredict > 0)          setOpt("num_predict", cfg.numPredict + reasoningReserve);
         if (cfg.temperature != 0.8f)     setOpt("temperature", cfg.temperature);
         if (cfg.topP != 0.95f)           setOpt("top_p", cfg.topP);
         if (cfg.repeatPenalty != 1.1f)   setOpt("repeat_penalty", cfg.repeatPenalty);
@@ -92,7 +97,13 @@ namespace
         // are told otherwise, so omitting the field is not the same as
         // disabling it. The old code also sent "hidethinking", which Ollama
         // does not define and silently ignored.
-        request["think"] = think;
+        //
+        // A resolved level wins over the bool: on a model that ignores
+        // think:false, "low" is the only way to actually turn reasoning down.
+        if (!think.level.empty())
+            request["think"] = think.level;
+        else
+            request["think"] = think.enabled;
 
         return request;
     }
@@ -149,12 +160,17 @@ namespace
     }
 
     OllamaApiResult PerformOnce(const OllamaEndpointSettings& cfg,
-                                const std::string& prompt, bool think)
+                                const std::string& prompt,
+                                const OllamaThinkRequest& think,
+                                uint32_t reasoningReserve)
     {
         OllamaApiResult result;
-        result.thinkUsed = think;
 
-        const nlohmann::json request = BuildRequest(cfg, prompt, think);
+        // The latency guard measures deliberate reasoning only. Reasoning a
+        // model does on its own is not something backing think off can fix.
+        result.thinkUsed = think.wanted;
+
+        const nlohmann::json request = BuildRequest(cfg, prompt, think, reasoningReserve);
 
         const auto started = std::chrono::steady_clock::now();
         OllamaHttpResult http = t_httpClient.PostEx(cfg.url, request.dump());
@@ -235,17 +251,73 @@ OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
     }
 
     const OllamaEndpointSettings cfg = OllamaConfig_Snapshot();
-    const bool wantThink = OllamaCapability_ShouldThink(kind);
 
-    result = PerformOnce(cfg, prompt, wantThink);
+    // One place decides what the "think" field should be: policy for this
+    // request kind, plus everything learned about this model so far.
+    OllamaThinkRequest think = OllamaCapability_ResolveThink(kind);
+
+    // Reasoning tokens come out of the same num_predict budget as the answer.
+    // Reserve headroom whenever we expect them -- because reasoning was asked
+    // for, or because this model produces it regardless.
+    const bool expectReasoning = think.wanted || OllamaCapability_ReasonsUnconditionally();
+    const uint32_t reserve     = expectReasoning ? g_ReasoningTokenReserve : 0;
+
+    // Every attempt goes through here so a refused reasoning level self-heals
+    // on whichever attempt happens to carry it, not just the first.
+    auto perform = [&](OllamaThinkRequest& req, uint32_t budget)
+    {
+        OllamaApiResult r = PerformOnce(cfg, prompt, req, budget);
+
+        // Ollama would not take a string reasoning level. Drop to the boolean
+        // form, remember it for this model, and answer rather than lose this
+        // request.
+        if (!r.ok && !req.level.empty() && r.status >= 400 && r.status < 500)
+        {
+            OllamaCapability_NoteEffortLevelRejected();
+            req.level.clear();
+            r = PerformOnce(cfg, prompt, req, budget);
+        }
+
+        return r;
+    };
+
+    result = perform(think, reserve);
 
     // Self-heal: the model told us it cannot think. Remember that, and answer
     // this request anyway instead of leaving the bot mute.
-    if (!result.ok && wantThink &&
+    if (!result.ok && think.wanted &&
         OllamaCapability_IsThinkRejection(result.status, result.error))
     {
         OllamaCapability_NoteThinkRejected();
-        result = PerformOnce(cfg, prompt, false);
+        think  = OllamaThinkRequest{};
+        result = PerformOnce(cfg, prompt, think, 0);
+    }
+
+    // Self-heal: HTTP 200, reasoning present, answer empty. The model spent
+    // the entire budget thinking -- it ignored think:false, or the cap was too
+    // small to cover reasoning plus a reply. Remember that this model reasons
+    // unconditionally, re-resolve (which now yields the low effort level), and
+    // retry with headroom so this message is not lost.
+    if (result.ok && result.text.empty() && !result.thinking.empty() &&
+        cfg.numPredict > 0 && reserve == 0 && g_ReasoningTokenReserve > 0)
+    {
+        if (!think.wanted)
+            OllamaCapability_NoteUnconditionalReasoning();
+
+        think  = OllamaCapability_ResolveThink(kind);
+        result = perform(think, g_ReasoningTokenReserve);
+    }
+
+    // Still nothing but reasoning. Say so plainly -- this used to surface only
+    // as "produced nothing usable after cleanup", which points at the wrong
+    // part of the pipeline entirely.
+    if (result.ok && result.text.empty() && !result.thinking.empty())
+    {
+        LOG_ERROR("module.ollamachat",
+                  "[Ollama Chat] Model '{}' returned {} characters of reasoning and no answer. "
+                  "NumPredict={} plus ReasoningTokenReserve={} was not enough to finish "
+                  "reasoning and reply; raise one of them, or set NumPredict = 0.",
+                  cfg.model, result.thinking.size(), cfg.numPredict, g_ReasoningTokenReserve);
     }
 
     if (result.ok)
@@ -260,9 +332,13 @@ OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
     }
     else if (g_DebugEnabled)
     {
+        const std::string thinkText = !think.level.empty()
+                                    ? think.level
+                                    : (think.enabled ? std::string("yes") : std::string("no"));
+
         LOG_INFO("module.ollamachat",
                  "[Ollama Chat] Generation ok in {}ms (think={}), {} chars.",
-                 result.latencyMs, result.thinkUsed ? "yes" : "no", result.text.size());
+                 result.latencyMs, thinkText, result.text.size());
 
         if (g_DebugShowFullPrompt && !result.thinking.empty())
             LOG_INFO("module.ollamachat", "[Ollama Chat] Model reasoning: {}", result.thinking);

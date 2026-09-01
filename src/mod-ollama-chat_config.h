@@ -154,6 +154,11 @@ extern std::vector<std::string> g_BlacklistCommands;
 extern bool     g_ThinkModeEnableForModule;   // deprecated; maps onto ThinkMode
 extern uint8_t  g_ThinkModePolicy;            // OllamaThinkPolicy
 extern uint32_t g_ThinkMaxLatencyMs;
+// Extra num_predict headroom granted when reasoning tokens are expected --
+// either because think mode is on, or because the model reasons whether or not
+// it is asked to. Without it a small NumPredict is spent on reasoning and the
+// reply comes back empty. 0 disables the headroom entirely.
+extern uint32_t g_ReasoningTokenReserve;
 extern uint32_t g_CapabilityProbeTimeoutSeconds;
 
 // --------------------------------------------
