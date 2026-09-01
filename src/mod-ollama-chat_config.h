@@ -6,6 +6,8 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <set>
+#include <utility>
 #include <mutex>
 #include <ctime>
 #include "ScriptMgr.h"  // Ensure WorldScript is defined
@@ -125,7 +127,19 @@ extern std::string g_ChatBotSnapshotTemplate;
 // --------------------------------------------
 // Conversation History Store and Mutex
 // --------------------------------------------
-extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
+// One turn of a bot/player conversation.
+//
+// `persisted` is what keeps SaveBotConversationHistoryToDB() from rewriting
+// the whole window every save interval. It is set once the row has been handed
+// to the database, and is false for anything appended since the last save.
+struct BotConversationEntry
+{
+    std::string playerMessage;
+    std::string botReply;
+    bool        persisted = false;
+};
+
+extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<BotConversationEntry>>> g_BotConversationHistory;
 extern std::mutex   g_ConversationHistoryMutex;
 extern time_t       g_LastHistorySaveTime;
 
@@ -351,6 +365,9 @@ extern std::string g_SentimentPromptTemplate;            // Template for includi
 
 // In-memory sentiment storage and mutex
 extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+// (bot_guid, player_guid) pairs changed since the last save. Only these are
+// written; the map as a whole is not re-REPLACE INTO'd every interval.
+extern std::set<std::pair<uint64_t, uint64_t>> g_DirtySentiments;
 extern std::mutex g_SentimentMutex;
 extern time_t g_LastSentimentSaveTime;
 

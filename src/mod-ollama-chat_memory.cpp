@@ -93,7 +93,7 @@ namespace
 
         for (const auto& [playerGuid, history] : botIt->second)
             for (const auto& pair : history)
-                total += Memory_EstimateTokens(pair.first) + Memory_EstimateTokens(pair.second);
+                total += Memory_EstimateTokens(pair.playerMessage) + Memory_EstimateTokens(pair.botReply);
 
         return total;
     }
@@ -114,10 +114,10 @@ namespace
 
             for (const auto& pair : history)
             {
-                if (!pair.first.empty())
-                    out += name + ": " + pair.first + "\n";
-                if (!pair.second.empty())
-                    out += "You: " + pair.second + "\n";
+                if (!pair.playerMessage.empty())
+                    out += name + ": " + pair.playerMessage + "\n";
+                if (!pair.botReply.empty())
+                    out += "You: " + pair.botReply + "\n";
             }
         }
         return out;
@@ -125,8 +125,15 @@ namespace
 
     void ClearHistory(uint64_t botGuid)
     {
-        std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
-        g_BotConversationHistory.erase(botGuid);
+        {
+            std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
+            g_BotConversationHistory.erase(botGuid);
+        }
+
+        // The rows outlived the in-memory window until now, so every restart
+        // reloaded a conversation that had already been condensed and paid to
+        // condense it all over again.
+        DeleteBotConversationHistoryFromDB(botGuid);
     }
 
     // Parse the model's condensation output. One memory per line, optionally
@@ -257,15 +264,28 @@ void Memory_SaveAll()
         if (!state.dirty)
             continue;
 
-        CharacterDatabase.Execute(SafeFormat(
+        // The delete and the reinserts have to land together. As separate
+        // async statements, a crash between them left the bot with no memories
+        // at all, which is worse than a stale set.
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+
+        trans->Append(SafeFormat(
             "DELETE FROM mod_ollama_chat_memories WHERE bot_guid = {}", botGuid));
 
+        std::string values;
         for (const BotMemoryEntry& m : state.memories)
         {
-            CharacterDatabase.Execute(SafeFormat(
-                "INSERT INTO mod_ollama_chat_memories (bot_guid, memory_text, importance, created_at) "
-                "VALUES ({}, '{}', {}, FROM_UNIXTIME({}))",
-                botGuid, Escape(m.text), uint32_t(m.importance), m.createdAt));
+            if (!values.empty())
+                values += ',';
+
+            values += SafeFormat("({}, '{}', {}, FROM_UNIXTIME({}))",
+                                 botGuid, Escape(m.text), uint32_t(m.importance), m.createdAt);
+        }
+
+        if (!values.empty())
+        {
+            trans->Append("INSERT INTO mod_ollama_chat_memories "
+                          "(bot_guid, memory_text, importance, created_at) VALUES " + values);
         }
 
         for (const auto& [otherGuid, r] : state.relationships)
@@ -273,13 +293,21 @@ void Memory_SaveAll()
             if (r.description.empty())
                 continue;
 
-            CharacterDatabase.Execute(SafeFormat(
-                "REPLACE INTO mod_ollama_chat_relationships "
+            // ON DUPLICATE KEY UPDATE rather than REPLACE INTO: REPLACE is a
+            // delete plus an insert, so it rewrites the row and every index
+            // entry even when nothing about the relationship changed.
+            trans->Append(SafeFormat(
+                "INSERT INTO mod_ollama_chat_relationships "
                 "(bot_guid, other_guid, other_name, description, mentions, updated_at) "
-                "VALUES ({}, {}, '{}', '{}', {}, FROM_UNIXTIME({}))",
+                "VALUES ({}, {}, '{}', '{}', {}, FROM_UNIXTIME({})) "
+                "ON DUPLICATE KEY UPDATE other_name = VALUES(other_name), "
+                "description = VALUES(description), mentions = VALUES(mentions), "
+                "updated_at = VALUES(updated_at)",
                 botGuid, otherGuid, Escape(r.otherName), Escape(r.description),
                 r.mentions, r.updatedAt ? r.updatedAt : NowSeconds()));
         }
+
+        CharacterDatabase.CommitTransaction(trans);
 
         state.dirty = false;
     }

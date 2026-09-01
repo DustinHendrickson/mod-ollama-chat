@@ -399,6 +399,11 @@ OllamaChat.MaxConversationHistory = 5
 # OllamaChat.ConversationHistorySaveInterval
 #     Description: The interval (in minutes) between periodic saves of conversation history from memory to the database.
 #                  Set to 0 to disable auto-saving.
+#
+#                  Only turns added since the last save are written, and only
+#                  the bot/player pairs that gained a turn are trimmed back to
+#                  MaxConversationHistory. A quiet server writes nothing, so
+#                  lowering this costs far less than the interval suggests.
 #     Default:     10
 OllamaChat.ConversationHistorySaveInterval = 10
 
@@ -453,6 +458,7 @@ OllamaChat.SentimentAdjustmentStrength = 0.05
 
 # How often to save sentiment data to database (in minutes)
 # Set to 0 to disable periodic saving
+# Only bot/player pairs whose sentiment actually moved are written.
 # Default: 10
 OllamaChat.SentimentSaveInterval = 10
 

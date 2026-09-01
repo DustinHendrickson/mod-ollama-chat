@@ -9,6 +9,8 @@
 #include <fmt/core.h>
 #include <algorithm>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 float GetBotPlayerSentiment(uint64_t botGuid, uint64_t playerGuid)
 {
@@ -41,6 +43,7 @@ void SetBotPlayerSentiment(uint64_t botGuid, uint64_t playerGuid, float sentimen
     
     std::lock_guard<std::mutex> lock(g_SentimentMutex);
     g_BotPlayerSentiments[botGuid][playerGuid] = sentimentValue;
+    g_DirtySentiments.emplace(botGuid, playerGuid);
     
     if (g_DebugEnabled)
     {
@@ -163,6 +166,7 @@ void LoadBotPlayerSentimentsFromDB()
 
     std::lock_guard<std::mutex> lock(g_SentimentMutex);
     g_BotPlayerSentiments.clear();
+    g_DirtySentiments.clear();
     
     QueryResult result = CharacterDatabase.Query("SELECT bot_guid, player_guid, sentiment_value FROM mod_ollama_chat_bot_player_sentiments");
     
@@ -193,26 +197,58 @@ void SaveBotPlayerSentimentsToDB()
     if (!g_EnableSentimentTracking)
         return;
 
-    std::lock_guard<std::mutex> lock(g_SentimentMutex);
-    
-    if (g_BotPlayerSentiments.empty())
-        return;
-    
-    // Use REPLACE INTO to update existing records or insert new ones
-    for (const auto& [botGuid, playerMap] : g_BotPlayerSentiments)
+    // Only the pairs that actually moved since the last save. This used to
+    // rewrite every pair the server had ever tracked, every interval, whether
+    // or not a single sentiment had changed.
+    std::vector<std::pair<std::pair<uint64_t, uint64_t>, float>> changed;
+
     {
-        for (const auto& [playerGuid, sentimentValue] : playerMap)
+        std::lock_guard<std::mutex> lock(g_SentimentMutex);
+
+        if (g_DirtySentiments.empty())
+            return;
+
+        changed.reserve(g_DirtySentiments.size());
+
+        for (const auto& [botGuid, playerGuid] : g_DirtySentiments)
         {
-            CharacterDatabase.Execute(SafeFormat(
-                "REPLACE INTO mod_ollama_chat_bot_player_sentiments (bot_guid, player_guid, sentiment_value) "
-                "VALUES ({}, {}, {:.3f})",
-                botGuid, playerGuid, sentimentValue));
+            auto botIt = g_BotPlayerSentiments.find(botGuid);
+            if (botIt == g_BotPlayerSentiments.end())
+                continue;
+
+            auto playerIt = botIt->second.find(playerGuid);
+            if (playerIt == botIt->second.end())
+                continue;    // reset out from under us; the reset did its own delete
+
+            changed.push_back({ { botGuid, playerGuid }, playerIt->second });
         }
+
+        g_DirtySentiments.clear();
     }
-    
+
+    if (changed.empty())
+        return;
+
+    // INSERT ... ON DUPLICATE KEY UPDATE rather than REPLACE INTO. REPLACE is
+    // a delete plus an insert: it rewrites the row, all three secondary
+    // indexes and the auto-increment counter even when only the float moved.
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+
+    for (const auto& [key, sentimentValue] : changed)
+    {
+        trans->Append(SafeFormat(
+            "INSERT INTO mod_ollama_chat_bot_player_sentiments "
+            "(bot_guid, player_guid, sentiment_value) VALUES ({}, {}, {:.3f}) "
+            "ON DUPLICATE KEY UPDATE sentiment_value = VALUES(sentiment_value)",
+            key.first, key.second, sentimentValue));
+    }
+
+    CharacterDatabase.CommitTransaction(trans);
+
     if (g_DebugEnabled)
     {
-        LOG_INFO("module.ollamachat", "[Ollama Chat] Saved sentiment data to database");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Saved {} changed sentiment record(s) to database",
+                 static_cast<uint32_t>(changed.size()));
     }
 }
 

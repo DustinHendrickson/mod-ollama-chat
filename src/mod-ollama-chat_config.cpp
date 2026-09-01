@@ -251,9 +251,12 @@ std::string g_ChatBotSnapshotTemplate;
 // --------------------------------------------
 // Conversation History Store and Mutex
 // --------------------------------------------
-std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
+std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<BotConversationEntry>>> g_BotConversationHistory;
 std::mutex g_ConversationHistoryMutex;
-time_t g_LastHistorySaveTime = 0;
+// Seeded at startup, not left at 0. difftime(now, 0) is ~56 years, so the old
+// value made the very first world tick fire a full save of a store that had
+// only just been loaded from the same table.
+time_t g_LastHistorySaveTime = time(nullptr);
 
 // --------------------------------------------
 // Bot-Player Sentiment Tracking System
@@ -267,8 +270,9 @@ std::string g_SentimentPromptTemplate = "Your relationship sentiment with {playe
 
 // In-memory sentiment storage and mutex
 std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+std::set<std::pair<uint64_t, uint64_t>> g_DirtySentiments;
 std::mutex g_SentimentMutex;
-time_t g_LastSentimentSaveTime = 0;
+time_t g_LastSentimentSaveTime = time(nullptr);
 
 // --------------------------------------------
 // RAG (Retrieval-Augmented Generation) System
@@ -1075,7 +1079,7 @@ void LoadBotConversationHistoryFromDB()
         std::string botReply = (*result)[3].Get<std::string>();
 
         auto& playerHistory = g_BotConversationHistory[botGuid][playerGuid];
-        playerHistory.push_back({ playerMsg, botReply });
+        playerHistory.push_back({ playerMsg, botReply, /*persisted*/ true });
         while (playerHistory.size() > g_MaxConversationHistory)
         {
             playerHistory.pop_front();
@@ -1097,6 +1101,14 @@ void OllamaChatConfigWorldScript::OnStartup()
     InitializeSentimentTracking();
     Roleplay_Load();
     Memory_Load();
+
+    // Spread the three periodic saves so they do not all come due on the same
+    // world tick. Each is incremental now, but they queue onto one database
+    // worker and there is no reason to bunch them.
+    const time_t nowSeed = time(nullptr);
+    g_LastHistorySaveTime   = nowSeed;
+    g_LastMemorySaveTime    = nowSeed + static_cast<time_t>(g_MemorySaveInterval) * 60 / 3;
+    g_LastSentimentSaveTime = nowSeed + static_cast<time_t>(g_SentimentSaveInterval) * 60 * 2 / 3;
 
     // Ask Ollama what this model can actually do. Runs on its own thread so a
     // missing or slow Ollama cannot stall worldserver startup; until it

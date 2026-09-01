@@ -36,6 +36,7 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg,
                            uint8_t chainDepth = 1);
 
 void SaveBotConversationHistoryToDB();
+void DeleteBotConversationHistoryFromDB(uint64_t botGuid);
 void AppendBotConversation(uint64_t botGuid, uint64_t playerGuid,
                            const std::string& playerMessage, const std::string& botReply);
 

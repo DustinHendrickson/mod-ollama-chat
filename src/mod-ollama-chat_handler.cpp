@@ -281,7 +281,7 @@ void AppendBotConversation(uint64_t botGuid, uint64_t playerGuid, const std::str
 {
     std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
     auto& playerHistory = g_BotConversationHistory[botGuid][playerGuid];
-    playerHistory.push_back({ playerMessage, botReply });
+    playerHistory.push_back({ playerMessage, botReply, /*persisted*/ false });
     while (playerHistory.size() > g_MaxConversationHistory)
     {
         playerHistory.pop_front();
@@ -289,51 +289,148 @@ void AppendBotConversation(uint64_t botGuid, uint64_t playerGuid, const std::str
 
 }
 
+namespace
+{
+    // A multi-row INSERT is one statement for the database worker instead of
+    // one per turn, but it still has to fit inside max_allowed_packet. Flush
+    // well short of the 4MB older servers default to.
+    constexpr size_t kHistoryInsertMaxBytes = 512 * 1024;
+}
+
 void SaveBotConversationHistoryToDB()
 {
-    std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
+    // Gathered under the lock, written outside it. Escaping and statement
+    // building have no business holding a mutex that reply delivery takes on
+    // the world thread.
+    struct PendingPair
+    {
+        uint64_t                                         botGuid;
+        uint64_t                                         playerGuid;
+        std::vector<std::pair<std::string, std::string>> turns;
+    };
+    std::vector<PendingPair> pending;
 
-    for (const auto& [botGuid, playerMap] : g_BotConversationHistory) {
-        for (const auto& [playerGuid, history] : playerMap) {
-            for (const auto& pair : history) {
-                const std::string& playerMessage = pair.first;
-                const std::string& botReply = pair.second;
+    {
+        std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
 
-                std::string escPlayerMsg = playerMessage;
-                CharacterDatabase.EscapeString(escPlayerMsg);
+        for (auto& [botGuid, playerMap] : g_BotConversationHistory)
+        {
+            for (auto& [playerGuid, history] : playerMap)
+            {
+                PendingPair entry{ botGuid, playerGuid, {} };
 
-                std::string escBotReply = botReply;
-                CharacterDatabase.EscapeString(escBotReply);
+                for (BotConversationEntry& turn : history)
+                {
+                    // The whole point of the flag: this used to re-INSERT
+                    // IGNORE every cached turn of every pair on every save,
+                    // and let the unique key throw the duplicates away after
+                    // MySQL had already done the index probe for each one.
+                    if (turn.persisted)
+                        continue;
 
-                CharacterDatabase.Execute(SafeFormat(
-                    "INSERT IGNORE INTO mod_ollama_chat_history (bot_guid, player_guid, timestamp, player_message, bot_reply) "
-                    "VALUES ({}, {}, NOW(), '{}', '{}')",
-                    botGuid, playerGuid, escPlayerMsg, escBotReply));
+                    entry.turns.emplace_back(turn.playerMessage, turn.botReply);
+
+                    // Marked before the write lands. A dropped row costs one
+                    // line of remembered chatter; retrying every turn forever
+                    // is the behaviour being removed here.
+                    turn.persisted = true;
+                }
+
+                if (!entry.turns.empty())
+                    pending.push_back(std::move(entry));
             }
         }
     }
 
-    // Cleanup: keep only the N most recent entries per bot/player pair
-    std::string cleanupQuery = R"SQL(
-        WITH ranked_history AS (
-            SELECT
-                bot_guid,
-                player_guid,
-                timestamp,
-                ROW_NUMBER() OVER (
-                    PARTITION BY bot_guid, player_guid
-                    ORDER BY timestamp DESC
-                ) as rn
-            FROM mod_ollama_chat_history
-        )
-        DELETE FROM mod_ollama_chat_history
-        WHERE (bot_guid, player_guid, timestamp) IN (
-            SELECT bot_guid, player_guid, timestamp
-            FROM ranked_history
-            WHERE rn > {}
-        );
-    )SQL";
-    CharacterDatabase.Execute(SafeFormat(cleanupQuery, g_MaxConversationHistory));
+    if (pending.empty())
+        return;
+
+    // A configured 0 would run the trim below with OFFSET -1.
+    const uint32_t keep   = std::max<uint32_t>(g_MaxConversationHistory, 1);
+    const uint32_t offset = keep - 1;
+
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+    uint32_t savedTurns = 0;
+
+    for (const PendingPair& entry : pending)
+    {
+        std::string values;
+
+        auto flushValues = [&]()
+        {
+            if (values.empty())
+                return;
+
+            trans->Append("INSERT IGNORE INTO mod_ollama_chat_history "
+                          "(bot_guid, player_guid, timestamp, player_message, bot_reply) VALUES " + values);
+            values.clear();
+        };
+
+        for (const auto& [playerMessage, botReply] : entry.turns)
+        {
+            std::string escPlayerMsg = playerMessage;
+            CharacterDatabase.EscapeString(escPlayerMsg);
+
+            std::string escBotReply = botReply;
+            CharacterDatabase.EscapeString(escBotReply);
+
+            if (!values.empty())
+                values += ',';
+
+            values += SafeFormat("({}, {}, NOW(), '{}', '{}')",
+                                 entry.botGuid, entry.playerGuid, escPlayerMsg, escBotReply);
+            ++savedTurns;
+
+            if (values.size() >= kHistoryInsertMaxBytes)
+                flushValues();
+        }
+
+        flushValues();
+
+        // Trim this pair to its newest `keep` rows.
+        //
+        // This replaces a ROW_NUMBER() window function evaluated over the
+        // whole table on every save, whose DELETE then matched rows by
+        // (bot_guid, player_guid, timestamp). That tuple has no index, and
+        // every row written in one save batch shares the same
+        // second-granularity NOW() -- so the delete matched the entire batch,
+        // not just the surplus, and quietly wiped whole conversations.
+        //
+        // Ordering by the auto-increment id is exact and is served end to end
+        // by idx_pair_recent (bot_guid, player_guid, id). Only pairs that
+        // gained a row are trimmed; the rest of the table is never touched.
+        trans->Append(SafeFormat(
+            "DELETE FROM mod_ollama_chat_history "
+            "WHERE bot_guid = {0} AND player_guid = {1} AND id < ("
+                "SELECT keep_id FROM ("
+                    "SELECT id AS keep_id FROM mod_ollama_chat_history "
+                    "WHERE bot_guid = {0} AND player_guid = {1} "
+                    "ORDER BY id DESC LIMIT 1 OFFSET {2}"
+                ") AS oldest_kept"
+            ")",
+            entry.botGuid, entry.playerGuid, offset));
+    }
+
+    CharacterDatabase.CommitTransaction(trans);
+
+    if (g_DebugEnabled)
+    {
+        LOG_INFO("module.ollamachat",
+                 "[Ollama Chat] Saved {} new conversation turn(s) across {} bot/player pair(s).",
+                 savedTurns, static_cast<uint32_t>(pending.size()));
+    }
+}
+
+// Drop a bot's persisted history. Called from a worker thread after its
+// conversation has been condensed into long-term memories -- without this the
+// rows survive, get reloaded on the next startup, and are condensed again.
+//
+// Worker-safe: Execute() queues, and the statement is a literal plus an
+// integer, so no config string is read off the world thread.
+void DeleteBotConversationHistoryFromDB(uint64_t botGuid)
+{
+    CharacterDatabase.Execute(SafeFormat(
+        "DELETE FROM mod_ollama_chat_history WHERE bot_guid = {}", botGuid));
 }
 
 // Called when a bot sends a message (random chatter or other bot-initiated messages)
@@ -508,8 +605,8 @@ std::string GetBotHistoryPrompt(uint64_t botGuid, uint64_t playerGuid, std::stri
     for (const auto& entry : playerIt->second) {
         result += SafeFormat(g_ChatHistoryLineTemplate,
             fmt::arg("player_name", playerName),
-            fmt::arg("player_message", entry.first),
-            fmt::arg("bot_reply", entry.second)
+            fmt::arg("player_message", entry.playerMessage),
+            fmt::arg("bot_reply", entry.botReply)
         );
     }
 

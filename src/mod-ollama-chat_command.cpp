@@ -10,6 +10,7 @@
 #include "mod-ollama-chat_roleplay.h"
 #include "mod-ollama-chat-utilities.h"
 #include "Log.h"
+#include "DatabaseEnv.h"
 #include <thread>
 #include "Chat.h"
 #include "Config.h"
@@ -262,6 +263,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
             count += playerMap.size();
         }
         g_BotPlayerSentiments.clear();
+        g_DirtySentiments.clear();
+        CharacterDatabase.Execute("DELETE FROM mod_ollama_chat_bot_player_sentiments");
         handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data ({} records).", count));
         return true;
     }
@@ -312,6 +315,17 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
         {
             uint32_t count = botIt->second.size();
             g_BotPlayerSentiments.erase(botIt);
+
+            for (auto it = g_DirtySentiments.begin(); it != g_DirtySentiments.end(); )
+            {
+                if (it->first == botGuid)
+                    it = g_DirtySentiments.erase(it);
+                else
+                    ++it;
+            }
+
+            CharacterDatabase.Execute(SafeFormat(
+                "DELETE FROM mod_ollama_chat_bot_player_sentiments WHERE bot_guid = {}", botGuid));
             handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data for bot '{}' ({} records).", 
                                     targetBot->GetName(), count));
         }
@@ -336,7 +350,18 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
                 count++;
             }
         }
-        
+
+        for (auto it = g_DirtySentiments.begin(); it != g_DirtySentiments.end(); )
+        {
+            if (it->second == playerGuid)
+                it = g_DirtySentiments.erase(it);
+            else
+                ++it;
+        }
+
+        CharacterDatabase.Execute(SafeFormat(
+            "DELETE FROM mod_ollama_chat_bot_player_sentiments WHERE player_guid = {}", playerGuid));
+
         handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data involving player '{}' ({} records).", 
                                 targetPlayer->GetName(), count));
     }
