@@ -60,7 +60,11 @@ namespace
             return true;
         }
 
-        if (bot->GetGroup() && !g_DisableForParty)
+        // Was: any group at all. A party of nothing but bots is not an
+        // audience, and this path had no check whatsoever -- a bot that
+        // qualified for the tick because a guildmate was online could then
+        // spend a generation talking to five other bots.
+        if (bot->GetGroup() && !g_DisableForParty && OllamaGroupHasRealPlayer(bot))
         {
             outSource = SRC_PARTY_LOCAL;
             return true;
@@ -77,6 +81,10 @@ namespace
         if (!g_DisableForSayYell && world.RealPlayerWithin(bot, g_SayDistance))
             options.push_back({ SRC_SAY_LOCAL, std::string(), 0 });
 
+        // RealPlayerInZoneAndFaction is only a cheap pre-filter here. Being in
+        // the bot's zone is not the same as being in the channel -- players
+        // leave General -- so each resolved channel is checked for a real
+        // listener below before it becomes a candidate.
         if (!g_DisableForCustomChannels && world.RealPlayerInZoneAndFaction(bot))
         {
             // Resolve real zone/city channels and carry their ACTUAL names
@@ -91,8 +99,17 @@ namespace
             {
                 if (!enabled)
                     return;
-                if (Channel* ch = OllamaResolveZoneChannel(bot, chanId))
-                    options.push_back({ SRC_GENERAL_LOCAL, ch->GetName(), ch->GetChannelId() });
+
+                Channel* ch = OllamaResolveZoneChannel(bot, chanId);
+                if (!ch)
+                    return;
+
+                // The audience test that matters, and it happens here --
+                // before any prompt is built and before the LLM is touched.
+                if (!world.RealPlayerInChannel(ch))
+                    return;
+
+                options.push_back({ SRC_GENERAL_LOCAL, ch->GetName(), ch->GetChannelId() });
             };
 
             addChannel(ChatChannelId::GENERAL,           g_ChatterUseGeneralChannel);

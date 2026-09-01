@@ -252,21 +252,6 @@ namespace
     }
 
     // Returns true when the line actually went out.
-    // A group is at most 40 entries, so this is cheap enough to ask at
-    // delivery rather than caching it.
-    bool GroupHasRealPlayer(Player* bot)
-    {
-        Group* group = bot ? bot->GetGroup() : nullptr;
-        if (!group)
-            return false;
-
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-            if (OllamaIsRealPlayer(ref->GetSource()))
-                return true;
-
-        return false;
-    }
-
     bool RouteMessage(Player* bot, PlayerbotAI* botAI, const Completion& c,
                       const OllamaWorldSnapshot& world,
                       Channel*& outChannel)
@@ -279,6 +264,11 @@ namespace
             {
                 Channel* channel = ResolveChannel(bot, c.request.channelName);
                 if (!channel || !bot->IsInChannel(channel))
+                    return false;
+
+                // Checked before generating too; re-checked because the only
+                // human in the channel can leave during the LLM round trip.
+                if (!world.RealPlayerInChannel(channel))
                     return false;
 
                 channel->Say(bot->GetGUID(), c.text, LANG_UNIVERSAL);
@@ -302,14 +292,14 @@ namespace
             case SRC_PARTY_LOCAL:
                 if (g_DisableForParty || !bot->GetGroup())
                     return false;
-                if (!GroupHasRealPlayer(bot))
+                if (!OllamaGroupHasRealPlayer(bot))
                     return false;
                 return botAI->SayToParty(c.text);
 
             case SRC_RAID_LOCAL:
                 if (g_DisableForParty || !bot->GetGroup())
                     return false;
-                if (!GroupHasRealPlayer(bot))
+                if (!OllamaGroupHasRealPlayer(bot))
                     return false;
                 return botAI->SayToRaid(c.text);
 

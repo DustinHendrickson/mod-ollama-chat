@@ -30,6 +30,19 @@ class Player;
 // line. Returns the TEXT_EMOTE_* id, or 0 when none was found.
 uint32_t ExtractEmoteTag(std::string& response);
 
+// The gesture sentence appended to a chat prompt.
+//
+// This used to be a fixed string naming the same four tags every time --
+// wave, nod, shrug, laugh -- against a table that understands about 150 names
+// across seven moods. A model reaches for the example it was shown, so
+// greetings always waved and three whole categories (sorrow, hostility,
+// curiosity) effectively never fired.
+//
+// Returns four tags drawn from four different moods, varied per call, and says
+// outright that any common emote name works so the list reads as examples
+// rather than as the menu.
+std::string Expression_BuildGesturePrompt();
+
 // Resolve an emote name ("wave", "waves", "waving") to TEXT_EMOTE_*. 0 if unknown.
 uint32_t LookupTextEmoteId(const std::string& name);
 

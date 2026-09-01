@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
+class Channel;
 class Player;
 
 // --------------------------------------------------------------------------
@@ -60,6 +61,14 @@ inline bool OllamaIsRealPlayer(Player* player)
 // so this only rewrites the handful of zones that are wrong.
 std::string OllamaContinentName(Player* player);
 
+// True when this player's party or raid contains at least one human. A group
+// of nothing but bots is not an audience.
+//
+// Free rather than a snapshot method: it walks the group, not the online
+// player list, so it needs no snapshot state and callers without one can use
+// it.
+bool OllamaGroupHasRealPlayer(Player* who);
+
 struct OllamaWorldSnapshot
 {
     std::vector<Player*>        realPlayers;            // non-bot, in world
@@ -77,9 +86,15 @@ struct OllamaWorldSnapshot
     // True when a real player is within `distance` of `who`, on the same map.
     bool RealPlayerWithin(Player* who, float distance) const;
 
-    // True when a real player shares this bot's zone and faction, which is
-    // what the zone-scoped General channel requires.
+    // True when a real player shares this bot's zone and faction. This is a
+    // cheap PRE-FILTER, not an audience test: being in the zone does not mean
+    // being in the channel. Use RealPlayerInChannel for the real answer.
     bool RealPlayerInZoneAndFaction(Player* who) const;
+
+    // The actual audience tests. Nothing may be sent to the LLM for a
+    // destination unless one of these says a human would see it -- an answer
+    // nobody reads still costs a full generation.
+    bool RealPlayerInChannel(Channel* channel) const;
 };
 
 #endif // MOD_OLLAMA_CHAT_WORLD_H

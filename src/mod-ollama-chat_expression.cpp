@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <vector>
 #include <string>
 #include <unordered_map>
 
@@ -189,6 +190,60 @@ namespace
 }
 
 // --------------------------------------------------------------------------
+
+namespace
+{
+    // Curated per mood: names a model reaches for naturally and that read as a
+    // real WoW gesture. Deliberately a sample, not the whole table -- pasting
+    // 150 tags into every prompt is how bots end up talking about their emote
+    // list instead of using it.
+    const std::vector<std::vector<const char*>>& GestureSamples()
+    {
+        static const std::vector<std::vector<const char*>> samples = {
+            { "wave", "bow", "salute", "greet", "thank" },
+            { "nod", "agree", "shrug", "no", "shake" },
+            { "laugh", "grin", "smile", "chuckle", "cheer" },
+            { "sigh", "cry", "apologize", "comfort", "facepalm" },
+            { "glare", "frown", "growl", "mock", "taunt" },
+            { "ponder", "point", "listen", "curious", "peer" },
+            { "yawn", "bored", "tired", "whistle", "pray" },
+        };
+        return samples;
+    }
+}
+
+std::string Expression_BuildGesturePrompt()
+{
+    const auto& samples = GestureSamples();
+
+    // Shuffle the moods, then take one tag from each of the first few, so the
+    // examples are never all the same flavour.
+    std::vector<size_t> order(samples.size());
+    for (size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+
+    for (size_t i = order.size(); i-- > 1; )
+        std::swap(order[i], order[urand(0, static_cast<uint32>(i))]);
+
+    const size_t take = std::min<size_t>(4, order.size());
+
+    std::string tags;
+    for (size_t i = 0; i < take; ++i)
+    {
+        const auto& bucket = samples[order[i]];
+        const char* name   = bucket[urand(0, static_cast<uint32>(bucket.size() - 1))];
+
+        if (!tags.empty())
+            tags += (i + 1 == take) ? " or " : ", ";
+
+        tags += "[emote:";
+        tags += name;
+        tags += "]";
+    }
+
+    return " You may end your reply with a single gesture tag such as " + tags +
+           " when one genuinely fits -- any common emote name works. Omit it otherwise.";
+}
 
 uint32_t LookupTextEmoteId(const std::string& name)
 {

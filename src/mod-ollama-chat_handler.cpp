@@ -1933,9 +1933,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     // the line is spoken, so it never reaches chat as text.
     if (g_EnableBotEmotes)
     {
-        prompt += " You may end your reply with a single gesture tag such as "
-                  "[emote:wave], [emote:nod], [emote:shrug] or [emote:laugh] "
-                  "when one genuinely fits. Omit it otherwise.";
+        prompt += Expression_BuildGesturePrompt();
     }
 
     // Debug logging for full prompt including RAG information

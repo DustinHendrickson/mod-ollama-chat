@@ -241,10 +241,15 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
         if (!Governor_TryConsumeEventCooldown(bot->GetGUID()))
             continue;
 
+        // Was: any group at all, which let a bot spend a generation
+        // commenting to a party of nothing but bots. Say is the fallback, and
+        // the loop above already established a real player is in range of it.
+        const bool partyAudience =
+            bot->GetGroup() && !g_DisableForParty && OllamaGroupHasRealPlayer(bot);
+
         const ChatChannelSourceLocal source_ =
             isGuildEvent ? SRC_GUILD_LOCAL
-                         : (bot->GetGroup() && !g_DisableForParty ? SRC_PARTY_LOCAL
-                                                                  : SRC_SAY_LOCAL);
+                         : (partyAudience ? SRC_PARTY_LOCAL : SRC_SAY_LOCAL);
 
         const std::string scopeKey = Governor_MakeScopeKey(
             ChatChannelSourceLocalStr[source_], 0, "",

@@ -1,7 +1,9 @@
 #include "mod-ollama-chat_world.h"
 
 #include "AreaDefines.h"
+#include "Channel.h"
 #include "Map.h"
+#include "Group.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 
@@ -95,6 +97,31 @@ bool OllamaWorldSnapshot::RealPlayerWithin(Player* who, float distance) const
         if (who->GetDistance(player) <= distance)
             return true;
     }
+    return false;
+}
+
+bool OllamaWorldSnapshot::RealPlayerInChannel(Channel* channel) const
+{
+    if (!channel)
+        return false;
+
+    for (Player* player : realPlayers)
+        if (player->IsInChannel(channel))
+            return true;
+
+    return false;
+}
+
+bool OllamaGroupHasRealPlayer(Player* who)
+{
+    Group* group = who ? who->GetGroup() : nullptr;
+    if (!group)
+        return false;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        if (OllamaIsRealPlayer(ref->GetSource()))
+            return true;
+
     return false;
 }
 
