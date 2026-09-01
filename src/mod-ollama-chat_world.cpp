@@ -3,8 +3,26 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 
+#include "WorldSession.h"
+
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+
+bool OllamaIsBotPlayer(Player* player)
+{
+    if (!player)
+        return false;
+
+    // Correct from session construction, unlike the AI lookup below.
+    if (WorldSession* session = player->GetSession())
+    {
+        if (session->IsBot())
+            return true;
+    }
+
+    PlayerbotAI* ai = PlayerbotsMgr::instance().GetPlayerbotAI(player);
+    return ai && ai->IsBotAI();
+}
 
 void OllamaWorldSnapshot::Build()
 {
@@ -20,8 +38,7 @@ void OllamaWorldSnapshot::Build()
         if (!player || !player->IsInWorld())
             continue;
 
-        PlayerbotAI* ai = PlayerbotsMgr::instance().GetPlayerbotAI(player);
-        if (ai && ai->IsBotAI())
+        if (OllamaIsBotPlayer(player))
             continue;
 
         realPlayers.push_back(player);

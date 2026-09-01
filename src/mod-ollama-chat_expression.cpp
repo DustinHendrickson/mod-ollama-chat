@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_world.h"
 #include "mod-ollama-chat_governor.h"
 #include "mod-ollama-chat_dispatch.h"
 
@@ -429,7 +430,7 @@ void ChatOnEmote::OnPlayerTextEmote(Player* player, uint32 textEmote,
         return;
 
     // Only real players get a reaction; bot-to-bot emoting would loop.
-    if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+    if (OllamaIsBotPlayer(player))
         return;
 
     Player* bot = ObjectAccessor::FindConnectedPlayer(guid);

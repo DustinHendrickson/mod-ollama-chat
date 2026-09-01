@@ -24,6 +24,30 @@ class Player;
 // WORLD THREAD ONLY, and do not hold one across ticks: the Player pointers are
 // only guaranteed valid for the tick that built it.
 // --------------------------------------------------------------------------
+// Authoritative "is this a bot" test.
+//
+// PlayerbotsMgr::GetPlayerbotAI() only answers correctly once the AI has been
+// attached, and for a freshly logged-in bot that happens inside mod-playerbots'
+// own PLAYERHOOK_ON_LOGIN handler. Script hook order between modules is not
+// defined, so during login a bot can read as a real player.
+//
+// That is not theoretical: it is why an all-bot realm generated guild login
+// chatter for an audience of nobody. The bot's own login satisfied the
+// "is a real player online in this guild" gate, the module spent an LLM round
+// trip on a reply, and by the time it was delivered the AI had attached and
+// the same check correctly said there was no one to talk to.
+//
+// WorldSession::_isBot is set in the session constructor, so it is correct from
+// the first moment the Player exists. mod-playerbots' own login hook uses it
+// for exactly this reason. The AI lookup is kept as a fallback so a bot driven
+// by some other mechanism still reads as a bot.
+bool OllamaIsBotPlayer(Player* player);
+
+inline bool OllamaIsRealPlayer(Player* player)
+{
+    return player && !OllamaIsBotPlayer(player);
+}
+
 struct OllamaWorldSnapshot
 {
     std::vector<Player*>        realPlayers;            // non-bot, in world

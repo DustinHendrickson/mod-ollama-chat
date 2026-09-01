@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_events.h"
 #include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_world.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_governor.h"
 #include "mod-ollama-chat_handler.h"
@@ -59,7 +60,7 @@ namespace
             Player* player = pair.second;
             if (!player || !player->IsInWorld())
                 continue;
-            if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+            if (OllamaIsBotPlayer(player))
                 continue;
             if (player->GetGuildId() == guildId)
                 return true;
@@ -137,7 +138,7 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
     if (!source->IsInWorld() || !source->GetMap())
         return;
 
-    const bool sourceIsBot = PlayerbotsMgr::instance().GetPlayerbotAI(source) != nullptr;
+    const bool sourceIsBot = OllamaIsBotPlayer(source);
 
     // Seed the witnessed-event memory before any chance roll: bots should
     // remember what they saw even when they choose not to comment on it.
@@ -154,7 +155,7 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
         Player* player = pair.GetSource();
         if (!player || player == source)
             continue;
-        if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+        if (OllamaIsBotPlayer(player))
             continue;
         if (player->IsWithinDist(source, g_EventChatterRealPlayerDistance, false))
         {
@@ -495,7 +496,7 @@ void ChatOnAchievement::OnPlayerAchievementComplete(Player* player, AchievementE
 
     if (player->GetGuild() && g_EnableGuildEventChatter &&
         !g_GuildEventTypeGuildAchievement.empty() &&
-        !PlayerbotsMgr::instance().GetPlayerbotAI(player))
+        OllamaIsRealPlayer(player))
     {
         eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildAchievement, achievement->name[0]);
     }
@@ -577,7 +578,8 @@ void ChatOnGuildLogin::OnPlayerLogin(Player* player)
         return;
 
     // Only real players; a wave of bot logins would spam the guild channel.
-    if (PlayerbotsMgr::instance().GetPlayerbotAI(player))
+    // Must be the session test: the bot's AI is not attached yet at this point.
+    if (OllamaIsBotPlayer(player))
         return;
 
     eventChatter.DispatchGameEvent(player, g_GuildEventTypeGuildLogin, guild->GetName());

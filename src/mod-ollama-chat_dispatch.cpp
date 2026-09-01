@@ -8,12 +8,14 @@
 #include "mod-ollama-chat_roleplay.h"
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat-utilities.h"
+#include "mod-ollama-chat_world.h"
 
 #include "CellImpl.h"
 #include "Channel.h"
 #include "ChannelMgr.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "Group.h"
 #include "Guild.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
@@ -250,7 +252,23 @@ namespace
     }
 
     // Returns true when the line actually went out.
+    // A group is at most 40 entries, so this is cheap enough to ask at
+    // delivery rather than caching it.
+    bool GroupHasRealPlayer(Player* bot)
+    {
+        Group* group = bot ? bot->GetGroup() : nullptr;
+        if (!group)
+            return false;
+
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            if (OllamaIsRealPlayer(ref->GetSource()))
+                return true;
+
+        return false;
+    }
+
     bool RouteMessage(Player* bot, PlayerbotAI* botAI, const Completion& c,
+                      const OllamaWorldSnapshot& world,
                       Channel*& outChannel)
     {
         outChannel = nullptr;
@@ -268,19 +286,30 @@ namespace
                 return true;
             }
 
+            // Guild, party and raid are re-checked here for the same reason
+            // say and yell always were: the audience is validated at submit
+            // time, and an LLM round trip is seconds long. Whoever the bot was
+            // talking to can log out, leave the guild or drop group in that
+            // window, and without this the bot announces to an empty channel.
             case SRC_GUILD_LOCAL:
             case SRC_OFFICER_LOCAL:
                 if (g_DisableForGuild || !bot->GetGuild())
+                    return false;
+                if (!world.GuildHasRealPlayer(bot->GetGuildId()))
                     return false;
                 return botAI->SayToGuild(c.text);
 
             case SRC_PARTY_LOCAL:
                 if (g_DisableForParty || !bot->GetGroup())
                     return false;
+                if (!GroupHasRealPlayer(bot))
+                    return false;
                 return botAI->SayToParty(c.text);
 
             case SRC_RAID_LOCAL:
                 if (g_DisableForParty || !bot->GetGroup())
+                    return false;
+                if (!GroupHasRealPlayer(bot))
                     return false;
                 return botAI->SayToRaid(c.text);
 
@@ -305,7 +334,7 @@ namespace
         }
     }
 
-    void Deliver(const Completion& c)
+    void Deliver(const Completion& c, const OllamaWorldSnapshot& world)
     {
         Player* bot = ObjectAccessor::FindConnectedPlayer(ObjectGuid(c.request.botGuid));
         if (!bot || !bot->IsInWorld())
@@ -340,7 +369,7 @@ namespace
         }
 
         Channel* channel = nullptr;
-        if (!RouteMessage(bot, botAI, c, channel))
+        if (!RouteMessage(bot, botAI, c, world, channel))
         {
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
@@ -533,11 +562,19 @@ void OllamaDispatch_Update(uint32_t /*diff*/)
         }
     }
 
+    if (due.empty())
+        return;
+
+    // One pass over the online player list for the whole tick, rather than one
+    // per delivery.
+    OllamaWorldSnapshot world;
+    world.Build();
+
     for (const Completion& c : due)
     {
         try
         {
-            Deliver(c);
+            Deliver(c, world);
         }
         catch (const std::exception& e)
         {

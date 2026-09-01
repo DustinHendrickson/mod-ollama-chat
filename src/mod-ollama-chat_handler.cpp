@@ -465,7 +465,8 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
         }
     }
     
-    // Validate that bot is actually in the relevant chat group before triggering replies
+    // Whether other bots may chain a reply to this line. The line itself has
+    // already been delivered by this point -- this only gates propagation.
     bool canSendMessage = false;
     switch (sourceLocal)
     {
@@ -479,7 +480,7 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
             // Must have a channel object
             canSendMessage = (channel != nullptr);
             if (!canSendMessage && g_DebugEnabled)
-                LOG_ERROR("module.ollamachat", "[Ollama Chat] Bot {} cannot send to General - no channel found", bot->GetName());
+                LOG_ERROR("module.ollamachat", "[Ollama Chat] No bot replies to {} in General - no channel found", bot->GetName());
             break;
             
         case SRC_GUILD_LOCAL:
@@ -495,20 +496,20 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
                     const bool hasRealPlayer = world.GuildHasRealPlayer(bot->GetGuildId());
                     canSendMessage = hasRealPlayer;
                     if (!canSendMessage && g_DebugEnabled)
-                        LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} cannot send to Guild - no real players online in guild", bot->GetName());
+                        LOG_INFO("module.ollamachat", "[Ollama Chat] No bot replies to {} in Guild - no real players online in guild", bot->GetName());
                 }
                 else
                 {
                     canSendMessage = false;
                     if (g_DebugEnabled)
-                        LOG_ERROR("module.ollamachat", "[Ollama Chat] Bot {} cannot send to Guild - guild not found", bot->GetName());
+                        LOG_ERROR("module.ollamachat", "[Ollama Chat] No bot replies to {} in Guild - guild not found", bot->GetName());
                 }
             }
             else
             {
                 canSendMessage = false;
                 if (g_DebugEnabled)
-                    LOG_ERROR("module.ollamachat", "[Ollama Chat] Bot {} cannot send to Guild - not in a guild", bot->GetName());
+                    LOG_ERROR("module.ollamachat", "[Ollama Chat] No bot replies to {} in Guild - not in a guild", bot->GetName());
             }
             break;
             
@@ -522,7 +523,7 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
                 for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                 {
                     Player* member = ref->GetSource();
-                    if (member && !PlayerbotsMgr::instance().GetPlayerbotAI(member))
+                    if (OllamaIsRealPlayer(member))
                     {
                         hasRealPlayer = true;
                         break;
@@ -530,13 +531,13 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
                 }
                 canSendMessage = hasRealPlayer;
                 if (!canSendMessage && g_DebugEnabled)
-                    LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} cannot send to Party - no real players in group", bot->GetName());
+                    LOG_INFO("module.ollamachat", "[Ollama Chat] No bot replies to {} in Party - no real players in group", bot->GetName());
             }
             else
             {
                 canSendMessage = false;
                 if (g_DebugEnabled)
-                    LOG_ERROR("module.ollamachat", "[Ollama Chat] Bot {} cannot send to Party - not in a group", bot->GetName());
+                    LOG_ERROR("module.ollamachat", "[Ollama Chat] No bot replies to {} in Party - not in a group", bot->GetName());
             }
             break;
             
@@ -553,8 +554,9 @@ void ProcessBotChatMessage(Player* bot, const std::string& msg, ChatChannelSourc
     if (!canSendMessage)
     {
         if (g_DebugEnabled)
-            LOG_ERROR("module.ollamachat", "[Ollama Chat] Bot {} cannot send message to {} - validation failed", 
-                    bot->GetName(), ChatChannelSourceLocalStr[sourceLocal]);
+            LOG_INFO("module.ollamachat",
+                     "[Ollama Chat] Not propagating {}'s {} line to other bots - no audience.",
+                     bot->GetName(), ChatChannelSourceLocalStr[sourceLocal]);
         return;
     }
         
@@ -1209,8 +1211,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             if (!candidateReal || !candidateReal->IsInChannel(channel))
                 continue;
 
-            PlayerbotAI* realAI = PlayerbotsMgr::instance().GetPlayerbotAI(candidateReal);
-            if (!realAI || !realAI->IsBotAI())
+            if (OllamaIsRealPlayer(candidateReal))
             {
                 hasRealPlayerInChannel = true;
                 break;
@@ -1336,15 +1337,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                             bool hasRealPlayerInGroup = false;
                             for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                             {
-                                Player* member = ref->GetSource();
-                                if (member)
+                                if (OllamaIsRealPlayer(ref->GetSource()))
                                 {
-                                    PlayerbotAI* memberAI = PlayerbotsMgr::instance().GetPlayerbotAI(member);
-                                    if (!memberAI || !memberAI->IsBotAI())
-                                    {
-                                        hasRealPlayerInGroup = true;
-                                        break;
-                                    }
+                                    hasRealPlayerInGroup = true;
+                                    break;
                                 }
                             }
                             if (!hasRealPlayerInGroup)
