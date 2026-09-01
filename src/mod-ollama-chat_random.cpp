@@ -134,7 +134,7 @@ namespace
             fmt::arg("bot_faction", bot->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde"),
             fmt::arg("bot_area", area ? PlayerbotAI::GetLocalizedAreaName(area) : "UnknownArea"),
             fmt::arg("bot_zone", zone ? PlayerbotAI::GetLocalizedAreaName(zone) : "UnknownZone"),
-            fmt::arg("bot_map", bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap"),
+            fmt::arg("bot_map", OllamaContinentName(bot)),
             fmt::arg("bot_personality", personalityPrompt),
             fmt::arg("bot_personality_name", personality),
             fmt::arg("environment_info", environmentInfo));

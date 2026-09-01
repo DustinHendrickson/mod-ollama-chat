@@ -1831,7 +1831,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     uint8_t botGenderByte           = bot->getGender();
     std::string botAreaName         = botCurrentArea ? botAI->GetLocalizedAreaName(botCurrentArea): "UnknownArea";
     std::string botZoneName         = botCurrentZone ? botAI->GetLocalizedAreaName(botCurrentZone): "UnknownZone";
-    std::string botMapName          = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
+    std::string botMapName          = OllamaContinentName(bot);
     std::string botClass            = botAI->GetChatHelper()->FormatClass(bot->getClass());
     std::string botRace             = botAI->GetChatHelper()->FormatRace(bot->getRace());
     std::string botRole             = CleanRoleForPrompt(ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot)));

@@ -1,5 +1,7 @@
 #include "mod-ollama-chat_world.h"
 
+#include "AreaDefines.h"
+#include "Map.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 
@@ -22,6 +24,37 @@ bool OllamaIsBotPlayer(Player* player)
 
     PlayerbotAI* ai = PlayerbotsMgr::instance().GetPlayerbotAI(player);
     return ai && ai->IsBotAI();
+}
+
+std::string OllamaContinentName(Player* player)
+{
+    Map* map = player ? player->GetMap() : nullptr;
+    if (!map)
+        return "UnknownMap";
+
+    // The Burning Crusade starting zones sit on Outland's map but belong to
+    // the old continents in the fiction, which is what a character would say.
+    if (map->GetId() == MAP_OUTLAND)
+    {
+        switch (player->GetZoneId())
+        {
+            case AREA_EVERSONG_WOODS:
+            case AREA_GHOSTLANDS:
+            case AREA_SILVERMOON_CITY:
+            case AREA_ISLE_OF_QUEL_DANAS:
+                return "Eastern Kingdoms";
+
+            case AREA_AZUREMYST_ISLE:
+            case AREA_BLOODMYST_ISLE:
+            case AREA_THE_EXODAR:
+                return "Kalimdor";
+
+            default:
+                break;
+        }
+    }
+
+    return map->GetMapName();
 }
 
 void OllamaWorldSnapshot::Build()

@@ -2,6 +2,7 @@
 #define MOD_OLLAMA_CHAT_WORLD_H
 
 #include <cstdint>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -47,6 +48,17 @@ inline bool OllamaIsRealPlayer(Player* player)
 {
     return player && !OllamaIsBotPlayer(player);
 }
+
+// The continent a bot would actually name, for prompt use.
+//
+// Map::GetMapName() answers with the map's own name, and the Burning Crusade
+// starting zones share map 530 with Outland in the game data -- so a Blood Elf
+// standing in Ghostlands is told they are in Outland. The model notices: one
+// reply was spent reasoning about the contradiction instead of answering it.
+//
+// Everything else GetMapName() returns is already right, instances included,
+// so this only rewrites the handful of zones that are wrong.
+std::string OllamaContinentName(Player* player);
 
 struct OllamaWorldSnapshot
 {
