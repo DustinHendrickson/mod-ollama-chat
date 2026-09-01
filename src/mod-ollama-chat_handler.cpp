@@ -1931,10 +1931,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
 
     // Let the model gesture. The tag is parsed back out and stripped before
     // the line is spoken, so it never reaches chat as text.
-    if (g_EnableBotEmotes)
-    {
-        prompt += Expression_BuildGesturePrompt();
-    }
+    prompt += Expression_BuildGesturePrompt();
 
     // Debug logging for full prompt including RAG information
     if (g_DebugEnabled && g_DebugShowFullPrompt) {

@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_sentiment.h"
+#include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_rag.h"
 #include "Config.h"
@@ -174,6 +175,9 @@ std::vector<std::string> g_RoleplayQuestionVariations;
 // --------------------------------------------
 bool        g_EnableBotFacing              = true;
 bool        g_EnableBotEmotes              = true;
+uint32_t    g_StateEmoteDurationMs         = 15000;
+int         g_GestureChance                = 40;
+uint32_t    g_EmoteFallbackId              = 0;
 uint32_t    g_BotExpressionDelayMs         = 400;
 float       g_BotFacingMaxDistance         = 40.0f;
 bool        g_EnableEmoteReactions         = true;
@@ -741,6 +745,23 @@ void LoadOllamaChatConfig()
     // --- Embodiment ------------------------------------------------------
     g_EnableBotFacing                 = sConfigMgr->GetOption<bool>("OllamaChat.EnableBotFacing", true);
     g_EnableBotEmotes                 = sConfigMgr->GetOption<bool>("OllamaChat.EnableBotEmotes", true);
+    g_StateEmoteDurationMs            = sConfigMgr->GetOption<uint32_t>("OllamaChat.StateEmoteDurationMs", 15000);
+    g_GestureChance                   = sConfigMgr->GetOption<int>("OllamaChat.GestureChance", 40);
+
+    // Resolved to an id here, on the world thread. The worker that parses a
+    // reply must never touch a config string -- reload reassigns them.
+    {
+        const std::string fallbackName =
+            sConfigMgr->GetOption<std::string>("OllamaChat.EmoteFallback", "talk");
+        g_EmoteFallbackId = fallbackName.empty() ? 0 : LookupTextEmoteId(fallbackName);
+
+        if (!fallbackName.empty() && g_EmoteFallbackId == 0)
+        {
+            LOG_INFO("module.ollamachat",
+                     "[Ollama Chat] OllamaChat.EmoteFallback '{}' is not a known emote name; "
+                     "unresolved gesture tags will play nothing.", fallbackName);
+        }
+    }
     g_BotExpressionDelayMs            = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotExpressionDelayMs", 400);
     g_BotFacingMaxDistance            = sConfigMgr->GetOption<float>("OllamaChat.Facing.MaxDistance", 40.0f);
     g_EnableEmoteReactions            = sConfigMgr->GetOption<bool>("OllamaChat.EnableEmoteReactions", true);

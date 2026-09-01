@@ -242,6 +242,20 @@ extern std::vector<std::string> g_RoleplayPromptVariations;
 extern std::vector<std::string> g_RoleplayQuestionVariations;
 
 // --------------------------------------------
+// How long a looping emote state (dance) is allowed to run before the module
+// clears it. Nothing else clears it for a bot: the core only does so on a
+// movement packet from a real client. 0 leaves it set forever.
+extern uint32_t g_StateEmoteDurationMs;
+
+// Percent chance (0-100) that a reply's prompt invites a gesture at all.
+// Offering it on every line makes bots gesture almost constantly. 0 = never.
+extern int      g_GestureChance;
+
+// TEXT_EMOTE_* to play when the model supplies a gesture name the table does
+// not know. Resolved from its config name on the world thread at load, because
+// ExtractEmoteTag runs on a worker and must not read a config string. 0 = none.
+extern uint32_t g_EmoteFallbackId;
+
 // Embodiment: facing, gestures, emote reactions
 // --------------------------------------------
 extern bool     g_EnableBotFacing;

@@ -386,19 +386,23 @@ std::string ProcessLlmResponse(const std::string& raw,
     if (s.empty())
         return "";
 
+    // Before StripMarkdown, not after. StripMarkdown removes every '*', so by
+    // the time this used to run the "*waves*" gesture form could never match --
+    // only [emote:name] and /wave survived. ExtractEmoteTag leaves the words of
+    // a non-gesture asterisk span in place, so emphasis still reads correctly
+    // once StripMarkdown takes the markers off below.
+    {
+        uint32_t emote = ExtractEmoteTag(s);
+        if (outEmoteId)
+            *outEmoteId = emote;
+    }
+
     if (g_ResponseStripMarkdown)
         s = StripMarkdown(s);
 
     s = CollapseWhitespace(s);
     s = UnwrapQuotedReply(s);
     s = StripSpeakerPrefix(s, botName);
-
-    // Pull the gesture tag out before the length clamp can bite it off.
-    {
-        uint32_t emote = ExtractEmoteTag(s);
-        if (outEmoteId)
-            *outEmoteId = emote;
-    }
 
     if (g_ResponseStripDecorativeUnicode)
         s = StripDecorativeUnicode(s);

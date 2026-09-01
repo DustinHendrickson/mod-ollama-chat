@@ -9,6 +9,7 @@
 #include "mod-ollama-chat_memory.h"
 #include "mod-ollama-chat_topics.h"
 #include "mod-ollama-chat_world.h"
+#include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat-utilities.h"
 
 #include "Channel.h"
@@ -186,6 +187,7 @@ namespace
 
         prompt += Memory_BuildPromptSection(bot, nullptr);
         prompt += Roleplay_BuildVoicePrompt(bot);
+        prompt += Expression_BuildGesturePrompt();
 
         return prompt;
     }

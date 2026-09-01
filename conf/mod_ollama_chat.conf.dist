@@ -1365,6 +1365,60 @@ OllamaChat.Facing.MaxDistance = 40
 #        Default: 1
 OllamaChat.EnableBotEmotes = 1
 
+#    OllamaChat.GestureChance
+#        Percent chance (0-100) that a line's prompt invites a gesture at all.
+#
+#        Gestures are offered on replies, random chatter AND event chatter.
+#        Inviting one on every single line made bots gesture almost
+#        constantly, which reads as twitchy rather than alive -- and it spends
+#        prompt budget on a sentence most lines do not need. The model still
+#        decides whether a gesture fits when it is offered, so the real rate is
+#        lower than this number.
+#
+#        0 = never offer a gesture. Models sometimes emit "*waves*" unprompted
+#        anyway, and that is still parsed.
+#        Default: 40
+OllamaChat.GestureChance = 40
+
+#    OllamaChat.StateEmoteDurationMs
+#        How long a bot holds a posture or looping emote, in milliseconds.
+#
+#        Two emotes stick, for two different reasons:
+#
+#          /dance          sets UNIT_NPC_EMOTESTATE. The only thing that clears
+#                          it for a real player is the handler for a movement
+#                          packet from the client, and bots move server-side
+#                          through MotionMaster so they never send one. Without
+#                          this a mirrored /dance danced forever, and even
+#                          resumed after combat or a one-shot emote because the
+#                          field was still set underneath.
+#
+#          /sit /sleep     the core's text-emote handler broadcasts the social
+#          /kneel          line for these and then does nothing, so the bot
+#                          announced it was sitting down while standing there.
+#                          The module applies the posture the core leaves out,
+#                          which means it also has to take it back off.
+#
+#        The bot is only stood back up when it is still in the exact posture
+#        the emote put it in, so this never interrupts eating, drinking, or a
+#        sit its own AI chose afterwards.
+#
+#        0 disables both the posture change and the clear.
+#        Default: 15000
+OllamaChat.StateEmoteDurationMs = 15000
+
+#    OllamaChat.EmoteFallback
+#        Gesture to play when the model supplies an emote name that is not a
+#        real WoW emote. The prompt tells the model any common emote name
+#        works, and models reach for ones the game does not have ("grunt"), so
+#        those replies used to lose their gesture with nothing in the log.
+#
+#        Set to a name from the emote table, or leave empty for no fallback.
+#        Unresolved names are logged when DebugEnable is on, so you can see
+#        which ones your model favours and decide whether to care.
+#        Default: talk
+OllamaChat.EmoteFallback = "talk"
+
 #    OllamaChat.BotExpressionDelayMs
 #        Delay before the turn and gesture fire, in milliseconds. A small delay
 #        keeps it from looking instant and robotic.

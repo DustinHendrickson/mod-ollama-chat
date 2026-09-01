@@ -41,6 +41,10 @@ uint32_t ExtractEmoteTag(std::string& response);
 // Returns four tags drawn from four different moods, varied per call, and says
 // outright that any common emote name works so the list reads as examples
 // rather than as the menu.
+//
+// Returns "" when emotes are off, or when the GestureChance roll says this
+// particular line goes without one -- so callers append it unconditionally and
+// the "should there be a gesture at all" decision lives in exactly one place.
 std::string Expression_BuildGesturePrompt();
 
 // Resolve an emote name ("wave", "waves", "waving") to TEXT_EMOTE_*. 0 if unknown.

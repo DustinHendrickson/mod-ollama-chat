@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_events.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_world.h"
+#include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_governor.h"
 #include "mod-ollama-chat_handler.h"
@@ -334,6 +335,7 @@ std::string OllamaBotEventChatter::BuildPrompt(Player* bot, std::string promptTe
 
     prompt += Memory_BuildPromptSection(bot, nullptr);
     prompt += Roleplay_BuildVoicePrompt(bot);
+    prompt += Expression_BuildGesturePrompt();
     return prompt;
 }
 
