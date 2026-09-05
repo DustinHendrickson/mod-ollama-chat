@@ -469,39 +469,39 @@ bool OllamaChatConfigCommand::HandleOllamaStatusCommand(ChatHandler* handler)
     const GovernorStats       gov      = Governor_GetStats();
 
     handler->PSendSysMessage("|cff00ff00[Ollama Chat] Status|r");
-    handler->PSendSysMessage("Module: %s   Endpoint: %s   Model: %s",
+    handler->PSendSysMessage("Module: {}   Endpoint: {}   Model: {}",
                              g_Enable ? "enabled" : "DISABLED",
-                             g_OllamaUrl.c_str(), g_OllamaModel.c_str());
-    handler->PSendSysMessage("Think: %s", OllamaCapability_StatusText().c_str());
+                             g_OllamaUrl, g_OllamaModel);
+    handler->PSendSysMessage("Think: {}", OllamaCapability_StatusText());
 
-    handler->PSendSysMessage("Dispatcher: %u workers, %u queued, %u in flight, %u awaiting delivery",
+    handler->PSendSysMessage("Dispatcher: {} workers, {} queued, {} in flight, {} awaiting delivery",
                              dispatch.workers, dispatch.queuedRequests,
                              dispatch.inFlight, dispatch.pendingDeliveries);
-    handler->PSendSysMessage("Totals: %llu submitted, %llu delivered, %llu failed",
+    handler->PSendSysMessage("Totals: {} submitted, {} delivered, {} failed",
                              (unsigned long long)dispatch.totalSubmitted,
                              (unsigned long long)dispatch.totalDelivered,
                              (unsigned long long)dispatch.totalFailed);
-    handler->PSendSysMessage("Dropped: %llu queue-full, %llu empty-after-cleanup, %llu by governor",
+    handler->PSendSysMessage("Dropped: {} queue-full, {} empty-after-cleanup, {} by governor",
                              (unsigned long long)dispatch.totalDroppedQueueFull,
                              (unsigned long long)dispatch.totalDroppedEmpty,
                              (unsigned long long)dispatch.totalDroppedGovernor);
 
-    handler->PSendSysMessage("Governor: %u bots, %u scopes tracked, %u sends in the last minute",
+    handler->PSendSysMessage("Governor: {} bots, {} scopes tracked, {} sends in the last minute",
                              gov.trackedBots, gov.trackedScopes, gov.sendsLastMinute);
-    handler->PSendSysMessage("Blocked: %u cooldown, %u rate, %u repetition, %u chain-depth, %u no-audience",
+    handler->PSendSysMessage("Blocked: {} cooldown, {} rate, {} repetition, {} chain-depth, {} no-audience",
                              gov.blockedCooldown, gov.blockedRate, gov.blockedRepetition,
                              gov.blockedChainDepth, gov.blockedNoAudience);
 
-    handler->PSendSysMessage("Roleplay: %s (strictness %u)   Emote reactions: %s",
+    handler->PSendSysMessage("Roleplay: {} (strictness {})   Emote reactions: {}",
                              g_RoleplayEnable ? "on" : "off",
                              (uint32)g_RoleplayStrictness,
                              g_EnableEmoteReactions ? "on" : "off");
-    handler->PSendSysMessage("Topic weights: people %u / world %u / activity %u / self %u / guild %u",
+    handler->PSendSysMessage("Topic weights: people {} / world {} / activity {} / self {} / guild {}",
                              g_TopicWeightPeople, g_TopicWeightWorld, g_TopicWeightActivity,
                              g_TopicWeightSelf, g_TopicWeightGuild);
 
     if (!dispatch.lastError.empty())
-        handler->PSendSysMessage("|cffff0000Last error:|r %s", dispatch.lastError.c_str());
+        handler->PSendSysMessage("|cffff0000Last error:|r {}", dispatch.lastError);
     else
         handler->PSendSysMessage("Last error: none");
 
