@@ -429,7 +429,7 @@ uint32_t g_TypingSimulationMaxDelay     = 8000;   // 250ms per character (4 char
 void LoadBotPersonalityList()
 {    
     // Let's make sure our user has sourced the required sql file to add the new table
-    QueryResult tableExists = CharacterDatabase.Query("SELECT * FROM information_schema.tables WHERE table_schema = 'acore_characters' AND table_name = 'mod_ollama_chat_personality' LIMIT 1");
+    QueryResult tableExists = CharacterDatabase.Query("SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mod_ollama_chat_personality' LIMIT 1");
     if (!tableExists)
     {
         LOG_ERROR("module.ollamachat", "[Ollama Chat] Please source the required database table first");
