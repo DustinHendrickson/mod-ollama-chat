@@ -263,7 +263,7 @@ namespace
             case SRC_GENERAL_LOCAL:
             {
                 Channel* channel = ResolveChannel(bot, c.request.channelName);
-                if (!channel || !bot->IsInChannel(channel))
+                if (!channel || !channel->IsOn(bot->GetGUID()))
                     return false;
 
                 // Checked before generating too; re-checked because the only

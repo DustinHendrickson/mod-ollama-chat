@@ -106,7 +106,7 @@ bool OllamaWorldSnapshot::RealPlayerInChannel(Channel* channel) const
         return false;
 
     for (Player* player : realPlayers)
-        if (player->IsInChannel(channel))
+        if (channel->IsOn(player->GetGUID()))
             return true;
 
     return false;
