@@ -105,11 +105,12 @@ bool OllamaWorldSnapshot::RealPlayerInChannel(Channel* channel) const
     if (!channel)
         return false;
 
-    for (Player* player : realPlayers)
-        if (channel->IsOn(player->GetGUID()))
-            return true;
-
-    return false;
+    // Channel::IsOn() is private, so per-player membership can't be checked
+    // from here. The channel this module routes through is always "General"
+    // (ChatChannelId::GENERAL), a constant system channel: membership is
+    // automatic for everyone on the matching team, so any online real player
+    // counts as present.
+    return channel->IsConstant() && !realPlayers.empty();
 }
 
 bool OllamaGroupHasRealPlayer(Player* who)

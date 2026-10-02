@@ -1303,7 +1303,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         for (auto const& playerItr : allPlayers)
         {
             Player* candidateReal = playerItr.second;
-            if (!candidateReal || !channel->IsOn(candidateReal->GetGUID()))
+            if (!candidateReal || !channel->IsConstant())
                 continue;
 
             if (OllamaIsRealPlayer(candidateReal))
@@ -1356,8 +1356,15 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             // A custom (unnumbered) channel has id 0 and no zone semantics;
             // membership alone decides, which is checked below.
             
-            // CHANNEL MEMBERSHIP CHECK: Bot must actually be in the channel
-            if (!channel->IsOn(candidate->GetGUID()))
+            // CHANNEL MEMBERSHIP CHECK: Bot must actually be in the channel.
+            // Channel::IsOn() is private, so real per-player membership can't
+            // be checked from here. Built-in numbered channels (General/Trade/
+            // LocalDefense/GuildRecruitment/WorldDefense/LFG) are constant:
+            // every eligible player/bot is auto-joined, so membership is
+            // guaranteed. A custom (id 0) channel has no such guarantee and
+            // can't be verified here, so skip it rather than risk a bot
+            // replying from a channel it already left.
+            if (chanId == 0 || !channel->IsConstant())
             {
                 if(g_DebugEnabled)
                 {
