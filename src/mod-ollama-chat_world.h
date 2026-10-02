@@ -39,10 +39,10 @@ class Player;
 // trip on a reply, and by the time it was delivered the AI had attached and
 // the same check correctly said there was no one to talk to.
 //
-// WorldSession::_isBot is set in the session constructor, so it is correct from
-// the first moment the Player exists. mod-playerbots' own login hook uses it
-// for exactly this reason. The AI lookup is kept as a fallback so a bot driven
-// by some other mechanism still reads as a bot.
+// WorldSession::IsHeadless() is fixed in the session constructor (bot sessions
+// have no socket), so it is correct from the first moment the Player exists.
+// mod-playerbots' own login hook uses it for exactly this reason.
+// The AI lookup is kept as a fallback so a bot driven by some other mechanism still reads as a bot.
 bool OllamaIsBotPlayer(Player* player);
 
 inline bool OllamaIsRealPlayer(Player* player)

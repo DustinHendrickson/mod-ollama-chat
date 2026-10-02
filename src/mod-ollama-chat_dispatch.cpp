@@ -263,7 +263,7 @@ namespace
             case SRC_GENERAL_LOCAL:
             {
                 Channel* channel = ResolveChannel(bot, c.request.channelName);
-                if (!channel || !channel->IsOn(bot->GetGUID()))
+                if (!channel || !OllamaIsOnChannel(channel, bot->GetGUID()))
                     return false;
 
                 // Checked before generating too; re-checked because the only
@@ -697,6 +697,30 @@ OllamaDispatchStats OllamaDispatch_GetStats()
     stats.totalFailed           = g_totalFailed.load();
 
     return stats;
+}
+
+// Explicit template instantiations are exempt from access checking
+// ([temp.spec.general]), so instantiating this with &Channel::IsOn is legal
+// and hands the member pointer out through a friend function. If the core
+// ever changes IsOn's signature, this stops compiling rather than misbehaving.
+namespace
+{
+    using ChannelIsOnFn = bool (Channel::*)(ObjectGuid) const;
+
+    ChannelIsOnFn ChannelIsOnPtr();
+
+    template <ChannelIsOnFn Fn>
+    struct ChannelIsOnAccess
+    {
+        friend ChannelIsOnFn ChannelIsOnPtr() { return Fn; }
+    };
+
+    template struct ChannelIsOnAccess<&Channel::IsOn>;
+}
+
+bool OllamaIsOnChannel(Channel const* channel, ObjectGuid guid)
+{
+    return channel && (channel->*ChannelIsOnPtr())(guid);
 }
 
 Channel* OllamaResolveZoneChannel(Player* bot, uint32_t chatChannelId)

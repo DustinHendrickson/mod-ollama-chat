@@ -1303,7 +1303,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         for (auto const& playerItr : allPlayers)
         {
             Player* candidateReal = playerItr.second;
-            if (!candidateReal || !channel->IsOn(candidateReal->GetGUID()))
+            if (!candidateReal || !OllamaIsOnChannel(channel, candidateReal->GetGUID()))
                 continue;
 
             if (OllamaIsRealPlayer(candidateReal))
@@ -1357,7 +1357,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             // membership alone decides, which is checked below.
             
             // CHANNEL MEMBERSHIP CHECK: Bot must actually be in the channel
-            if (!channel->IsOn(candidate->GetGUID()))
+            if (!OllamaIsOnChannel(channel, candidate->GetGUID()))
             {
                 if(g_DebugEnabled)
                 {

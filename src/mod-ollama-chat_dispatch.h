@@ -40,6 +40,15 @@ class Channel;
 // World thread only.
 Channel* OllamaResolveZoneChannel(Player* bot, uint32_t chatChannelId);
 
+// Is this guid a member of this exact channel instance?
+//
+// The playerbots fork dropped Player::IsInChannel, and the core keeps
+// Channel::IsOn private with no public replacement. This reaches IsOn itself
+// so membership stays exact, including custom (unnumbered) channels.
+//
+// World thread only.
+bool OllamaIsOnChannel(Channel const* channel, ObjectGuid guid);
+
 struct OllamaChatRequest
 {
     // Who speaks, and to whom.

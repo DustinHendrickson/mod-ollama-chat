@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_world.h"
+#include "mod-ollama-chat_dispatch.h"
 
 #include "AreaDefines.h"
 #include "Channel.h"
@@ -20,7 +21,7 @@ bool OllamaIsBotPlayer(Player* player)
     // Correct from session construction, unlike the AI lookup below.
     if (WorldSession* session = player->GetSession())
     {
-        if (session->IsBot())
+        if (session->IsHeadless())
             return true;
     }
 
@@ -106,7 +107,7 @@ bool OllamaWorldSnapshot::RealPlayerInChannel(Channel* channel) const
         return false;
 
     for (Player* player : realPlayers)
-        if (channel->IsOn(player->GetGUID()))
+        if (OllamaIsOnChannel(channel, player->GetGUID()))
             return true;
 
     return false;
