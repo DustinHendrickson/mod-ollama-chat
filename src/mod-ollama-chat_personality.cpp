@@ -63,7 +63,7 @@ std::string GetBotPersonality(Player* bot)
 
     // Save to database if schema supports string (recommend TEXT or VARCHAR column for personality)
     QueryResult tableExists = CharacterDatabase.Query(
-        "SELECT * FROM information_schema.tables WHERE table_schema = 'acore_characters' AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
+        "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
     if (!tableExists)
     {
         LOG_INFO("module.ollamachat", "[Ollama Chat] Please source the required database table first");
