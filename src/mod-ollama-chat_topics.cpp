@@ -636,19 +636,6 @@ namespace
         addGuild("guild_pvp",       g_GuildEnvCommentGuildPvP,       PickOne(g_GuildEnvCommentGuildPvP));
         addGuild("guild_community", g_GuildEnvCommentGuildCommunity, PickOne(g_GuildEnvCommentGuildCommunity));
     }
-
-    uint32_t CategoryWeight(TopicCategory cat)
-    {
-        switch (cat)
-        {
-            case TopicCategory::People:   return g_TopicWeightPeople;
-            case TopicCategory::World:    return g_TopicWeightWorld;
-            case TopicCategory::Activity: return g_TopicWeightActivity;
-            case TopicCategory::Self:     return g_TopicWeightSelf;
-            case TopicCategory::Guild:    return g_TopicWeightGuild;
-            default:                      return 0;
-        }
-    }
 }
 
 // --------------------------------------------------------------------------
