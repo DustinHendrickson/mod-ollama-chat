@@ -1,6 +1,10 @@
 #include "mod-ollama-chat_httpclient.h"
 #include "mod-ollama-chat_config.h"
 
+// Rename the httplib namespace to avoid ODR/ABI collisions with other modules
+// that bundle a different cpp-httplib version (e.g. mod-pbc 0.43.1, mod-ale
+// 0.13.1) into the same monolithic `modules` static library.
+#define httplib ollamachat_httplib
 #include <httplib.h>
 
 #include "Log.h"
