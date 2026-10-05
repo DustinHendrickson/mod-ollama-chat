@@ -2145,54 +2145,65 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 # What the LLM may order
 # ----------------------------------------------
 #
+# The LLM is the bot's controller. Playerbots' own overhead controllers --
+# `new rpg`, the older `rpg` wanderer and the `travel` planner, which pick
+# destinations and activities by themselves -- are switched off while a bot
+# is on autopilot, and the LLM may not switch them back on. Without orders an
+# autopilot bot stands where it is and only does what its strategies make it
+# do around it (fight, loot, gather, accept quests from NPCs next to it).
+#
 # The LLM's orders are playerbots chat commands, run through the bot's own
 # command handling with the bot itself as the sender -- exactly as if its
 # master had whispered them. Strategy changes (nc / co) go straight to the
 # bot's strategy engine instead, so they are not saved into playerbots' own
 # store as if a master had made them.
 #
-# A few autopilot orders fill gaps where playerbots needs a human master:
-#   goto <service>     walk to the nearest friendly repair, vendor, trainer,
+# Getting somewhere is autopilot's own:
+#   goto <service>     the nearest friendly repair, vendor, trainer,
 #                      profession trainer, inn, flightmaster, bank or auction
-#                      house on this continent and use it on arrival (repair
-#                      and sell junk, learn every spell it can afford, make
-#                      the inn its home)
-#   goto zone <name>   walk to a town or camp in that zone
-#   quest <id>         work on that quest from the log
-#   rpg <status>       focus the bot's own life on one thing: do quest,
-#                      wander npc, go camp, go grind, wander random, travel
-#                      flight, rest
+#                      house on this continent, used on arrival (repair and
+#                      sell junk, learn every spell it can afford, make the
+#                      inn its home)
+#   goto zone <name>   any zone in the world. The bot walks, takes a flight
+#                      master when that saves real distance, and takes boats
+#                      and zeppelins between continents.
+#   quest <id>         to where the quest's objective is (the nearest spawn
+#                      of a creature it still needs, or the quest's map
+#                      marker); once complete, to the NPC who takes it in,
+#                      and turn it in
 #
 # Where they apply:
 #   while the bot is its own (not in a human's group, not following a bot
 #     group's leader, not in an instance or battleground): every order.
 #   otherwise: only co (combat) orders. Entering a group or an instance puts
-#     the bot's out-of-combat strategies back to what it had before the LLM;
-#     leaving puts the LLM's back.
-# When a bot is unenrolled, it is handed back exactly as it was before the
-# LLM's first change (recorded once and kept in the database).
+#     the bot's out-of-combat strategies back to what it had before
+#     autopilot, and ends the trip under way; leaving puts the LLM's back.
+# When a bot is unenrolled, it is handed back exactly as it was before
+# autopilot changed anything (recorded once and kept in the database),
+# controllers included.
 
 #    OllamaChat.Autopilot.DeniedCommands
 #        Orders the LLM may never give, by leading words: "nc" denies every
 #        out-of-combat strategy change, "nc +pvp" only that one. The default
 #        blocks logging out, resets, destroying items, teleports, summons,
 #        mail, cheats, debug, raw actions (do / d), leaving the group,
-#        releasing the spirit, and guild management.
-#        Default: "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave"
-OllamaChat.Autopilot.DeniedCommands = "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave"
+#        releasing the spirit, guild management and playerbots' own rpg
+#        commands.
+#        Default: "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg"
+OllamaChat.Autopilot.DeniedCommands = "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg"
 
 #    OllamaChat.Autopilot.CommandReference
 #        What the LLM is told it can order. Empty = the built-in reference
 #        (the useful strategies, the autopilot orders above, and talents,
-#        autogear, s gray, repair, go travel, follow, stay). Use \n for new
-#        lines. Anything you list here must still pass DeniedCommands.
+#        autogear, s gray, repair, follow, stay). Use \n for new lines.
+#        Anything you list here must still pass DeniedCommands.
 #        Default: ""
 OllamaChat.Autopilot.CommandReference = ""
 
 #    OllamaChat.Autopilot.Control
 #        Run the LLM's orders at all. 0 = diary only: bots are selected and
-#        recorded, the LLM is not asked, and anything it changed earlier is
-#        handed back to playerbots.
+#        recorded, the LLM is not asked, and anything autopilot changed
+#        earlier is handed back to playerbots.
 #        Default: 1
 OllamaChat.Autopilot.Control = 1
 
@@ -2203,21 +2214,56 @@ OllamaChat.Autopilot.Control = 1
 #        Default: 1
 OllamaChat.Autopilot.WithRealPlayer = 1
 
+#    OllamaChat.Autopilot.QuickReplanSeconds
+#        When a trip ends (arrived, trained, turned in, or failed), the bot
+#        has nothing to do until the LLM gives it more. It may ask again this
+#        many seconds after its last plan, instead of waiting out the usual
+#        interval. Still within the hourly budget.
+#        Default: 60
+OllamaChat.Autopilot.QuickReplanSeconds = 60
+
+# ----------------------------------------------
+# Travel
+# ----------------------------------------------
+
+#    OllamaChat.Autopilot.Travel.Flights
+#        Let trips use flight masters. A flight is taken when walking to the
+#        flight master and from the landing is clearly shorter than walking
+#        the whole way, and the bot can pay for it; otherwise it walks.
+#        Default: 1
+OllamaChat.Autopilot.Travel.Flights = 1
+
+#    OllamaChat.Autopilot.Travel.FlightMinYards
+#        Trips shorter than this are always walked.
+#        Default: 700
+OllamaChat.Autopilot.Travel.FlightMinYards = 700
+
+#    OllamaChat.Autopilot.Travel.BoatWaitMinutes
+#        Boats and zeppelins between continents are found at startup from
+#        the server's transports, with only the docks whose NPCs are friendly
+#        to the bot's faction (an Alliance bot is never sent to a Horde
+#        zeppelin tower). Several hops are chained when needed. This is how
+#        long a bot waits at a dock before giving up on that crossing.
+#        Default: 20
+OllamaChat.Autopilot.Travel.BoatWaitMinutes = 20
+
+#    OllamaChat.Autopilot.Travel.StuckSeconds
+#        A walk with no real progress for this long is rebuilt from where the
+#        bot stands (twice), then given up on, and the LLM is told.
+#        Default: 45
+OllamaChat.Autopilot.Travel.StuckSeconds = 45
+
 #    OllamaChat.Autopilot.NoTeleport
 #        Make autopilot random bots travel the old-fashioned way. Playerbots
-#        normally teleports random bots: every hour or so to a spot for their
-#        level, straight after a death instead of a corpse run, and when a
-#        long walk is stuck for 90 seconds. With this on, for enrolled bots:
+#        normally teleports random bots every hour or so to a spot for their
+#        level, and straight after a death instead of a corpse run. With this
+#        on, for enrolled bots:
 #          - the periodic teleport is pushed back, every hour
 #          - a dead bot runs back to its body (playerbots' dead strategy);
 #            after CorpseRunMinutes it is revived playerbots' way instead
-#          - a walk that gets stuck is abandoned before playerbots would
-#            teleport it, and the LLM is told it could not get there
-#        Getting somewhere far is then the LLM's job: `goto`, flights, the
-#        travel strategy. AiPlayerbot.AutoTeleportForLevel (playerbots.conf)
-#        still teleports on level-up; turn it off for full coverage (the log
-#        warns at startup). Has no effect on alts, which playerbots does not
-#        teleport.
+#        AiPlayerbot.AutoTeleportForLevel (playerbots.conf) still teleports on
+#        level-up; turn it off for full coverage (the log warns at startup).
+#        Has no effect on alts, which playerbots does not teleport.
 #        Default: 1
 OllamaChat.Autopilot.NoTeleport = 1
 
@@ -2237,30 +2283,28 @@ OllamaChat.Autopilot.CorpseRunMinutes = 10
 OllamaChat.Autopilot.NoRandomize = 1
 
 #    OllamaChat.Autopilot.Route.QueriesPerVisit
-#        Long walks. Playerbots walks straight only to points under 70 yards
-#        away; further than that it guesses, and after 90 seconds stuck it
-#        teleports. So a `goto` further than 60 yards follows a route built
-#        on the server's navmesh (mmaps), the way mod-city-siege routes its
+#        Long walks. A walk further than 60 yards follows a route built on
+#        the server's navmesh (mmaps), the way mod-city-siege routes its
 #        armies: a corridor for which way round obstacles to go, then
-#        ground-following legs, thinned to nodes the bot is handed one at a
+#        ground-following legs, thinned to nodes the bot walks one at a
 #        time. The route is built a few hundred yards ahead of the bot as it
-#        walks, because navmesh tiles only load with their map grid.
-#        This is how many navmesh queries one visit may spend building it.
-#        Without mmaps, walks fall back to playerbots' own movement.
+#        walks, because navmesh tiles only load with their map grid. This is
+#        how many navmesh queries one visit may spend building it. Without
+#        mmaps, the bot walks straight at the destination.
 #        Default: 6
 OllamaChat.Autopilot.Route.QueriesPerVisit = 6
 
 #    OllamaChat.Autopilot.Route.NodeSpacing
-#        Yards between route nodes (8-60). Keep it well under 70.
+#        Yards between route nodes (8-60).
 #        Default: 28
 OllamaChat.Autopilot.Route.NodeSpacing = 28
 
 #    OllamaChat.Autopilot.Route.SteepCost
 #    OllamaChat.Autopilot.Route.WaterCost
-#        How much the route avoids steep ground and water, as a cost
-#        multiplier (1-1000). High enough to prefer roads and bridges; a
-#        ramp or ford that is the only way still gets used. Lava and slime
-#        are never crossed.
+#        How much routes avoid steep ground and water, as a cost multiplier
+#        (1-1000). High enough to prefer roads and bridges; a ramp or ford
+#        that is the only way still gets used. Lava and slime are never
+#        crossed.
 #        Default: 25 and 8
 OllamaChat.Autopilot.Route.SteepCost = 25
 OllamaChat.Autopilot.Route.WaterCost = 8

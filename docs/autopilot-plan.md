@@ -16,8 +16,10 @@ For each enrolled bot, the LLM decides:
   train, repair and sell, spend talents, walk to that zone, queue for a
   dungeon.
 
-Playerbots' AI carries the orders out: walking, fighting, looting, and the
-details inside each order.
+Playerbots' AI fights, loots, gathers and casts. Where the bot goes is the
+LLM's call, carried out by autopilot's own travel (walking routes, flights,
+boats and zeppelins). Playerbots' own overhead controllers (NewRpg and the
+like) are off.
 
 Code does two things only:
 
@@ -56,10 +58,9 @@ core APIs; nothing requires changing another repository.
  │  ├ facts: diary snapshot, zone, gold/skill, goal │
  │  ├ alerts: death streak, gear, bags → ask early  │
  │  ├ Reassert: marker = reset detector; replay the │
- │  │   LLM's strategies; situation (group/instance)│
- │  ├ CheckStuck: abandon a stuck walk, tell the LLM│
- │  ├ errand: keep walking, use the service on      │
- │  │   arrival, report back                         │
+ │  │   LLM's strategies; controllers off; situation │
+ │  ├ errand: travel legs (walk / fly / boat), then │
+ │  │   do the job on arrival, report back           │
  │  └ plan due? → build prompt → Submit ────────────┼─► QueryOllama(Autopilot)
  │ drain decisions ◄────────────────────────────────┼── parse JSON
  │  └ ApplyDecision: identity, goal, RunCommands     │
@@ -86,78 +87,126 @@ core APIs; nothing requires changing another repository.
   through the chat command, because the chat command would also save the
   change into playerbots' own store. Recorded in `Row::strategies` and
   replayed after every playerbots reset (the marker on each engine detects
-  one).
-- **`goto <service>`.** Walks to the nearest friendly repair vendor, vendor,
+  one). Turning on `new rpg`, `rpg` or `travel` is refused (see below).
+- **`goto <service>`.** Goes to the nearest friendly repair vendor, vendor,
   class trainer, profession trainer, innkeeper, flightmaster, banker or
   auctioneer on this map. The startup index (`AutopilotWorld_Build`) is built
   from `GetAllCreatureData` with npcflags, faction and
-  `Trainer::IsTrainerValidForPlayer`. The walk is NewRpg's `go camp`. On
-  arrival, the errand does the job:
+  `Trainer::IsTrainerValidForPlayer`. On arrival, the errand does the job:
   - repair vendor: `repair` + `s gray`
   - vendor: `s gray`
   - trainer: `Trainer::TeachSpell` for everything affordable
   - inn: `SetHomebind`
-- **`goto zone <name>`.** Walks to the friendly service NPC nearest the
-  zone's centre, which is somewhere a walk can end. Same continent only.
-- **`quest <id|title>`.** `rpgInfo.ChangeToDoQuest`. The quest must be in the
-  log.
-- **`rpg <status>`.** NewRpg focus through `AutopilotRpg_Steer`.
+- **`goto zone <name>`.** Goes to the friendly service NPC nearest the zone's
+  centre, which is somewhere a walk can end, on any continent.
+- **`quest <id|title>`.** The quest must be in the log.
+  - **Incomplete:** go to the nearest spawn of a creature it still needs, else
+    the centre of the quest's POI marker. On arrival, nothing is done: the
+    model turns on what the objective needs.
+  - **Complete:** go to the nearest creature that takes it in, then
+    playerbots' `talk to quest giver` action, with the bot targeting it.
 - **Anything else** goes to `PlayerbotAI::HandleCommand(CHAT_MSG_WHISPER,
   text, bot)` with the bot as sender, exactly as a master's whisper would.
 
 `Autopilot.DeniedCommands` blocks orders by leading words. Each order's result
-("done", "sent", "walking to …", "that quest is not in the log", "denied by
+("done", "sent", "on the way to …", "that quest is not in the log", "denied by
 the server", …) is stored and shown in the next prompt, so a failed order
-leads to a different one.
+leads to a different one. When a trip ends, the model is asked again after
+`QuickReplanSeconds`, because a bot without orders stands still.
+
+## No other controller
+
+Playerbots has its own overhead controllers that pick destinations and
+activities: `new rpg`, the older `rpg` wanderer, and the `travel` planner.
+Those are the LLM's job here, so they are switched off while the bot is its
+own (recorded in the baseline first, so hand-back restores them), and the
+model may not turn them on. Fighting, looting, gathering and accepting quests
+from NPCs next to the bot are still playerbots' work, driven by the
+strategies the model chooses.
+
+## Travel
+
+`mod-ollama-chat_autopilot_travel.cpp` plans a trip as legs. It replans after
+every flight or crossing:
+
+| From → to | Legs |
+|---|---|
+| Another continent | walk to the dock → board → ride → step off; replan |
+| Same continent, beyond `Travel.FlightMinYards`, a flight clearly shorter | walk to the nearest flight master → fly to the taxi node nearest the destination; replan |
+| Otherwise | walk; then step up to the NPC, if there is one |
+
+**Movement.** Autopilot moves the bot itself (`AutopilotMove_To`): a
+`MovePoint` recorded as the bot's last movement at `MOVEMENT_NORMAL`.
+Playerbots' own out-of-combat movement waits for it, and combat outranks it.
+
+**Flights.** A flight goes straight through `ActivateTaxiPathTo`, the same
+way playerbots' flight action does. TravelMgr's flight-master cache and
+`FindTaxiPath` provide the path. If the bot cannot pay, it walks.
+
+**Boats and zeppelins.** These come from `TransportMgr` templates: the stop
+key frames of every non-instance `MO_TRANSPORT`. Each dock gets a place to
+stand ashore (the nearest creature spawn) and a faction check (any nearby
+creature friendly to Human or Orc). A breadth-first search over continents
+picks the first crossing on a shortest chain the bot's faction can use.
+
+- **Boarding:** once the ship is near its stop and has stopped moving, walk
+  straight to a point on deck, found by a dynamic-collision height probe.
+  Playerbots' `UpdateAI` makes the bot a passenger.
+- **Riding:** hold all movement (`MOVEMENT_FORCED`). The core carries
+  passengers across maps.
+- **Getting off:** at the far stop, walk straight ashore.
+
+`MotionTransport::IsMoving` is private, so "docked" means the ship is near
+the stop and hasn't moved since the last look.
+
+**Stuck.** If a walk makes no real progress for `Travel.StuckSeconds`, its
+route is rebuilt (twice) before the trip fails.
 
 ## Long walks
 
-NewRpg's `MoveFarTo` walks a plain pathfinding `MoveTo` only under 70 yards
-(`pathFinderDis`). Further than that it uses one mmap query (smooth paths cap
-near 300 yards) or random forward samples. After 90 seconds without progress
-it teleports.
-
-A `goto` further than 60 yards therefore follows a route
-(`mod-ollama-chat_autopilot_route.cpp`). This is mod-city-siege's two-pass
-design (`CitySiegePathing.cpp`), built lazily:
+NewRpg's `MoveFarTo` walks a plain pathfinding `MoveTo` only under 70 yards.
+Further than that it uses one mmap query (smooth paths cap near 300 yards) or
+random forward samples, and after 90 seconds without progress it teleports.
+Autopilot doesn't use it. A walk further than 60 yards follows a route
+(`mod-ollama-chat_autopilot_route.cpp`) instead. This is mod-city-siege's
+two-pass design (`CitySiegePathing.cpp`), built lazily:
 
 1. **Corridor.** `findStraightPath` from the walk cursor to the destination.
    The corners are XY guidance only.
 2. **Walk.** Smooth `PathGenerator` legs toward each corner, at most 120
-   yards, halved until one fits. Each aim is re-seated on the ground under
-   the walking height. Steep ground and water are costed; lava and slime are
-   excluded.
+   yards each, halved until one fits. Each aim is re-seated on the ground
+   under the walking height. Steep ground and water are costed; lava and
+   slime are excluded.
 3. **Thin** the dense points to nodes about 28 yards apart, keeping turns.
-4. **Hand over** one node at a time with NewRpg `go camp`. Each node is well
-   inside 70 yards.
+4. **Hand over** one node at a time with `AutopilotMove_To`.
 
 Building stops once about 12 nodes lie ahead of the bot, and each visit
 spends at most `Route.QueriesPerVisit` queries. mmap tiles load with their
 grid, so a failure far ahead of the bot is retried once the bot is near.
-Stuck at 60 s means the route is rebuilt from the bot (twice). After that,
-the errand fails and the LLM is told. Without mmaps, it falls back to
-`MoveFarTo`.
+Without mmaps, the bot walks straight at the destination.
 
 ## Situations
 
 | Situation | Orders carried out | On entry | On exit |
 |---|---|---|---|
 | On its own | all | — | — |
-| Human's group | `co` only (`WithRealPlayer = 1`); none with `0` | out-of-combat engine back to baseline, errand ends | LLM's strategies replayed, LLM asked |
+| Human's group | `co` only (`WithRealPlayer = 1`); none with `0` | out-of-combat engine back to baseline, trip ends | LLM's strategies replayed, LLM asked |
 | Dungeon / battleground | `co` only | same | same |
 | Following a bot leader | `co` only | same | same |
 | Dead | none | corpse run (see below) | — |
 
 ## No teleporting
 
-Playerbots moves random bots by teleport in three places. Autopilot stops
-each one for enrolled bots, using public `RandomPlayerbotMgr` calls only:
+Playerbots moves random bots by teleport in two places that matter here.
+Autopilot stops both for enrolled bots, using public `RandomPlayerbotMgr`
+calls only:
 
 | Source | Hold |
 |---|---|
 | Periodic "teleport for level" (`ProcessBot`, every 1–5 h) | `ScheduleTeleport(low, 2h)` every hour |
 | Revive after death (`ProcessBot` → `Revive` → `RandomTeleportGrindForLevel`) | Set `dead` and `revive` before `ProcessBot` marks the death; the dead strategy runs the corpse. After `CorpseRunMinutes`, release `revive`. When alive again, clear both |
-| NewRpg MoveFarTo stuck for 90 s | At 60 s, `SetMoveFarTo(WorldPosition())` + idle; the LLM is told |
+
+NewRpg's stuck teleport doesn't arise, because NewRpg is off.
 
 `NoRandomize` also holds the periodic re-roll (`SetValue(low, "randomize", 1)`).
 That re-roll re-gears the bot and, below level 3 or at the cap, re-levels and

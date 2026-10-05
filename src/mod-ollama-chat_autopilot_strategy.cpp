@@ -6,8 +6,9 @@
 
 #include "AiObjectContext.h"
 #include "NamedObjectContext.h"
-#include "NewRpgBaseAction.h"
-#include "NewRpgInfo.h"
+#include "Creature.h"
+#include "LastMovementValue.h"
+#include "MotionMaster.h"
 #include "PlayerbotAI.h"
 #include "Strategy.h"
 
@@ -43,131 +44,6 @@ namespace
 
     private:
         static Strategy* autopilot(PlayerbotAI* botAI) { return new AutopilotMarkerStrategy(botAI); }
-    };
-
-    // Not registered anywhere and never executed as an action: it exists only
-    // to reach NewRpgBaseAction's protected status-selection helpers.
-    class AutopilotRpgSteer : public NewRpgBaseAction
-    {
-    public:
-        explicit AutopilotRpgSteer(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "autopilot rpg steer") { }
-
-        // Weighted pick among the allowed statuses, trying the next one when a
-        // status has no target right now. Mirrors RandomChangeStatus but
-        // without its fallback of sitting the bot down when nothing fits, and
-        // without checking each target twice (Check* then Select* again).
-        bool Steer(const std::vector<int>& allowed)
-        {
-            std::vector<std::pair<NewRpgStatus, uint32>> candidates;
-            for (int s : allowed)
-            {
-                if (s <= RPG_IDLE || s >= RPG_STATUS_END)
-                    continue;
-                const NewRpgStatus status = static_cast<NewRpgStatus>(s);
-                const int32 weight = sPlayerbotAIConfig.RpgStatusProbWeight[status];
-                if (weight > 0)
-                    candidates.emplace_back(status, static_cast<uint32>(weight));
-            }
-
-            while (!candidates.empty())
-            {
-                uint32 total = 0;
-                for (const auto& c : candidates)
-                    total += c.second;
-
-                uint32 roll = urand(1, total);
-                size_t pick = 0;
-                for (; pick < candidates.size(); ++pick)
-                {
-                    if (roll <= candidates[pick].second)
-                        break;
-                    roll -= candidates[pick].second;
-                }
-                pick = std::min(pick, candidates.size() - 1);
-
-                if (Enter(candidates[pick].first))
-                    return true;
-                candidates.erase(candidates.begin() + pick);
-            }
-            return false;
-        }
-
-    private:
-        bool Enter(NewRpgStatus status)
-        {
-            NewRpgInfo& info = botAI->rpgInfo;
-            switch (status)
-            {
-                case RPG_WANDER_RANDOM:
-                    if (!CheckRpgStatusAvailable(status))
-                        return false;
-                    info.ChangeToWanderRandom();
-                    return true;
-                case RPG_WANDER_NPC:
-                    if (!CheckRpgStatusAvailable(status))
-                        return false;
-                    info.ChangeToWanderNpc();
-                    return true;
-                case RPG_GO_GRIND:
-                {
-                    WorldPosition pos = SelectRandomGrindPos(bot);
-                    if (pos == WorldPosition())
-                        return false;
-                    info.ChangeToGoGrind(pos);
-                    return true;
-                }
-                case RPG_GO_CAMP:
-                {
-                    WorldPosition pos = SelectRandomCampPos(bot);
-                    if (pos == WorldPosition())
-                        return false;
-                    info.ChangeToGoCamp(pos);
-                    return true;
-                }
-                case RPG_DO_QUEST:
-                {
-                    std::vector<uint32> quests;
-                    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
-                    {
-                        const uint32 questId = bot->GetQuestSlotQuestId(slot);
-                        if (!questId || botAI->lowPriorityQuest.count(questId))
-                            continue;
-                        std::vector<POIInfo> poi;
-                        if (GetQuestPOIPosAndObjectiveIdx(questId, poi, true))
-                            quests.push_back(questId);
-                    }
-                    if (quests.empty())
-                        return false;
-                    const uint32 questId = quests[urand(0, static_cast<uint32>(quests.size()) - 1)];
-                    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-                    if (!quest)
-                        return false;
-                    info.ChangeToDoQuest(questId, quest);
-                    return true;
-                }
-                case RPG_TRAVEL_FLIGHT:
-                {
-                    uint32 entry = 0;
-                    WorldPosition pos;
-                    std::vector<uint32> path;
-                    if (!SelectRandomFlightTaxiNode(entry, pos, path))
-                        return false;
-                    info.ChangeToTravelFlight(entry, pos, std::move(path));
-                    return true;
-                }
-                case RPG_REST:
-                    info.ChangeToRest();
-                    bot->SetStandState(UNIT_STAND_STATE_SIT);
-                    return true;
-                case RPG_OUTDOOR_PVP:
-                    if (!CheckRpgStatusAvailable(status))
-                        return false;
-                    info.ChangeToOutdoorPvp();
-                    return true;
-                default:
-                    return false;
-            }
-        }
     };
 
     bool g_registered = false;
@@ -233,95 +109,63 @@ bool AutopilotStrategy_IsRegistered()
     return g_registered;
 }
 
-int AutopilotRpg_StatusFromName(const std::string& name)
+namespace
 {
-    NewRpgStatus status = NewRpgInfo::StatusFromString(name);
-    return status == RPG_STATUS_END ? -1 : static_cast<int>(status);
-}
-
-std::string AutopilotRpg_StatusName(int status)
-{
-    switch (status)
+    LastMovement& LastMove(PlayerbotAI* ai)
     {
-        case RPG_IDLE:          return "idle";
-        case RPG_GO_GRIND:      return "go grind";
-        case RPG_GO_CAMP:       return "go camp";
-        case RPG_WANDER_RANDOM: return "wander random";
-        case RPG_WANDER_NPC:    return "wander npc";
-        case RPG_DO_QUEST:      return "do quest";
-        case RPG_TRAVEL_FLIGHT: return "travel flight";
-        case RPG_REST:          return "rest";
-        case RPG_OUTDOOR_PVP:   return "outdoor pvp";
-        default:                return "unknown";
+        return ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
     }
 }
 
-int AutopilotRpg_CurrentStatus(PlayerbotAI* ai)
+void AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath)
 {
-    return ai ? static_cast<int>(ai->rpgInfo.GetStatus()) : -1;
-}
-
-bool AutopilotRpg_IsTravelling(PlayerbotAI* ai)
-{
-    if (!ai)
-        return false;
-    if (Player* bot = ai->GetBot())
-        if (bot->IsInFlight())
-            return true;
-    return ai->rpgInfo.GetStatus() == RPG_TRAVEL_FLIGHT;
-}
-
-bool AutopilotRpg_GoTo(PlayerbotAI* ai, uint32_t map, float x, float y, float z)
-{
-    if (!ai)
-        return false;
-    ai->rpgInfo.ChangeToGoCamp(WorldPosition(map, x, y, z));
-    return true;
-}
-
-bool AutopilotRpg_DoQuest(PlayerbotAI* ai, uint32_t questId)
-{
-    if (!ai || !questId)
-        return false;
-    Player* bot = ai->GetBot();
-    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-    if (!bot || !quest)
-        return false;
-    const QuestStatus status = bot->GetQuestStatus(questId);
-    if (status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE)
-        return false;
-    ai->rpgInfo.ChangeToDoQuest(questId, quest);
-    return true;
-}
-
-uint32_t AutopilotRpg_CurrentQuest(PlayerbotAI* ai)
-{
-    if (!ai || ai->rpgInfo.GetStatus() != RPG_DO_QUEST)
-        return 0;
-    return std::get<NewRpgInfo::DoQuest>(ai->rpgInfo.data).questId;
-}
-
-bool AutopilotRpg_IsStuck(PlayerbotAI* ai, uint32_t ms)
-{
-    if (!ai)
-        return false;
-    const NewRpgInfo& info = ai->rpgInfo;
-    return info.stuckTs != 0 && info.stuckAttempts >= 3 && GetMSTimeDiffToNow(info.stuckTs) >= ms;
-}
-
-void AutopilotRpg_Abandon(PlayerbotAI* ai)
-{
-    if (!ai)
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    if (!bot || !bot->IsInWorld() || bot->IsInFlight() || bot->IsBeingTeleported())
         return;
-    ai->rpgInfo.SetMoveFarTo(WorldPosition());
-    ai->rpgInfo.ChangeToIdle();
+
+    if (bot->IsSitState())
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+
+    bot->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, generatePath, false);
+
+    // Recorded the way playerbots records its own moves, so its out-of-combat
+    // movement waits for this one (MOVEMENT_NORMAL); combat still outranks
+    // it, so a bot that is attacked on the way fights back.
+    const float speed = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
+    const float delay = bot->GetExactDist(x, y, z) / speed * IN_MILLISECONDS + 500.0f;
+    LastMove(ai).Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
 }
 
-bool AutopilotRpg_Steer(PlayerbotAI* ai, const std::vector<int>& allowed)
+void AutopilotMove_Hold(PlayerbotAI* ai, uint32_t ms, bool overCombat)
 {
-    if (!ai || allowed.empty())
-        return false;
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    if (!bot)
+        return;
+    LastMove(ai).Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                     bot->GetOrientation(), float(ms),
+                     overCombat ? MovementPriority::MOVEMENT_FORCED : MovementPriority::MOVEMENT_NORMAL);
+}
 
-    AutopilotRpgSteer steer(ai);
-    return steer.Steer(allowed);
+bool AutopilotMove_IsMoving(PlayerbotAI* ai)
+{
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    return bot && bot->isMoving();
+}
+
+void AutopilotMove_Stop(PlayerbotAI* ai)
+{
+    if (Player* bot = ai ? ai->GetBot() : nullptr)
+        if (bot->isMoving() && !bot->IsInFlight())
+            bot->StopMovingOnCurrentPos();
+}
+
+bool AutopilotQuest_TalkTo(PlayerbotAI* ai, Creature* npc)
+{
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    if (!bot || !npc)
+        return false;
+    // QuestAction falls back to the bot's own target when it has no master
+    // to take one from.
+    bot->SetTarget(npc->GetGUID());
+    return ai->DoSpecificAction("talk to quest giver", Event(), true);
 }

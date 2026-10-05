@@ -91,6 +91,7 @@ namespace
         uint32_t decisionIntervalMinutes = 15;      // foreground
         uint32_t goalRefreshMinutes      = 90;      // background
         uint32_t defaultPlanMinutes      = 30;
+        uint32_t quickReplanSeconds      = 60;      // after an errand ends
         float    foregroundRange         = 100.0f;  // yards, for Scope::Range
 
         // Reach: who gets LLM time.
@@ -232,6 +233,7 @@ namespace
         bool     planPending     = false;
         uint32_t planSubmittedAt = 0;
         bool     urgentPlan      = false;
+        bool     quickPlan       = false;   // an errand ended: the bot is waiting for orders
         Tier     tier            = Tier::Dormant;
 
         // Out-of-combat strategies are only the model's while the bot is its
@@ -468,6 +470,16 @@ namespace
         return changed;
     }
 
+    // Playerbots strategies that decide where a bot goes and what it does --
+    // the model's job. Kept off; the model may not turn them on.
+    constexpr const char* kControllerStrategies[] = { "nc:new rpg", "nc:rpg", "nc:travel" };
+
+    bool IsController(const std::string& key)
+    {
+        return std::any_of(std::begin(kControllerStrategies), std::end(kControllerStrategies),
+                           [&](const char* k) { return key == k; });
+    }
+
     std::string FormatStrategies(const StrategyMap& m)
     {
         std::string out;
@@ -546,8 +558,7 @@ namespace
         // Walks and teleport holds end with control.
         if (ob)
         {
-            if (ob->errand.active)
-                AutopilotRpg_Abandon(ai);
+            AutopilotCommands_StopErrand(ai, ob->errand);
             ob->errand = AutopilotErrand();
             // A dead bot may be on a held revive from an earlier session too.
             if (bot && (ob->reviveHeld || !bot->IsAlive()) && sRandomPlayerbotMgr.IsRandomBot(bot))
@@ -679,7 +690,7 @@ namespace
         Situation s;
         s.dead       = !bot->IsAlive();
         s.inCombat   = bot->IsInCombat();
-        s.travelling = AutopilotRpg_IsTravelling(ai);
+        s.travelling = bot->IsInFlight() || bot->GetTransport() != nullptr;
         s.inFlight   = bot->IsInFlight();
 
         if (Map* map = bot->GetMap())
@@ -832,10 +843,18 @@ namespace
             return;
         }
 
-        // Replaying is the first change to a bot whose "before" was given
-        // back; take it again first.
-        if (row.baseline.empty() && !row.strategies.empty())
+        // Record the bot as it was before autopilot changes anything, so it
+        // can be handed back exactly.
+        if (row.baseline.empty())
             row.baseline = CaptureStrategies(ai);
+
+        // The model is the bot's controller. Playerbots' own overhead
+        // controllers -- NewRpg, the old rpg wanderer, the travel planner --
+        // would pick destinations and activities behind its back, so they
+        // stay off while the bot is its own. Hand-back restores them.
+        if (sit.CanUseNonCombat())
+            for (const char* key : kControllerStrategies)
+                ApplyStrategy(ai, key, false);
 
         if ((coReset || ob.coReplay) && sit.CanUseCombat())
         {
@@ -851,10 +870,7 @@ namespace
             if (!row.baseline.empty())
                 RestoreEngine(ai, row.baseline, BOT_STATE_NON_COMBAT);
             if (ob.errand.active)
-            {
-                AutopilotRpg_Abandon(ai);
-                ob.errand.active = false;
-            }
+                AutopilotCommands_StopErrand(ai, ob.errand);
             ob.ncReplay = true;
         }
 
@@ -899,12 +915,18 @@ namespace
                     size_t      unknownCount = 0;
                     for (const auto& [key, on] : changes)
                     {
+                        if (on && IsController(key))
+                        {
+                            unknown += (unknown.empty() ? "" : ", ") + key.substr(3) + " (you are their controller)";
+                            ++unknownCount;
+                            continue;
+                        }
                         // A name playerbots does not know changes nothing;
                         // say so rather than keep replaying it.
                         ApplyStrategy(ai, key, on);
                         if (ai->HasStrategy(key.substr(3), EngineOf(key)) != on)
                         {
-                            unknown += (unknown.empty() ? "" : ", ") + key.substr(3);
+                            unknown += (unknown.empty() ? "" : ", ") + key.substr(3) + " (no such strategy)";
                             ++unknownCount;
                         }
                         else
@@ -914,7 +936,7 @@ namespace
                         result = "nothing to change";
                     else if (!unknown.empty())
                         result = (unknownCount == changes.size() ? "" : "done, except ") +
-                                 std::string("no such strategy: ") + unknown;
+                                 std::string("not changed: ") + unknown;
                     else
                         result = "done";
                 }
@@ -1002,28 +1024,6 @@ namespace
             ob.deadSince  = 0;
             ob.reviveHeld = false;
         }
-    }
-
-    // NewRpg teleports a bot to a far destination it has been stuck short of
-    // for 90 seconds. Give up on the walk before that, and tell the model.
-    void CheckStuck(Player* bot, PlayerbotAI* ai, uint64_t guid, Online& ob, const Situation& sit)
-    {
-        if (!g_cfg.noTeleport || !sit.CanUseNonCombat() || sit.inCombat || !AutopilotRpg_IsStuck(ai, 60 * 1000))
-            return;
-
-        // On a routed errand, route again from here first (twice at most).
-        if (AutopilotCommands_Reroute(bot, ai, ob.errand))
-        {
-            RecordEvent(guid, "stuck", "rerouting to " + ob.errand.label);
-            return;
-        }
-
-        AutopilotRpg_Abandon(ai);
-        ++g_statStuck;
-        const std::string where = ob.errand.active ? ob.errand.label : std::string("their destination");
-        ob.errand.active = false;
-        RecordEvent(guid, "stuck", "could not find a way to " + where);
-        ob.urgentPlan = true;
     }
 
     // ----------------------------------------------------------------------
@@ -1255,15 +1255,15 @@ namespace
         return "nc: " + list(BOT_STATE_NON_COMBAT) + " | co: " + list(BOT_STATE_COMBAT);
     }
 
-    std::string DescribeRpg(PlayerbotAI* ai)
+    // What the bot is doing on the model's orders right now.
+    std::string DescribeActivity(Player* bot, const Online& ob)
     {
-        if (!ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
-            return "not living on their own (new rpg is off)";
-        std::string out = AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai));
-        if (const uint32_t questId = AutopilotRpg_CurrentQuest(ai))
-            if (Quest const* q = sObjectMgr->GetQuestTemplate(questId))
-                out += SafeFormat(" [{}] {}", questId, q->GetTitle());
-        return out;
+        if (bot->IsInCombat())
+            return "fighting";
+        if (!ob.errand.active)
+            return "standing by: no errand under way";
+        const std::string how = AutopilotTravel_Describe(bot, ob.errand.trip);
+        return how.empty() ? "on the way to " + ob.errand.label : how + ", bound for " + ob.errand.label;
     }
 
     // "- [783] A Threat Within (level 1): ready to turn in"
@@ -1317,11 +1317,9 @@ namespace
 
         ctx.commandReference = AutopilotCommands_Reference();
         ctx.strategiesOn     = DescribeLiveStrategies(ai);
-        ctx.rpgStatus        = DescribeRpg(ai);
+        ctx.rpgStatus        = DescribeActivity(bot, ob);
         if (ob.errand.active)
-            ctx.errand = SafeFormat("walking to {} ({} yd away, for {})", ob.errand.label,
-                                    uint32_t(bot->GetDistance(ob.errand.x, ob.errand.y, ob.errand.z)),
-                                    Span(now - ob.errand.startedAt));
+            ctx.errand = SafeFormat("(for {})", Span(now - ob.errand.startedAt));
         ctx.questLog    = DescribeQuestLog(bot);
         ctx.services    = AutopilotWorld_DescribeServices(bot);
         ctx.zones       = AutopilotWorld_ZonesForLevel(bot);
@@ -1387,7 +1385,8 @@ namespace
         const uint32_t sinceLast = row.lastPlanAt ? now - row.lastPlanAt : UINT32_MAX;
         const uint32_t gap = (ob.tier == Tier::Foreground ? g_cfg.decisionIntervalMinutes
                                                           : g_cfg.goalRefreshMinutes) * 60;
-        const bool allowed = force || sinceLast >= gap || (ob.urgentPlan && sinceLast >= kUrgentGapSeconds);
+        const bool allowed = force || sinceLast >= gap || (ob.urgentPlan && sinceLast >= kUrgentGapSeconds) ||
+                             (ob.quickPlan && sinceLast >= g_cfg.quickReplanSeconds);
         if (!allowed)
             return false;
 
@@ -1405,6 +1404,7 @@ namespace
         ob.planPending     = true;
         ob.planSubmittedAt = now;
         ob.urgentPlan      = false;
+        ob.quickPlan       = false;
 
         if (g_cfg.debug)
             LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: asked the model about {} ({}{}).",
@@ -1824,19 +1824,19 @@ namespace
 
         if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
         {
-            CheckStuck(bot, ai, guid, ob, sit);
-
-            // A walk the model sent the bot on: keep it walking, and use the
-            // service on arrival. Finishing or failing is a moment to ask the
-            // model what next.
-            if (std::string done = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now); !done.empty())
+            // A trip the model sent the bot on: keep it going, and do the job
+            // on arrival. Finishing or failing is the moment to ask the model
+            // what next -- soon, since without orders the bot stands idle.
+            const AutopilotErrandUpdate u = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now);
+            if (!u.note.empty())
+                RecordEvent(guid, u.finished ? "errand" : "travel", u.note);
+            if (u.finished)
             {
-                RecordEvent(guid, "errand", done);
-                row.lastResults.push_back(done);
+                row.lastResults.push_back(u.note);
                 if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
                     row.lastResults.erase(row.lastResults.begin());
-                row.dirty     = true;
-                ob.urgentPlan = true;
+                row.dirty    = true;
+                ob.quickPlan = true;
             }
         }
 
@@ -1853,7 +1853,7 @@ namespace
         // In a group or a dungeon it is still asked -- only its combat orders
         // are carried out there. When it cannot be asked (no budget, nobody
         // around), the bot keeps doing what it was last told.
-        const bool due = !row.HasIdentity() || ob.urgentPlan || now >= row.planUntil;
+        const bool due = !row.HasIdentity() || ob.urgentPlan || ob.quickPlan || now >= row.planUntil;
         if (due)
             TrySubmitPlan(bot, ai, guid, row, ob, now, false);
     }
@@ -2286,8 +2286,7 @@ namespace
         if (ai)
         {
             handler->SendSysMessage("  live: " + DescribeLiveStrategies(ai));
-            handler->SendSysMessage("  ai: " + DescribeRpg(ai) +
-                                    (ob.errand.active ? " | errand: " + ob.errand.label : std::string()) +
+            handler->SendSysMessage("  now: " + DescribeActivity(bot, ob) +
                                     (ob.reviveHeld ? " | corpse run" : ""));
         }
         for (const std::string& r : row.lastResults)
@@ -2554,6 +2553,7 @@ void Autopilot_LoadConfig()
     c.decisionIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DecisionIntervalMinutes", 15));
     c.goalRefreshMinutes      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 90));
     c.defaultPlanMinutes      = std::clamp<uint32_t>(sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DefaultPlanMinutes", 30), 5, 180);
+    c.quickReplanSeconds      = std::max<uint32_t>(10, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.QuickReplanSeconds", 60));
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
@@ -2622,6 +2622,7 @@ void Autopilot_Load()
 {
     AutopilotStrategy_Register();
     AutopilotWorld_Build();
+    AutopilotTravel_Build();
 
     g_tablesOk = false;
     if (QueryResult result = CharacterDatabase.Query(

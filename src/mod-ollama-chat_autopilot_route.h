@@ -17,7 +17,8 @@ class Player;
 // range, a city wall, a river -- most walks of more than a few hundred yards
 // end in that teleport.
 //
-// So an errand walks a route instead, the way mod-city-siege marches its
+// Autopilot does not use MoveFarTo (NewRpg is a controller the LLM replaces);
+// an errand walks a route instead, the way mod-city-siege marches its
 // armies (CitySiegePathing.cpp), in two passes:
 //
 //   corridor  findStraightPath from where the route has got to toward the
@@ -27,8 +28,8 @@ class Player;
 //             120 yards per query, halved until a query fits. Every point is
 //             genuinely walkable. Thinned to nodes about 28 yards apart.
 //
-// The bot is then handed one node at a time, always well inside the 70 yards
-// where playerbots moves with a plain pathfinding MoveTo.
+// The bot is then walked one node at a time (AutopilotMove_To), each a short,
+// plainly pathfindable hop.
 //
 // Unlike a siege route, this is built lazily, a few hundred yards ahead of the
 // bot, a few queries per visit: navmesh tiles are only loaded with their map

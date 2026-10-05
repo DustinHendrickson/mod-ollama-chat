@@ -581,32 +581,33 @@ off for the session if the provider rejects it.
 > [!WARNING]
 > Experimental and off by default. Try it on a few bots first.
 
-Autopilot makes the LLM the **master** of selected bots. It decides who each
-character is, what it wants, and what it does about it, and then gives the
-orders a player would whisper to their own bot:
+Autopilot makes the LLM the **controller** of selected bots. It decides who
+each character is, what it wants, and what it does about it, and then gives
+the orders a player would whisper to their own bot:
 
 ```
 nc +grind,-quest          quest 783          goto trainer
-goto zone Westfall        talents            autogear
-co +flee,+potions         nc +lfg            rpg wander npc
+goto zone Tanaris         talents            autogear
+co +flee,+potions         nc +lfg            goto repair
 ```
 
-Playerbots' AI carries the orders out: it walks, fights and loots. The LLM
-picks the quest, sends the bot to train, repair or change zones, sets how it
-fights, and decides when to grind, explore, gather, queue for a dungeon or take
-a break.
+Playerbots' own overhead controllers (`new rpg`, the older `rpg` wanderer and
+the `travel` planner) are switched off while a bot is on autopilot, so
+nothing else picks where the bot goes or what it sets out to do. Playerbots'
+AI still fights, loots, gathers and casts. Without orders, an autopilot bot
+stands where it is.
 
 ### A bot's evening
 
 ```
-[plan]  "head into town to train, then back to the Defias" for 30m
-        [goto trainer; quest 12]: just hit 10, new spells to learn
-[order] goto trainer -> walking to the trainer Llane Beshere (412 yd)
-[errand] trained at the trainer Llane Beshere: learned 3 spells
-[plan]  "clearing the farmhouse" for 45m [talents; quest 12; nc +loot]
-[alert] gear is badly damaged (18% durability)
-[plan]  "patch up my armour" for 15m [goto repair]
-[errand] arrived at the repair vendor Corina Steele: repairing and selling junk
+[plan]   "off to Tanaris to see the desert" for 60m [goto zone Tanaris]
+[order]  goto zone Tanaris -> on the way to Tanaris (another continent)
+[travel] boarded The Maiden's Fancy
+[travel] arrived in Kalimdor by The Maiden's Fancy
+[travel] took a flight to Gadgetzan, Tanaris
+[travel] landed at Gadgetzan, Tanaris
+[errand] arrived in Tanaris
+[plan]   "first, a proper bed" for 20m [goto inn]
 ```
 
 Every line is in `.ollama autopilot history <bot>`.
@@ -621,16 +622,19 @@ Every line is in `.ollama autopilot history <bot>`.
   measured from the bot, not taken on the LLM's word.
 - **Orders.** Up to 8 per plan, run in order. Any playerbots command works
   unless the operator denies it.
-- **When to look again.** Each plan says how long it holds.
+- **When to look again.** Each plan says how long it holds. When a trip ends,
+  the LLM is asked again within a minute (`QuickReplanSeconds`), so the bot
+  doesn't stand idle.
 
 ### What the LLM sees
 
 The bot's level, class, zone, gold, gear and bags. Its quest log with ids.
 The nearest services, such as the trainer, repair vendor and inn. Zones that
-suit its level. Its live strategies and what its AI is doing right now. What
-each of its last orders actually did, so it can try something else when one
-fails. Its goal and progress, rewards in the last hour, recent events and
-temptations (a dungeon just unlocked, an epic drop, a capped profession).
+suit its level. Its live strategies and what it is doing right now (walking,
+flying, waiting for a boat). What each of its last orders actually did, so it
+can try something else when one fails. Its goal and progress, rewards in the
+last hour, recent events and temptations (a dungeon just unlocked, an epic
+drop, a capped profession).
 
 ### What autopilot controls, and what it doesn't
 
@@ -638,68 +642,74 @@ temptations (a dungeon just unlocked, an epic drop, a capped profession).
 
 | Area | Orders | Where |
 |---|---|---|
-| Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy (grind, quest, explore, gather, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
-| Quests | `quest <id>` works on a quest from the log; `nc +quest` accepts and turns in | On its own |
-| Errands | `goto repair / vendor / trainer / profession / inn / flightmaster / bank / auction`: walks there and uses it (repairs and sells junk, learns every affordable spell, sets the inn as home) | On its own |
-| Travel | `goto zone <name>` walks to a town or camp in a zone on this continent; `go travel`, flights | On its own |
+| Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy except the overhead controllers (grind, quest, gather, loot, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
+| Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in | On its own |
+| Errands | `goto repair / vendor / trainer / profession / inn / flightmaster / bank / auction` goes there and uses it: repairs and sells junk, learns every affordable spell, or sets the inn as home | On its own |
+| Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats and zeppelins as needed | On its own |
 | Upkeep | `talents`, `autogear`, `s gray`, `repair`, `maintenance` | On its own |
-| What it lives for | `rpg <status>`: `do quest`, `wander npc`, `go grind`, `go camp`, `wander random`, `travel flight`, `rest` | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 
 **Autopilot doesn't control:**
 
-- **Steering, targeting, casting and rotations.** Playerbots' AI does all of
-  this, as it always has.
+- **Fighting, targeting, casting and rotations.** Playerbots' AI does all of
+  this, as it always has. A bot attacked on the way fights back, then carries
+  on.
 - **Orders on the deny-list.** By default that means logout, resets,
   destroying items, teleports, summons, mail, cheats, debug, raw `do`
-  actions, leaving the group, releasing the spirit and guild management
-  (`Autopilot.DeniedCommands`).
+  actions, leaving the group, releasing the spirit, guild management and
+  playerbots' `rpg` commands (`Autopilot.DeniedCommands`).
 - **Bots in a human's group.** The player leads, and only the LLM's combat
   orders (`co ...`) are carried out. With `WithRealPlayer = 0`, autopilot
   doesn't touch them at all.
 - **Bots in a dungeon or battleground, or following a bot group's leader.**
   Only combat orders are carried out. On entry, the bot's out-of-combat
-  strategies go back to what it had before the LLM. When it leaves, the
-  LLM's strategies return and it is asked what to do next.
-- **Crossing to another continent.** `goto` only finds places on the same
-  map. Boats and zeppelins are up to playerbots' travel and flight
-  strategies.
+  strategies go back to what it had before autopilot, and any trip under
+  way ends. When it leaves, the LLM's strategies return and it is asked what
+  to do next.
+- **Portals.** The Dark Portal and city portals aren't used. Outland is
+  reachable only where a boat goes (Azuremyst Isle).
 - **Buying, crafting and the auction house.** Selling junk, repairing and
   training are covered. Anything else depends on a playerbots command the LLM
   can give, such as `wts` or `craft`.
 - **Chat.** Chat replies don't mention the bot's plan yet. Autopilot and chat
   run side by side.
 - **Bots it can't plan for.** With nobody nearby (the default reach), a bot
-  keeps its last orders. A newly enrolled bot behaves like an ordinary
-  playerbot until its first plan.
+  keeps its last orders. A newly enrolled bot stands idle until its first
+  plan arrives.
+
+**Getting around.** Travel is autopilot's own; it doesn't use playerbots'
+NewRpg.
+
+- **Walking.** Anything further than 60 yards follows a route built on the
+  server's navmesh, the way mod-city-siege routes its armies. The bot is
+  handed one node (about 28 yards) at a time, and the route is built a few
+  hundred yards ahead as it walks. A stuck bot reroutes twice before the
+  trip fails. Without mmaps, it walks straight at the destination.
+- **Flights.** On the same continent, a flight is taken when it clearly
+  saves distance and the bot can pay for it. Otherwise the bot walks.
+- **Boats and zeppelins.** These are found at startup from the server's
+  transports. A bot only uses docks whose NPCs are friendly to its faction,
+  so an Alliance bot never goes to a Horde zeppelin tower. Several crossings
+  are chained when needed. The bot waits at the dock, walks on when the ship
+  docks, stays on deck, and steps off at the other end.
 
 **No teleporting** (`NoTeleport`, on by default). Playerbots normally moves
-random bots by teleport: every hour or so to a spot for their level, after a
-death instead of a corpse run, and when a long walk is stuck. For autopilot
-bots, all three are stopped:
+random bots by teleport: every hour or so to a spot for their level, and
+after a death instead of a corpse run. For autopilot bots:
 
 - The periodic teleport is pushed back every hour.
 - A dead bot runs back to its body. After `CorpseRunMinutes` (10) it is
   revived the normal way.
-- A stuck walk is abandoned before playerbots would teleport it, and the LLM
-  is told it couldn't get there.
 
 `NoRandomize` also holds playerbots' periodic re-roll, which would otherwise
 re-gear the bot and, at level 1–2 or the level cap, give it a new level
 somewhere else. `AiPlayerbot.AutoTeleportForLevel` in `playerbots.conf` is
 separate; turn it off for full coverage.
 
-**Long walks.** Playerbots walks straight only to points under 70 yards away.
-Past that it guesses, and when it gets stuck it teleports. So a `goto`
-further than 60 yards follows a route built on the server's navmesh, the
-same way mod-city-siege routes its armies, and the bot is handed one node
-(about 28 yards) at a time. The route is built a few hundred yards ahead as
-the bot walks, and is rebuilt if it gets stuck. It needs mmaps; without
-them, walks fall back to playerbots' own movement. Same continent only.
-
-**Handing back.** Before its first strategy change, the bot's strategies are
+**Handing back.** Before autopilot changes anything, the bot's strategies are
 recorded and saved in the database. When the bot is turned off or autopilot
-is disabled, the bot goes back to exactly that.
+is disabled, the bot goes back to exactly that, including the overhead
+controllers.
 
 ### Quick start
 
@@ -789,8 +799,9 @@ Design notes are in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
 
 ### Good to know
 
-- Orders use playerbots' **NewRpg** system (`new rpg`) to walk. Autopilot
-  switches it on, and the older `rpg` off, when an order needs it.
+- Boats and zeppelins depend on the server's transports running. If a bot
+  waits at a dock for `Travel.BoatWaitMinutes` and nothing comes, the trip
+  fails and the LLM is told.
 - Decisions are only as good as your model. A small model may give thin
   identities or orders that don't fit. Each refused or failed order is shown
   to the LLM on its next plan and counted in `.ollama autopilot status`.

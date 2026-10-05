@@ -6,6 +6,7 @@
 #include "Config.h"
 #include "Creature.h"
 #include "Log.h"
+#include "Map.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "QuestDef.h"
@@ -22,37 +23,33 @@ namespace
     // What the LLM is told it can do. Every playerbots command named here was
     // checked against this fork's chat command handler.
     const char* const kDefaultReference =
-        "Commands are what a player whispers to their own bot. Send any number, in order.\n"
+        "You are their controller: nothing else decides where they go or what they set out to do. Without "
+        "orders they stay where they are and only do what their strategies make them do around them.\n"
         "STRATEGIES (behaviours that stay on until changed):\n"
-        "- nc +name,-name : out-of-combat behaviours. Useful: new rpg (live in the world on their own: quests, "
-        "camps, hunting spots, NPCs), quest (accept and turn in quests), grind (attack monsters nearby), travel "
-        "(go to destinations), explore, gather (herbs, ore, skins), loot, food (eat/drink when low), mount, "
-        "lfg (queue for dungeons), bg (queue for battlegrounds), pvp (fight enemy players), duel, start duel, "
-        "emote, guild, group (invite people nearby), maintenance (keep spells, talents and gear up to date)\n"
+        "- nc +name,-name : out-of-combat behaviours. Useful: grind (fight monsters around them), quest (accept "
+        "and turn in quests with NPCs right next to them), loot, gather (herbs, ore, skins), food (eat and drink "
+        "when low), mount, lfg (queue for dungeons), bg (queue for battlegrounds), pvp (fight enemy players), "
+        "duel, emote, guild, group (invite people nearby), maintenance (keep spells, talents and gear up to date)\n"
         "- co +name,-name : combat behaviours. Useful: flee (run when losing), potions, avoid aoe, aggressive, "
         "threat (do not pull aggro), kite, save mana. Class and role strategies (tank, heal, dps, aoe...) also "
         "exist; change them only if you are sure.\n"
-        "ACTIONS:\n"
-        "- quest <id> : work on that quest from the quest log\n"
-        "- rpg <status> : focus on one of: do quest, wander npc, go camp, go grind, wander random, travel flight, rest\n"
-        "- goto <service> : walk to the nearest repair, vendor, trainer, profession, inn, flightmaster, bank or "
-        "auction and use it on arrival (repair and sell junk, learn new spells, bind the hearthstone)\n"
-        "- goto zone <zone name> : walk to a zone on this continent\n"
-        "- go travel <place> : head for a known destination (needs nc +travel)\n"
+        "ORDERS:\n"
+        "- goto <service> : go to the nearest repair, vendor, trainer, profession, inn, flightmaster, bank or "
+        "auction and use it (repair and sell junk, learn new spells, make the inn their home)\n"
+        "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take flight masters, "
+        "boats and zeppelins as needed\n"
+        "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
+        "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself\n"
         "- talents : spend talent points; autogear : equip the best gear they have; s gray : sell junk to a "
         "vendor nearby; repair : repair at a vendor nearby\n"
         "- follow / stay : follow the group leader or stay put\n";
 
     const char* const kDefaultDenied =
         "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,"
-        "guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave";
+        "guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg";
 
     std::string              g_reference;
     std::vector<std::string> g_denied;
-
-    // NewRpg walks straight to anything under 70 yards (its pathFinderDis);
-    // keep a margin.
-    constexpr float kDirectWalk = 60.0f;
 
     std::string Lower(std::string s)
     {
@@ -80,42 +77,28 @@ namespace
                            [&](const std::string& d) { return StartsWithWord(command, d); });
     }
 
-    // Walking needs NewRpg; the legacy rpg wanderer would fight it.
-    void EnsureNewRpg(PlayerbotAI* ai)
+    std::string StartErrand(Player* bot, AutopilotErrand& errand, AutopilotErrandKind kind, uint8_t service,
+                            uint32_t npcEntry, uint32_t questId, const AutopilotPlace& place, float radius,
+                            const std::string& label, uint32_t now)
     {
-        if (!ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
-            ai->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
-        if (ai->HasStrategy("rpg", BOT_STATE_NON_COMBAT))
-            ai->ChangeStrategy("-rpg", BOT_STATE_NON_COMBAT);
-    }
+        AutopilotErrand next;
+        next.kind      = kind;
+        next.service   = service;
+        next.npcEntry  = npcEntry;
+        next.questId   = questId;
+        next.label     = label;
+        next.startedAt = now;
 
-    std::string StartErrand(Player* bot, PlayerbotAI* ai, const AutopilotPlace& place, uint8_t service,
-                            const std::string& label, AutopilotErrand& errand, uint32_t now)
-    {
-        EnsureNewRpg(ai);
+        const std::string why = AutopilotTravel_Start(bot, { place.map, place.x, place.y, place.z }, radius,
+                                                      npcEntry, next.trip, now);
+        if (!why.empty())
+            return why;
 
-        // Within playerbots' own reach a plain walk does; further than that
-        // the bot follows a navmesh route, handed over a node at a time.
-        errand.routed = bot->GetDistance(place.x, place.y, place.z) > kDirectWalk;
-        errand.issued = SIZE_MAX;
-        if (errand.routed)
-        {
-            AutopilotRoute_Begin(bot, place.map, place.x, place.y, place.z, errand.route);
-            AutopilotRoute_Extend(bot, errand.route);
-        }
-        else
-            AutopilotRpg_GoTo(ai, place.map, place.x, place.y, place.z);
-
-        errand.active    = true;
-        errand.map       = place.map;
-        errand.x         = place.x;
-        errand.y         = place.y;
-        errand.z         = place.z;
-        errand.npcEntry  = place.entry;
-        errand.service   = service;
-        errand.label     = label;
-        errand.startedAt = now;
-        return SafeFormat("walking to {} ({} yd)", label, static_cast<uint32_t>(bot->GetDistance(place.x, place.y, place.z)));
+        next.active = true;
+        errand      = std::move(next);
+        return place.map == bot->GetMapId()
+            ? SafeFormat("on the way to {} ({} yd)", label, uint32_t(bot->GetDistance(place.x, place.y, place.z)))
+            : SafeFormat("on the way to {} (another continent)", label);
     }
 
     // On arrival at a trainer: learn what this trainer can teach and the bot
@@ -137,11 +120,77 @@ namespace
         }
         return learned;
     }
+
+    uint16 QuestSlot(Player* bot, uint32_t questId)
+    {
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            if (bot->GetQuestSlotQuestId(slot) == questId)
+                return slot;
+        return MAX_QUEST_LOG_SIZE;
+    }
+
+    // Where to go for a quest that is not done yet: the nearest spawn of a
+    // creature it still needs killed or spoken to, else the quest's own map
+    // marker for an objective.
+    bool QuestObjectivePlace(Player* bot, Quest const* quest, AutopilotPlace& out, std::string& what)
+    {
+        const uint16 slot = QuestSlot(bot, quest->GetQuestId());
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            const int32 npcOrGo = quest->RequiredNpcOrGo[i];
+            if (npcOrGo <= 0 || !quest->RequiredNpcOrGoCount[i])
+                continue;
+            if (slot < MAX_QUEST_LOG_SIZE && bot->GetQuestSlotCounter(slot, i) >= quest->RequiredNpcOrGoCount[i])
+                continue;
+            if (AutopilotWorld_NearestSpawn(bot, uint32_t(npcOrGo), out))
+            {
+                what = out.name;
+                return true;
+            }
+        }
+
+        if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(quest->GetQuestId()))
+        {
+            const QuestPOI* best = nullptr;
+            for (const QuestPOI& poi : *pois)
+            {
+                if (poi.points.empty() || poi.ObjectiveIndex < 0)
+                    continue;
+                if (!best || (poi.MapId == bot->GetMapId() && best->MapId != bot->GetMapId()))
+                    best = &poi;
+            }
+            if (best)
+            {
+                float x = 0.0f, y = 0.0f;
+                for (const QuestPOIPoint& p : best->points)
+                {
+                    x += float(p.x);
+                    y += float(p.y);
+                }
+                x /= float(best->points.size());
+                y /= float(best->points.size());
+
+                out.map = best->MapId;
+                out.x   = x;
+                out.y   = y;
+                out.z   = 0.0f;   // unknown; the travel planner finds the ground
+                if (best->MapId == bot->GetMapId())
+                {
+                    const float h = bot->GetMap()->GetHeight(x, y, bot->GetPositionZ() + 100.0f, true, 400.0f);
+                    out.z = h > INVALID_HEIGHT ? h : bot->GetPositionZ();
+                }
+                what = "the quest's objective area";
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 void AutopilotCommands_Load()
 {
     AutopilotRoute_LoadConfig();
+    AutopilotTravel_LoadConfig();
 
     g_reference = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.CommandReference", "");
     if (g_reference.empty())
@@ -153,7 +202,7 @@ void AutopilotCommands_Load()
     g_denied.clear();
     for (const std::string& d : SplitString(
              sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.DeniedCommands", kDefaultDenied), ','))
-        g_denied.push_back(Lower(d));
+        g_denied.push_back(Lower(Trim(d)));
 }
 
 const std::string& AutopilotCommands_Reference() { return g_reference; }
@@ -181,72 +230,94 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
     if (Denied(lower))
         return "denied by the server";
 
-    // --- autopilot commands -------------------------------------------------
+    // --- autopilot orders ----------------------------------------------------
 
     if (StartsWithWord(lower, "goto"))
     {
-        std::string what = Trim(lower.substr(4));
-        if (StartsWithWord(what, "zone"))
+        const std::string what = Trim(lower.substr(4));
+        AutopilotService service;
+        if (!StartsWithWord(what, "zone") && AutopilotService_FromName(what, service))
         {
-            std::string display;
-            const uint32_t zoneId = AutopilotWorld_FindZone(Trim(command.substr(lower.find("zone") + 4)), display);
-            if (!zoneId)
-                return "unknown zone";
-            if (zoneId == bot->GetZoneId())
-                return "already in " + display;
             AutopilotPlace place;
-            std::string why;
-            if (!AutopilotWorld_ZonePlace(bot, zoneId, place, why))
-                return why;
-            return StartErrand(bot, ai, place, 0, display, errand, now);
+            if (!AutopilotWorld_NearestService(bot, service, place))
+                return SafeFormat("no {} on this continent", AutopilotService_Name(service));
+            if (errand.active)
+                AutopilotCommands_StopErrand(ai, errand);
+            return StartErrand(bot, errand, AutopilotErrandKind::Service, static_cast<uint8_t>(service), place.entry,
+                               0, place, 25.0f, SafeFormat("the {} {}", AutopilotService_Name(service), place.name),
+                               now);
         }
 
-        AutopilotService service;
-        if (!AutopilotService_FromName(what, service))
-        {
-            // "goto Feralas" works too.
-            std::string display;
-            if (const uint32_t zoneId = AutopilotWorld_FindZone(what, display))
-                return AutopilotCommands_Run(bot, ai, "goto zone " + display, errand, now);
-            return "unknown destination";
-        }
+        // "goto zone Feralas", or just "goto Feralas".
+        std::string name = StartsWithWord(what, "zone") ? Trim(command.substr(lower.find("zone") + 4))
+                                                        : Trim(command.substr(4));
+        std::string display;
+        const uint32_t zoneId = AutopilotWorld_FindZone(name, display);
+        if (!zoneId)
+            return "unknown zone or destination";
+        if (zoneId == bot->GetZoneId())
+            return "already in " + display;
 
         AutopilotPlace place;
-        if (!AutopilotWorld_NearestService(bot, service, place))
-            return SafeFormat("no {} on this continent", AutopilotService_Name(service));
-        return StartErrand(bot, ai, place, static_cast<uint8_t>(service),
-                           SafeFormat("the {} {}", AutopilotService_Name(service), place.name), errand, now);
+        std::string why;
+        if (!AutopilotWorld_ZonePlace(bot, zoneId, place, why))
+            return why;
+        if (!AutopilotTravel_CanReach(bot, place.map))
+            return display + " cannot be reached from here by foot, flight, boat or zeppelin";
+        if (errand.active)
+            AutopilotCommands_StopErrand(ai, errand);
+        return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 40.0f, display, now);
     }
 
-    if (StartsWithWord(lower, "quest") || StartsWithWord(lower, "rpg do quest"))
+    if (StartsWithWord(lower, "quest"))
     {
-        const std::string arg = Trim(lower.substr(lower.rfind("quest") + 5));
+        const std::string arg = Trim(lower.substr(5));
         uint32_t questId = 0;
         try { questId = static_cast<uint32_t>(std::stoul(arg)); } catch (...) { questId = 0; }
 
         // Also accept a title from the quest log.
-        if (!questId)
+        if (!questId && !arg.empty())
             for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE && !questId; ++slot)
                 if (uint32 id = bot->GetQuestSlotQuestId(slot))
                     if (Quest const* q = sObjectMgr->GetQuestTemplate(id))
-                        if (Lower(q->GetTitle()).find(arg) != std::string::npos && !arg.empty())
+                        if (Lower(q->GetTitle()).find(arg) != std::string::npos)
                             questId = id;
 
-        EnsureNewRpg(ai);
-        return AutopilotRpg_DoQuest(ai, questId) ? SafeFormat("working on quest {}", questId)
-                                                 : "that quest is not in the log";
-    }
+        Quest const* quest = questId ? sObjectMgr->GetQuestTemplate(questId) : nullptr;
+        const QuestStatus status = quest ? bot->GetQuestStatus(questId) : QUEST_STATUS_NONE;
+        if (!quest || (status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE))
+            return "that quest is not in the log";
 
-    if (StartsWithWord(lower, "rpg"))
-    {
-        std::string status = Trim(lower.substr(3));
-        if (StartsWithWord(status, "status"))
-            status = Trim(status.substr(6));
-        const int id = AutopilotRpg_StatusFromName(status);
-        if (id < 0)
-            return "unknown rpg status";
-        EnsureNewRpg(ai);
-        return AutopilotRpg_Steer(ai, { id }) ? "focus " + status : "nothing to do for " + status + " here";
+        AutopilotPlace place;
+        if (status == QUEST_STATUS_COMPLETE)
+        {
+            bool found = false;
+            for (uint32_t ender : AutopilotWorld_QuestEnders(questId))
+            {
+                AutopilotPlace p;
+                if (!AutopilotWorld_NearestSpawn(bot, ender, p))
+                    continue;
+                if (!found || (p.map == bot->GetMapId() && (place.map != bot->GetMapId() || p.distance < place.distance)))
+                {
+                    place = p;
+                    found = true;
+                }
+            }
+            if (!found)
+                return "nobody to turn that quest in to could be found";
+            if (errand.active)
+                AutopilotCommands_StopErrand(ai, errand);
+            return StartErrand(bot, errand, AutopilotErrandKind::QuestTurnIn, 0, place.entry, questId, place, 25.0f,
+                               SafeFormat("{} to turn in {}", place.name, quest->GetTitle()), now);
+        }
+
+        std::string what;
+        if (!QuestObjectivePlace(bot, quest, place, what))
+            return "no idea where that quest's objective is";
+        if (errand.active)
+            AutopilotCommands_StopErrand(ai, errand);
+        return StartErrand(bot, errand, AutopilotErrandKind::QuestObjective, 0, 0, questId, place, 40.0f,
+                           SafeFormat("{} for {}", what, quest->GetTitle()), now);
     }
 
     // --- everything else: a playerbots command, as a master would send it --
@@ -255,116 +326,100 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
     return "sent";
 }
 
-std::string AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, uint32_t now)
+AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand,
+                                                     uint32_t now)
 {
+    AutopilotErrandUpdate u;
     if (!errand.active)
-        return "";
+        return u;
 
-    if (bot->GetMapId() != errand.map)
+    std::string note;
+    const AutopilotTripState state = AutopilotTravel_Update(bot, ai, errand.trip, now, note);
+
+    if (state == AutopilotTripState::Going)
     {
-        errand.active = false;
-        return "gave up on " + errand.label + " (left the continent)";
-    }
-    if (now - errand.startedAt > 45 * 60)
-    {
-        errand.active = false;
-        return "never reached " + errand.label;
-    }
-
-    if (bot->GetDistance(errand.x, errand.y, errand.z) > 25.0f)
-    {
-        if (bot->IsInCombat() || AutopilotRpg_IsTravelling(ai))
-            return "";
-        const bool walking = AutopilotRpg_CurrentStatus(ai) == AutopilotRpg_StatusFromName("go camp");
-
-        if (errand.routed)
-        {
-            AutopilotRoute& route = errand.route;
-            AutopilotRoute_Extend(bot, route);
-
-            if (route.failed)
-            {
-                if (route.why != "no mmaps")
-                {
-                    errand.active = false;
-                    return SafeFormat("could not find a way to {} ({})", errand.label, route.why);
-                }
-                // No navmesh on this server: walk it playerbots' way.
-                errand.routed = false;
-                AutopilotRpg_GoTo(ai, errand.map, errand.x, errand.y, errand.z);
-                return "";
-            }
-
-            // Hand over the next node; again if NewRpg wandered off it.
-            AutopilotRoutePoint node;
-            if (AutopilotRoute_Next(bot, route, node))
-            {
-                if (route.next != errand.issued || !walking)
-                {
-                    AutopilotRpg_GoTo(ai, errand.map, node.x, node.y, node.z);
-                    errand.issued = route.next;
-                }
-                return "";
-            }
-
-            // Nothing built ahead yet: wait for the next visit.
-            if (!route.complete)
-                return "";
-
-            // Route walked but not quite there: finish on foot below.
-            errand.routed = false;
-            errand.issued = SIZE_MAX;
-        }
-
-        // Keep walking: NewRpg may have moved on to something else.
-        if (!walking)
-            AutopilotRpg_GoTo(ai, errand.map, errand.x, errand.y, errand.z);
-        return "";
+        u.note = note;   // a milestone (boarded, landed...), or nothing
+        return u;
     }
 
     errand.active = false;
-    if (!errand.npcEntry)
-        return "arrived in " + errand.label;
+    u.finished    = true;
+    if (state == AutopilotTripState::Failed)
+    {
+        u.note = SafeFormat("never reached {}{}", errand.label, note.empty() ? "" : ": " + note);
+        return u;
+    }
 
-    Creature* npc = bot->FindNearestCreature(errand.npcEntry, 40.0f);
+    Creature* npc = errand.npcEntry ? bot->FindNearestCreature(errand.npcEntry, 40.0f) : nullptr;
+    switch (errand.kind)
+    {
+        case AutopilotErrandKind::Place:
+            u.note = "arrived in " + errand.label;
+            return u;
+
+        case AutopilotErrandKind::QuestObjective:
+            u.note = "arrived at " + errand.label;
+            return u;
+
+        case AutopilotErrandKind::QuestTurnIn:
+        {
+            if (!npc)
+            {
+                u.note = "arrived, but " + errand.label.substr(0, errand.label.find(" to turn in")) + " was not there";
+                return u;
+            }
+            AutopilotQuest_TalkTo(ai, npc);
+            u.note = bot->GetQuestRewardStatus(errand.questId)
+                ? "turned in the quest with " + npc->GetName()
+                : "talked to " + npc->GetName() + " but the quest was not turned in (it may need choosing a reward)";
+            return u;
+        }
+
+        case AutopilotErrandKind::Service:
+            break;
+    }
+
     switch (static_cast<AutopilotService>(errand.service))
     {
         case AutopilotService::Repair:
             ai->HandleCommand(CHAT_MSG_WHISPER, "repair", bot);
             ai->HandleCommand(CHAT_MSG_WHISPER, "s gray", bot);
-            return "arrived at " + errand.label + ": repairing and selling junk";
+            u.note = "arrived at " + errand.label + ": repairing and selling junk";
+            return u;
         case AutopilotService::Vendor:
             ai->HandleCommand(CHAT_MSG_WHISPER, "s gray", bot);
-            return "arrived at " + errand.label + ": selling junk";
+            u.note = "arrived at " + errand.label + ": selling junk";
+            return u;
         case AutopilotService::Trainer:
         case AutopilotService::Profession:
         {
             if (!npc)
-                return "arrived, but " + errand.label + " was not there";
+            {
+                u.note = "arrived, but " + errand.label + " was not there";
+                return u;
+            }
             const uint32_t learned = LearnFromTrainer(bot, npc);
-            return SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
+            u.note = SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
+            return u;
         }
         case AutopilotService::Inn:
             if (!npc)
-                return "arrived, but " + errand.label + " was not there";
+            {
+                u.note = "arrived, but " + errand.label + " was not there";
+                return u;
+            }
             bot->SetHomebind(WorldLocation(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
                                            bot->GetPositionZ(), bot->GetOrientation()), bot->GetAreaId());
-            return "made " + errand.label + "'s inn their home";
+            u.note = "made " + errand.label + "'s inn their home";
+            return u;
         default:
-            return "arrived at " + errand.label;
+            u.note = "arrived at " + errand.label;
+            return u;
     }
 }
 
-bool AutopilotCommands_Reroute(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+void AutopilotCommands_StopErrand(PlayerbotAI* ai, AutopilotErrand& errand)
 {
-    if (!errand.active || !errand.routed || errand.route.rebuilds >= 2 || bot->GetMapId() != errand.map)
-        return false;
-
-    // Forget the walk NewRpg was stuck on, so its stuck counter starts over,
-    // and route again from here; the next visit hands over the first node.
-    AutopilotRpg_Abandon(ai);
-    AutopilotRoute_Rebuild(bot, errand.route);
-    AutopilotRoute_Extend(bot, errand.route);
-    errand.issued = SIZE_MAX;
-    return true;
+    AutopilotTravel_Stop(ai, errand.trip);
+    errand.active = false;
 }

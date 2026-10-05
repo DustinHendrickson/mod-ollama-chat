@@ -29,56 +29,31 @@ bool AutopilotStrategy_Register();
 bool AutopilotStrategy_IsRegistered();
 
 // --------------------------------------------------------------------------
-// NewRpg steering. World thread only.
+// Moving a bot for the autopilot. World thread only.
 //
-// The LLM's `rpg <status>`, `quest <id>` and `goto` orders, and the no-teleport
-// handling of stuck walks, act on the bot's NewRpg state through these.
-// Steer uses playerbots' own target selection (grind spots, camps, quests
-// with POIs, flight paths), so nothing here duplicates it.
-//
-// Status ids are playerbots' NewRpgStatus values carried as int, so callers
-// need no playerbots engine headers.
+// The LLM is the bot's controller, so autopilot does not use playerbots'
+// NewRpg for travel: it moves the bot itself, and records each move as the
+// bot's last movement (MOVEMENT_NORMAL) so playerbots' own out-of-combat
+// movement waits for it. Combat outranks it.
 // --------------------------------------------------------------------------
 
-#include <string>
-#include <vector>
+#include <cstdint>
 
+class Creature;
 class PlayerbotAI;
 
-// -1 for an unknown name. Names are playerbots' own: "do quest", "wander npc".
-int         AutopilotRpg_StatusFromName(const std::string& name);
-std::string AutopilotRpg_StatusName(int status);
+// Walk to a point. generatePath = false for a straight line (onto or off a
+// boat's deck, which is not on the navmesh).
+void AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath);
 
-int  AutopilotRpg_CurrentStatus(PlayerbotAI* ai);
+// Keep playerbots' movement off the bot for `ms`: waiting at a dock, riding a
+// boat. overCombat also holds combat movement (only sensible on a deck).
+void AutopilotMove_Hold(PlayerbotAI* ai, uint32_t ms, bool overCombat);
 
-// Taking or walking to a flight. Never interrupt one.
-bool AutopilotRpg_IsTravelling(PlayerbotAI* ai);
+bool AutopilotMove_IsMoving(PlayerbotAI* ai);
+void AutopilotMove_Stop(PlayerbotAI* ai);
 
-// Walk to a spot using NewRpg's own "go camp" status: playerbots does the
-// pathing, and on arrival switches to wandering the NPCs there. Needs the
-// `new rpg` strategy on. Returns false if the bot has no AI.
-bool AutopilotRpg_GoTo(PlayerbotAI* ai, uint32_t map, float x, float y, float z);
-
-// Work on one specific quest from the bot's log with NewRpg's "do quest"
-// status (playerbots finds the objectives and the turn-in). False when the
-// quest is not in the log or not in a state to work on.
-bool AutopilotRpg_DoQuest(PlayerbotAI* ai, uint32_t questId);
-
-// The quest NewRpg is working on right now, or 0.
-uint32_t AutopilotRpg_CurrentQuest(PlayerbotAI* ai);
-
-// NewRpg's MoveFarTo teleports a bot to its destination after `stuckTime`
-// (90s) without real progress. True when that is close: the bot has been
-// stuck on its current far destination for at least `ms`.
-bool AutopilotRpg_IsStuck(PlayerbotAI* ai, uint32_t ms);
-
-// Give up on the current far destination: forget it (so NewRpg's stuck
-// counter starts over for whatever comes next) and return to idle.
-void AutopilotRpg_Abandon(PlayerbotAI* ai);
-
-// Move the bot into one of `allowed` that is available right now. Returns
-// false, changing nothing, when none is -- rather than letting playerbots fall
-// back to sitting down.
-bool AutopilotRpg_Steer(PlayerbotAI* ai, const std::vector<int>& allowed);
+// Turn in / pick up quests at this NPC, through playerbots' own action.
+bool AutopilotQuest_TalkTo(PlayerbotAI* ai, Creature* npc);
 
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_STRATEGY_H

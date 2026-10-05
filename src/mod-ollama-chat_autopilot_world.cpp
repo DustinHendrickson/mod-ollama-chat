@@ -29,6 +29,17 @@ namespace
     // map id -> service NPC spawns on it.
     std::unordered_map<uint32_t, std::vector<Spawn>> g_spawns;
 
+    // creature entry -> every spawn of it (quest givers, enders, objectives).
+    struct SpawnAt
+    {
+        uint32_t map = 0;
+        float    x = 0.0f, y = 0.0f, z = 0.0f;
+    };
+    std::unordered_map<uint32_t, std::vector<SpawnAt>> g_byEntry;
+
+    // quest id -> creature entries that take it in.
+    std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
+
     constexpr uint32_t kServiceMask =
         UNIT_NPC_FLAG_REPAIR | UNIT_NPC_FLAG_VENDOR_MASK | UNIT_NPC_FLAG_TRAINER_CLASS |
         UNIT_NPC_FLAG_TRAINER_PROFESSION | UNIT_NPC_FLAG_INNKEEPER | UNIT_NPC_FLAG_FLIGHTMASTER |
@@ -126,9 +137,18 @@ bool AutopilotService_FromName(const std::string& raw, AutopilotService& out)
 void AutopilotWorld_Build()
 {
     g_spawns.clear();
+    g_byEntry.clear();
+    g_questEnders.clear();
+
+    if (QuestRelations const* enders = sObjectMgr->GetCreatureQuestInvolvedRelationMap())
+        for (auto const& [creatureEntry, questId] : *enders)
+            g_questEnders[questId].push_back(creatureEntry);
+
     size_t count = 0;
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
     {
+        g_byEntry[data.id].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
+
         CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(data.id);
         if (!t)
             continue;
@@ -189,13 +209,7 @@ bool AutopilotWorld_ZonePlace(Player* bot, uint32_t zoneId, AutopilotPlace& out,
         why = "unknown zone";
         return false;
     }
-    if (area->mapid != bot->GetMapId())
-    {
-        why = "that zone is on another continent (needs a boat or zeppelin)";
-        return false;
-    }
-
-    auto it = g_spawns.find(bot->GetMapId());
+    auto it = g_spawns.find(area->mapid);
     if (it == g_spawns.end())
     {
         why = "no known destination in that zone";
@@ -226,13 +240,13 @@ bool AutopilotWorld_ZonePlace(Player* bot, uint32_t zoneId, AutopilotPlace& out,
         return false;
     }
 
-    out.map      = bot->GetMapId();
+    out.map      = area->mapid;
     out.x        = best->x;
     out.y        = best->y;
     out.z        = best->z;
     out.entry    = best->entry;
     out.name     = NameOf(best->entry);
-    out.distance = bot->GetDistance(best->x, best->y, best->z);
+    out.distance = area->mapid == bot->GetMapId() ? bot->GetDistance(best->x, best->y, best->z) : 0.0f;
     return true;
 }
 
@@ -307,4 +321,43 @@ std::string AutopilotWorld_ZonesForLevel(Player* bot)
     for (size_t i = 0; i < zones.size() && i < 10; ++i)
         out += SafeFormat("{}{} ({})", out.empty() ? "" : ", ", zones[i].second, zones[i].first);
     return out;
+}
+
+bool AutopilotWorld_NearestSpawn(Player* bot, uint32_t entry, AutopilotPlace& out)
+{
+    auto it = g_byEntry.find(entry);
+    if (it == g_byEntry.end() || it->second.empty())
+        return false;
+
+    const SpawnAt* best = nullptr;
+    float bestDist = 0.0f;
+    for (const SpawnAt& s : it->second)
+    {
+        if (s.map != bot->GetMapId())
+            continue;
+        const float d = bot->GetDistance(s.x, s.y, s.z);
+        if (!best || d < bestDist)
+        {
+            best     = &s;
+            bestDist = d;
+        }
+    }
+    if (!best)
+        best = &it->second.front();   // another continent: the travel planner gets there
+
+    out.map      = best->map;
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = entry;
+    out.name     = NameOf(entry);
+    out.distance = best->map == bot->GetMapId() ? bestDist : 0.0f;
+    return true;
+}
+
+const std::vector<uint32_t>& AutopilotWorld_QuestEnders(uint32_t questId)
+{
+    static const std::vector<uint32_t> kNone;
+    auto it = g_questEnders.find(questId);
+    return it == g_questEnders.end() ? kNone : it->second;
 }

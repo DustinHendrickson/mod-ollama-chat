@@ -29,8 +29,9 @@ namespace
         "character's own mind. You decide who they are, what they want, and what they do with their time, "
         "and you make it happen by giving orders to the character's own AI, exactly as a player whispers "
         "commands to their bot. The AI does the walking, fighting and looting; you decide where, what and why: "
-        "which quest to chase, when to go train, when to repair and sell, when to grind, explore, gather, "
-        "queue for a dungeon, change zones, or take a break.\n"
+        "which quest to chase, when to go train, when to repair and sell, when to grind, gather, queue for a "
+        "dungeon, travel to another zone or continent, or take a break. Nothing else steers them: without "
+        "your orders they stand where they are.\n"
         "\n"
         "COMMANDS\n"
         "{commands}\n"
@@ -64,7 +65,7 @@ namespace
         "Identity: {identity}\n"
         "Doing: {doing} (for {doing_minutes} minutes). Current goal: {goal}\n"
         "Strategies on: {strategies}\n"
-        "Their AI is: {rpg_status}{errand}\n"
+        "Right now: {rpg_status}{errand}\n"
         "{concerns}"
         "Quest log:\n{quests}\n"
         "Nearest services: {services}\n"
@@ -290,7 +291,7 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
     ReplaceAll(text, "goal", ctx.goal.empty() ? "none yet" : NoBraces(ctx.goal));
     ReplaceAll(text, "strategies", ctx.strategiesOn.empty() ? "-" : ctx.strategiesOn);
     ReplaceAll(text, "rpg_status", ctx.rpgStatus.empty() ? "idle" : NoBraces(ctx.rpgStatus));
-    ReplaceAll(text, "errand", ctx.errand.empty() ? "" : "; " + NoBraces(ctx.errand));
+    ReplaceAll(text, "errand", ctx.errand.empty() ? "" : " " + NoBraces(ctx.errand));
     ReplaceAll(text, "concerns", ctx.concerns.empty() ? "" : NoBraces(ctx.concerns) + "\n");
     ReplaceAll(text, "quests", ctx.questLog.empty() ? "- empty" : NoBraces(ctx.questLog));
     ReplaceAll(text, "services", ctx.services.empty() ? "none known" : NoBraces(ctx.services));

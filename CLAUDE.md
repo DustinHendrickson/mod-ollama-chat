@@ -158,8 +158,11 @@ This does not link, so it will not catch a declared-but-undefined function.
 
 **The LLM makes the decisions; code never does.** The model writes each bot's
 identity, sets its goals, and gives orders the way a player whispers to their
-own bot: playerbots chat commands plus a few autopilot ones (`goto`, `quest`,
-`rpg`). Code reports facts and runs the orders. Do not add preset playstyles,
+own bot: playerbots chat commands plus autopilot's own `goto` and `quest`.
+Code reports facts and runs the orders. Playerbots' own overhead controllers
+(`new rpg`, `rpg`, `travel`) are kept off on enrolled bots and the model may
+not turn them on. NewRpg is exactly the controller the LLM replaces, so never
+route autopilot behaviour through it. Do not add preset playstyles,
 weight tables, dice-roll policies, formula-driven moods or code that "helps" by
 acting on a condition itself (alerts ask the model early; they never act). Two
 earlier versions did: one picked activities from playstyle weights, one only
@@ -178,7 +181,8 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   master's whisper. Commands that need a master to reply to (`rpg status`) or
   a master's target (`trainer`, `home`, `rpg do quest` without a link) do not
   work this way. That is why `goto` (with `Trainer::TeachSpell` and
-  `SetHomebind` on arrival), `quest <id>` and `rpg <status>` exist in
+  `SetHomebind` on arrival) and `quest <id>` (turn-in through playerbots'
+  `talk to quest giver` action with the bot targeting the NPC) exist in
   `mod-ollama-chat_autopilot_commands.cpp`.
 - **`nc`/`co` orders do not go through `HandleCommand`.** The chat path calls
   `PlayerbotRepository::Save`, which writes the model's choices into
@@ -190,7 +194,7 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `sharedStrategyContexts` (public statics; see
   `mod-ollama-chat_autopilot_strategy.cpp`). Do it at `OnStartup`, before any
   bot logs in, because bots read those creator maps on map threads. Keep
-  NewRpg and strategy-engine includes confined to that file.
+  strategy-engine and movement-value includes confined to that file.
 - **The marker strategy is the reset detector**, one per engine. Missing
   means playerbots reset that engine: put the model's strategies back. Never
   treat a strategy's absence as anyone's intent.
@@ -208,16 +212,26 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `SetValue(low, "randomize", 1)`, and for a death `SetValue(low, "dead"/"revive",
   1)` set *before* `ProcessBot` marks the death itself (otherwise its own
   1–5 minute revive timer overwrites ours). Clear both when the bot is alive
-  again, or the next death is revived (and teleported) at once. NewRpg's
-  90-second stuck teleport is avoided with `AutopilotRpg_Abandon`
-  (`SetMoveFarTo(WorldPosition())` + idle) at 60 seconds.
-- **Long `goto` walks follow a navmesh route** (`mod-ollama-chat_autopilot_route.cpp`,
-  ported from mod-city-siege's `CitySiegePathing.cpp`). NewRpg `MoveFarTo`
-  only walks straight under 70 yards (`pathFinderDis`); past that it guesses
-  and then teleports. The route is built lazily, a few queries per visit and a
+  again, or the next death is revived (and teleported) at once.
+- **Autopilot moves bots itself** (`AutopilotMove_To`): a `MovePoint`
+  recorded in the bot's `"last movement"` value at `MOVEMENT_NORMAL`, so
+  playerbots' own out-of-combat movement waits and combat still outranks it.
+  Holds on a deck use `MOVEMENT_FORCED`.
+- **Long walks follow a navmesh route** (`mod-ollama-chat_autopilot_route.cpp`,
+  ported from mod-city-siege's `CitySiegePathing.cpp`), one node (~28 yd) at a
+  time. The route is built lazily, a few queries per visit and a
   few hundred yards ahead, because mmap tiles load only with their grid: a
   query far ahead of the bot can fail just because the tile is not loaded, so
   a failure counts only once the bot is near it.
+- **Travel** (`mod-ollama-chat_autopilot_travel.cpp`) plans legs and replans
+  after every flight or crossing. Flights call `ActivateTaxiPathTo` directly
+  with a path from TravelMgr's flight-master cache and `FindTaxiPath`; this
+  core needs no known nodes, only money. Boats and zeppelins come from
+  `TransportMgr` templates (stop key frames) at startup, with docks judged
+  friendly by nearby creature factions. Boarding relies on
+  `PlayerbotAI::UpdateAI` attaching a bot to the transport under it every
+  second. `MotionTransport::IsMoving` is private, so "docked" means near the
+  stop and not moving since the last look.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`
