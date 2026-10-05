@@ -53,6 +53,14 @@ struct PlaystyleProfile
     uint32_t spanMinMinutes = 20;      // how long an activity holds its interest
     uint32_t spanMaxMinutes = 45;
     std::vector<std::pair<std::string, std::string>> dispositions;  // axis -> option
+
+    // What feels rewarding, as reward channel -> weight. Channels: level,
+    // quest, kills, pvp, loot, gold, skill, discovery.
+    std::vector<std::pair<std::string, uint32_t>> rewards;
+
+    // Boredom points per minute in one activity when nothing rewarding is
+    // happening (see the autopilot mood model).
+    float boredomRate = 1.5f;
 };
 
 // Null for an unknown name.

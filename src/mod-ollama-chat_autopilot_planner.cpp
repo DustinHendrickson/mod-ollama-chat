@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_autopilot_planner.h"
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_autopilot_goals.h"
 #include "mod-ollama-chat_autopilot_presets.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat-utilities.h"
@@ -36,11 +37,21 @@ namespace
         "DISPOSITIONS (choose one option for each):\n"
         "{dispositions}\n"
         "\n"
+        "GOAL KINDS (a longer-term aim the game can measure):\n"
+        "{goal_kinds}\n"
+        "\n"
+        "PLAYBOOK (optional: a disposition option to use in a particular situation, overriding the one above "
+        "there): situations are {situations}.\n"
+        "\n"
         "Reply with one JSON object and nothing else, shaped like this:\n"
-        "{\"activity\": \"...\", {disposition_shape}\"minutes\": 30, \"goal\": \"...\", \"reason\": \"...\"}\n"
+        "{\"activity\": \"...\", {disposition_shape}\"minutes\": 30, "
+        "\"goal\": {\"kind\": \"...\", \"target\": \"...\", \"text\": \"...\"}, "
+        "\"playbook\": {\"dungeon\": \"...\"}, \"reason\": \"...\"}\n"
         "- activity: an activity name from the list that is available to this character.\n"
         "- minutes: how long to keep at it before reconsidering (15 to 90).\n"
-        "- goal: their longer-term aim in one sentence, phrased the way this character thinks about it.\n"
+        "- goal: keep the current goal unless it is done, stalled or no longer fits; omit it to keep it. "
+        "text is the aim in one sentence, phrased the way this character thinks about it.\n"
+        "- playbook: optional; omit it to keep the current one.\n"
         "- reason: one short sentence on why this, now.\n"
         "\n"
         "THE CHARACTER\n"
@@ -50,9 +61,12 @@ namespace
         "{personality}"
         "Not available right now: {unavailable}\n"
         "Currently: {activity} (for {activity_minutes} minutes). Current goal: {goal}\n"
+        "Mood: {mood}\n"
+        "Playbook: {playbook}\n"
         "Recent decisions:\n{decisions}\n"
         "{progress}\n"
         "Recent events:\n{events}\n"
+        "Tempting right now:\n{temptations}\n"
         "{guards}"
         "{state}\n"
         "{memories}";
@@ -226,6 +240,11 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
     ReplaceAll(text, "activities", activities);
     ReplaceAll(text, "dispositions", dispositions.empty() ? "- (none)" : dispositions);
     ReplaceAll(text, "disposition_shape", shape);
+    ReplaceAll(text, "goal_kinds", Goal_KindMenu());
+    ReplaceAll(text, "situations", "dungeon, battleground, with_player");
+    ReplaceAll(text, "mood", ctx.mood.empty() ? "settled" : ctx.mood);
+    ReplaceAll(text, "playbook", ctx.playbook.empty() ? "none" : ctx.playbook);
+    ReplaceAll(text, "temptations", Lines(ctx.temptations, "nothing in particular"));
     ReplaceAll(text, "bot_name", ctx.botName);
     ReplaceAll(text, "bot_level", std::to_string(ctx.level));
     ReplaceAll(text, "bot_race", ctx.race);
@@ -367,9 +386,47 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
     };
 
     d.activity = Lower(Clip(str("activity"), 32));
-    d.goal     = Clip(str("goal"), 200);
     d.reason   = Clip(str("reason"), 200);
     d.say      = Clip(str("say"), 200);
+
+    // Goal: {"kind", "target", "text"}, or a bare sentence (a free goal).
+    if (auto it = json.find("goal"); it != json.end())
+    {
+        if (it->is_string())
+        {
+            d.goalText = Clip(it->get<std::string>(), 200);
+            if (!d.goalText.empty())
+                d.goalKind = "free";
+        }
+        else if (it->is_object())
+        {
+            auto field = [&](const char* key) -> std::string
+            {
+                auto f = it->find(key);
+                if (f == it->end())
+                    return "";
+                if (f->is_string())
+                    return f->get<std::string>();
+                if (f->is_number())
+                    return std::to_string(f->get<int64_t>());
+                return "";
+            };
+            d.goalKind   = Lower(Clip(field("kind"), 24));
+            d.goalTarget = Clip(field("target"), 64);
+            d.goalText   = Clip(field("text"), 200);
+            if (d.goalKind.empty() && !d.goalText.empty())
+                d.goalKind = "free";
+        }
+    }
+
+    if (auto it = json.find("playbook"); it != json.end() && it->is_object())
+        for (auto p = it->begin(); p != it->end(); ++p)
+            if (p->is_string())
+            {
+                std::string option = Lower(Clip(p->get<std::string>(), 32));
+                if (!option.empty())
+                    d.playbook.emplace_back(Lower(Clip(p.key(), 24)), option);
+            }
 
     if (auto it = json.find("minutes"); it != json.end())
     {
@@ -390,7 +447,8 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
         for (auto it = obj.begin(); it != obj.end(); ++it)
         {
             const std::string key = Lower(it.key());
-            if (key == "activity" || key == "goal" || key == "reason" || key == "say" || key == "minutes")
+            if (key == "activity" || key == "goal" || key == "reason" || key == "say" ||
+                key == "minutes" || key == "playbook")
                 continue;
             if (it->is_string())
             {

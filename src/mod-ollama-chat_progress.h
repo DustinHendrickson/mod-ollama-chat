@@ -94,6 +94,10 @@ std::string Progress_Summarize(const std::vector<ProgressSnapshot>& oldestFirst)
 
 std::string Progress_ZoneName(uint32_t zoneId);
 
+// Primary and secondary profession skill ids, and a skill's display name.
+const std::vector<uint32_t>& Progress_ProfessionSkills();
+std::string                  Progress_SkillName(uint32_t skillId);
+
 // "12g 34s 5c"
 std::string Progress_FormatMoney(int64_t copper);
 

@@ -41,8 +41,11 @@ struct AutopilotPromptContext
 
     std::string activity;               // may be empty
     uint32_t    activityMinutes = 0;
-    std::string goal;                   // may be empty
+    std::string goal;                   // with measured progress; may be empty
     std::string unavailable;            // "dungeon (needs level 15), ..."
+    std::string mood;                   // boredom and satisfaction, in words
+    std::string playbook;               // "dungeon: cautious, ..." or empty
+    std::vector<std::string> temptations;
 
     std::vector<std::string> decisions; // newest last
     std::vector<std::string> events;    // newest last
@@ -59,11 +62,18 @@ struct AutopilotDecision
     std::string error;
 
     std::string activity;
-    std::string goal;
     std::string reason;
     std::string say;
     uint32_t    minutes = 0;
     std::vector<std::pair<std::string, std::string>> disposition;   // axis -> option, unvalidated
+
+    // Goal, unvalidated. A plain string goal arrives as kind "free". All
+    // empty means "keep the current goal".
+    std::string goalKind;
+    std::string goalTarget;
+    std::string goalText;
+
+    std::vector<std::pair<std::string, std::string>> playbook;      // situation -> option, unvalidated
 
     uint64_t    latencyMs = 0;
 };

@@ -367,6 +367,20 @@ std::string Progress_ZoneName(uint32_t zoneId)
     return std::to_string(zoneId);
 }
 
+const std::vector<uint32_t>& Progress_ProfessionSkills()
+{
+    static const std::vector<uint32_t> skills(std::begin(kProfessionSkills), std::end(kProfessionSkills));
+    return skills;
+}
+
+std::string Progress_SkillName(uint32_t skillId)
+{
+    if (SkillLineEntry const* line = sSkillLineStore.LookupEntry(skillId))
+        if (line->name[0] && *line->name[0])
+            return line->name[0];
+    return std::to_string(skillId);
+}
+
 std::string Progress_Summarize(const std::vector<ProgressSnapshot>& oldestFirst)
 {
     if (oldestFirst.size() < 2)

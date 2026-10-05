@@ -590,6 +590,35 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
    - Goal kinds with measurable progress against snapshots: reach level, reach
      skill, gold, explore zone, complete quest or chain, run dungeon.
    - Boredom, satisfaction, temptations, event-triggered replans.
+   - **Status: implemented on this branch; syntax-checked (`cl /Zs`, all 27
+     module files), not yet built or run in-game.** As built:
+     - **Goals** (`autopilot_goals.cpp`): reach_level, reach_skill,
+       earn_gold, explore_zone, complete_quests, run_dungeon and free. The
+       model's `{kind, target, text}` is resolved against game data. Zones are
+       matched by name and professions by skill line. Progress is measured
+       from the live bot every visit, not from snapshots.
+       - Done: an event, a temptation, -30 boredom and an immediate rethink.
+       - Stalled for `GoalStaleMinutes`: an event and a nudge to rethink.
+       - The policy multiplies activity weights by the goal's bias, and sets
+         a playstyle goal itself when the model has not (`PolicyGoals`).
+       - "Complete a quest chain" became complete_quests N. Chains are not
+         modelled.
+     - **Feelings:** per-playstyle reward weights (`.Rewards`) over eight
+       channels give an hourly satisfaction score. Boredom rises at
+       `.BoredomRate × (1.2 − satisfaction)` per minute. At
+       `BoredomThreshold` the activity ends early and the bot asks for a new
+       plan. Temptations come from newly unlocked activities, rare and epic
+       drops, capped professions and goals just achieved.
+     - **Playbook:** per-situation disposition overrides (dungeon,
+       battleground, with_player). These are applied and reverted as the
+       situation changes, via `ob.effective`. `on_death` was dropped: the
+       dead engine has no clean modifier to drive.
+     - **Boundaries:** leaving a dungeon or battleground, leaving a group and
+       landing from a travel flight each end the activity. The first three
+       also mark the bot for an urgent LLM plan.
+     - **Also added:** real-player-guild enrollment, tier floors and
+       foreground/background scopes so operators can widen LLM reach, the
+       `goal` command, and a PvP kill hook.
 4. **Chat and roleplay.**
    - `{bot_goal}` / `{bot_activity}` placeholders.
    - Awareness-specific phrasing; immersed goals filtered through

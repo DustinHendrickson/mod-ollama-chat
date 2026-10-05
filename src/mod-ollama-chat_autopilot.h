@@ -61,6 +61,7 @@ public:
     void OnPlayerLogin(Player* player) override;
     void OnPlayerLogout(Player* player) override;
     void OnPlayerCreatureKill(Player* killer, Creature* victim) override;
+    void OnPlayerPVPKill(Player* killer, Player* killed) override;
     void OnPlayerJustDied(Player* player) override;
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;

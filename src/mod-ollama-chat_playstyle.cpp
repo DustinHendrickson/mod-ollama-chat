@@ -33,36 +33,47 @@ namespace
         const char* activities;
         const char* span;
         const char* disposition;
+        const char* rewards;
+        const char* boredomRate;
     };
 
     const DefaultProfile kDefaultProfiles[] = {
         { "explorer",
           "Lives to see new places. Quests and fights are mostly a reason to travel somewhere new.",
-          "explore:6,travel:4,quest:2,town:1,rest:1", "25-50", "risk:cautious,greed:content,social:social" },
+          "explore:6,travel:4,quest:2,town:1,rest:1", "25-50", "risk:cautious,greed:content,social:social",
+          "discovery:5,quest:1,loot:1,level:1", "2.0" },
         { "speedrunner",
           "Levels as efficiently as possible: chained quests, quick turn-ins, dungeons at the right level, no detours.",
-          "quest:6,grind:3,dungeon:3,town:1", "30-60", "risk:bold,greed:content,social:reserved" },
+          "quest:6,grind:3,dungeon:3,town:1", "30-60", "risk:bold,greed:content,social:reserved",
+          "level:5,quest:3,kills:1,loot:1", "1.5" },
         { "quester",
           "Enjoys the stories and finishing quest chains; follows the quest log wherever it leads.",
-          "quest:8,town:2,travel:1,rest:1", "30-60", "risk:balanced,greed:content,social:social" },
+          "quest:8,town:2,travel:1,rest:1", "30-60", "risk:balanced,greed:content,social:social",
+          "quest:4,level:2,loot:1", "1.0" },
         { "grinder",
           "Happy hunting monsters for experience and loot for hours on end.",
-          "grind:7,quest:2,town:1,rest:1", "40-80", "risk:bold,greed:greedy,social:reserved" },
+          "grind:7,quest:2,town:1,rest:1", "40-80", "risk:bold,greed:greedy,social:reserved",
+          "kills:3,loot:2,level:2,gold:1", "0.8" },
         { "crafter",
           "Cares about professions and gold: gathering, crafting, selling, and time in towns.",
-          "gather:6,town:4,quest:1,rest:1", "30-60", "risk:cautious,greed:greedy,social:social" },
+          "gather:6,town:4,quest:1,rest:1", "30-60", "risk:cautious,greed:greedy,social:social",
+          "skill:3,gold:2,loot:1", "1.5" },
         { "roleplayer",
           "Lives as their character: visits places that matter to their people and calling, rests at inns, acts in character.",
-          "town:3,explore:3,quest:3,rest:2,travel:1", "20-45", "risk:balanced,greed:content,social:social" },
+          "town:3,explore:3,quest:3,rest:2,travel:1", "20-45", "risk:balanced,greed:content,social:social",
+          "discovery:2,quest:2,loot:1,level:1", "1.5" },
         { "dungeonrunner",
           "Wants groups and dungeons; levels in between only to reach the next one.",
-          "dungeon:6,quest:3,grind:2,town:1", "30-60", "risk:bold,greed:greedy,social:social" },
+          "dungeon:6,quest:3,grind:2,town:1", "30-60", "risk:bold,greed:greedy,social:social",
+          "loot:4,level:2,quest:1", "2.0" },
         { "casual",
           "Plays relaxed and varied: a bit of everything, and plenty of breaks.",
-          "quest:3,explore:2,grind:2,town:2,gather:1,rest:2", "15-35", "risk:cautious,greed:content,social:social" },
+          "quest:3,explore:2,grind:2,town:2,gather:1,rest:2", "15-35", "risk:cautious,greed:content,social:social",
+          "quest:2,discovery:2,loot:1,skill:1,gold:1,level:1", "2.5" },
         { "pvper",
           "Seeks fights with the other faction: battlegrounds and world PvP.",
-          "pvp:6,grind:2,quest:2,town:1", "30-60", "risk:bold,greed:content,social:reserved" },
+          "pvp:6,grind:2,quest:2,town:1", "30-60", "risk:bold,greed:content,social:reserved",
+          "pvp:5,kills:1,level:1", "2.0" },
     };
 
     struct DefaultAwareness { const char* name; const char* description; };
@@ -212,6 +223,14 @@ namespace
             p.spanMaxMinutes = std::max(p.spanMinMinutes, p.spanMaxMinutes);
 
             p.dispositions = ParsePairs(setting(".Disposition", def ? def->disposition : ""));
+
+            for (const WeightedName& w : ParseWeights(setting(".Rewards", def ? def->rewards : "quest:2,level:2,loot:1"),
+                                                      (key + ".Rewards").c_str()))
+                p.rewards.emplace_back(w.name, w.weight);
+
+            try { p.boredomRate = std::stof(setting(".BoredomRate", def ? def->boredomRate : "1.5")); }
+            catch (...) { p.boredomRate = 1.5f; }
+            p.boredomRate = std::clamp(p.boredomRate, 0.0f, 20.0f);
             g_profiles[style.name] = std::move(p);
         }
 

@@ -2040,6 +2040,7 @@ OllamaChat.FrequencyPenalty = -1000
 #     .ollama autopilot awareness <bot> [x]   show or set the awareness level
 #     .ollama autopilot replan <bot>          ask the LLM what to do now
 #     .ollama autopilot activity <bot> [x] [m]  show or force an activity
+#     .ollama autopilot goal <bot> [kind target|clear]  show, set or clear the goal
 #
 ###############################################################################
 
@@ -2356,8 +2357,10 @@ OllamaChat.Autopilot.SystemPrompt = ""
 #          {playstyle_description} {awareness} {awareness_description}
 #          {personality} {unavailable} {activity} {activity_minutes} {goal}
 #          {decisions} {progress} {events} {guards} {state} {memories}
+#          {goal_kinds} {situations} {mood} {playbook} {temptations}
 #        The reply must be a JSON object with "activity", one key per
-#        disposition axis, and optionally "minutes", "goal" and "reason".
+#        disposition axis, and optionally "minutes", "goal" ({kind, target,
+#        text} or a sentence), "playbook" and "reason".
 #        Default: ""
 OllamaChat.Autopilot.PromptTemplate = ""
 
@@ -2471,12 +2474,76 @@ OllamaChat.Autopilot.Dispositions = "risk:balanced,greed:content,social:neutral"
 #                  the description, not the weights)
 #   .SpanMinutes   min-max minutes an activity holds their interest
 #   .Disposition   axis:option defaults
+#   .Rewards       channel:weight pairs: what feels rewarding to them.
+#                  Channels: level, quest, kills (per 10), pvp, loot (epic = 3),
+#                  gold (per 5g), skill (per 5 points), discovery (new zone)
+#   .BoredomRate   boredom points per minute in one activity when nothing
+#                  rewarding is happening
 #
 # Example, the built-in explorer:
 # OllamaChat.Autopilot.Playstyle.explorer.Description = "Lives to see new places. Quests and fights are mostly a reason to travel somewhere new."
 # OllamaChat.Autopilot.Playstyle.explorer.Activities  = "explore:6,travel:4,quest:2,town:1,rest:1"
 # OllamaChat.Autopilot.Playstyle.explorer.SpanMinutes = "25-50"
 # OllamaChat.Autopilot.Playstyle.explorer.Disposition = "risk:cautious,greed:content,social:social"
+# OllamaChat.Autopilot.Playstyle.explorer.Rewards     = "discovery:5,quest:1,loot:1,level:1"
+# OllamaChat.Autopilot.Playstyle.explorer.BoredomRate = "2.0"
 #
 # Awareness levels can be described the same way:
 # OllamaChat.Autopilot.Awareness.immersed.Description = "..."
+
+# ----------------------------------------------
+# Goals and feelings
+# ----------------------------------------------
+#
+# GOALS. A bot works toward one goal at a time, which the game can measure:
+#   reach_level, reach_skill, earn_gold, explore_zone, complete_quests,
+#   run_dungeon, or free (anything else; it is never marked done).
+# The LLM proposes goals as {kind, target, text}. Autopilot resolves the
+# target against game data, so progress is measured from the bot itself.
+# `text` is the goal in the character's own voice. The policy leans toward
+# activities that serve the goal. When a goal is done, the bot reconsiders.
+# When it stalls, the next prompt says so.
+#
+# FEELINGS. Each playstyle values different rewards (see .Rewards). The
+# weighted rewards of the last hour give a satisfaction score. Boredom
+# climbs at the playstyle's .BoredomRate while a bot stays in one activity,
+# faster the less rewarding it is. Changing activity cuts boredom by 60%
+# and finishing a goal takes off 30. Groups, dungeons and battlegrounds let
+# it fall. At BoredomThreshold the activity ends early and the bot asks for
+# a fresh plan. Mood, recent rewards and "temptations" (a newly unlocked
+# activity, a rare drop, a capped profession) all go into the prompt.
+#
+# PLAYBOOK. The LLM may also choose a disposition option per situation
+# (dungeon, battleground, with_player), e.g. bold in battlegrounds but
+# cautious in dungeons. It is applied the moment the bot enters that
+# situation and reverted when it leaves.
+#
+# BOUNDARIES. Leaving a dungeon, a battleground ending, a group breaking up
+# and a flight landing all end the current activity, so the bot decides
+# what to do next. Under the LLM tier rules, that decision gets priority.
+
+#    OllamaChat.Autopilot.BoredomThreshold
+#        Boredom (0-100) at which a bot drops its activity and reconsiders.
+#        Default: 70
+OllamaChat.Autopilot.BoredomThreshold = 70
+
+#    OllamaChat.Autopilot.SatisfiedScore
+#        Weighted reward score per hour that feels "enough" (it stops boredom
+#        climbing fast). With the shipped weights, 4 quests an hour satisfies
+#        a quester, and 2 new zones an hour an explorer.
+#        Default: 10
+OllamaChat.Autopilot.SatisfiedScore = 10
+
+#    OllamaChat.Autopilot.GoalStaleMinutes
+#        Minutes without measurable progress before a goal counts as stalled
+#        and the bot is nudged to reconsider. 0 = never.
+#        Default: 120
+OllamaChat.Autopilot.GoalStaleMinutes = 120
+
+#    OllamaChat.Autopilot.PolicyGoals
+#        When the LLM has not given a bot a goal (dormant bots, LLM off, or
+#        budget spent), pick one from its playstyle: a quester finishes
+#        quests, a crafter raises a gathering skill, a dungeon runner queues.
+#        Phrased in-world for immersed bots.
+#        Default: 1
+OllamaChat.Autopilot.PolicyGoals = 1
