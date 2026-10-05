@@ -154,59 +154,72 @@ signature mismatches, missing declarations and bad `override`s:
 
 This does not link, so it will not catch a declared-but-undefined function.
 
-## Autopilot (playerbots strategy control)
+## Autopilot (the LLM as the bot's master)
 
 **The LLM makes the decisions; code never does.** The model writes each bot's
-identity, sets its goals and chooses which playerbots strategies are on and
-what it focuses on. Code reports facts, enforces the strategy allow-list,
-applies the safety guards and carries out the choice. Do not add preset
-playstyles, weight tables, dice-roll policies or formula-driven moods: an
-earlier version did and it was the opposite of what the feature is for. When
-the model cannot be asked, a bot keeps its last plan rather than code making
-one up.
+identity, sets its goals, and gives orders the way a player whispers to their
+own bot: playerbots chat commands plus a few autopilot ones (`goto`, `quest`,
+`rpg`). Code reports facts and runs the orders. Do not add preset playstyles,
+weight tables, dice-roll policies, formula-driven moods or code that "helps" by
+acting on a condition itself (alerts ask the model early; they never act). Two
+earlier versions did: one picked activities from playstyle weights, one only
+toggled an allow-listed set of strategies and was indistinguishable from plain
+NewRpg. Both were the opposite of what the feature is for. When the model
+cannot be asked, a bot keeps its last orders rather than code making some up.
 
-Design and phase status: `docs/autopilot-plan.md`. Facts that are easy to get
-wrong:
+This is a module-only feature: it must never require changes to mod-playerbots
+or the core.
 
+Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
+
+- **Orders run through `PlayerbotAI::HandleCommand(CHAT_MSG_WHISPER, text,
+  bot)` with the bot as sender.** Playerbots' security accepts a bot
+  commanding itself, and the command queues into the bot's own update like a
+  master's whisper. Commands that need a master to reply to (`rpg status`) or
+  a master's target (`trainer`, `home`, `rpg do quest` without a link) do not
+  work this way. That is why `goto` (with `Trainer::TeachSpell` and
+  `SetHomebind` on arrival), `quest <id>` and `rpg <status>` exist in
+  `mod-ollama-chat_autopilot_commands.cpp`.
+- **`nc`/`co` orders do not go through `HandleCommand`.** The chat path calls
+  `PlayerbotRepository::Save`, which writes the model's choices into
+  playerbots' store as if a master had made them. They go to
+  `ChangeStrategy` directly and are recorded in `Row::strategies`, which is
+  replayed after every playerbots reset.
 - **Registering a playerbots strategy from this module** works by adding a
   `NamedObjectContext<Strategy>` to all ten class contexts'
   `sharedStrategyContexts` (public statics; see
   `mod-ollama-chat_autopilot_strategy.cpp`). Do it at `OnStartup`, before any
   bot logs in, because bots read those creator maps on map threads. Keep
-  playerbots engine includes confined to that file.
-- **`PlayerbotAI::ChangeStrategy` does not persist**, and random bots get
-  `ResetStrategies()` constantly. Autopilot's own table is the source of
-  truth, and the sweep puts the marker back after a reset. Never treat a
-  strategy's absence as the user's intent.
+  NewRpg and strategy-engine includes confined to that file.
+- **The marker strategy is the reset detector**, one per engine. Missing
+  means playerbots reset that engine: put the model's strategies back. Never
+  treat a strategy's absence as anyone's intent.
+- **Never undo a strategy change by inverting it.** Playerbots defaults include
+  `potions`, `chat`, `loot`, `gather` and `emote`. Before the model's first
+  change, both engines' full lists are captured (`Row::baseline`), and
+  `HandBack` restores exactly that.
+- **Playerbots persists the marker.** `PlayerbotRepository::Save` writes every
+  strategy, `autopilot` included, when a grouped bot logs out, and `Load`
+  restores them at login. A marker present at login is not a master's
+  request; only one that appears mid-session is. `ResetStrategies` does not
+  reload the repository; `HandBack` does, for alts.
+- **Random-bot teleports are held per bot through public
+  `RandomPlayerbotMgr` calls only:** `ScheduleTeleport(low, 2h)` hourly,
+  `SetValue(low, "randomize", 1)`, and for a death `SetValue(low, "dead"/"revive",
+  1)` set *before* `ProcessBot` marks the death itself (otherwise its own
+  1–5 minute revive timer overwrites ours). Clear both when the bot is alive
+  again, or the next death is revived (and teleported) at once. NewRpg's
+  90-second stuck teleport is avoided with `AutopilotRpg_Abandon`
+  (`SetMoveFarTo(WorldPosition())` + idle) at 60 seconds.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`
-  has joined its workers, so it may touch any bot.
+  has joined its workers, so it may touch any bot and call
+  `RandomPlayerbotMgr`. Never call `RandomPlayerbotMgr` from a hook.
 - **Keep per-tick cost flat.** The sweep visits a fixed `BotsPerSweep` in
   rotation. Snapshots are staggered by guid hash, and DB writes are batched
-  per flush. Do not add a walk over every online player to the tick.
-- **Steering NewRpg goes through `AutopilotRpg_Steer`**, a
-  `NewRpgBaseAction` subclass that reaches the protected target helpers
-  (`SelectRandomGrindPos`, `SelectRandomCampPos`, `SelectRandomFlightTaxiNode`,
-  `GetQuestPOIPosAndObjectiveIdx`, `CheckRpgStatusAvailable`) and then calls
-  `rpgInfo.ChangeTo*` with their targets. It deliberately does not use
-  `RandomChangeStatus`, which sits the bot down when nothing fits. Outside
-  that class, never call the positioned `ChangeTo*` variants without a target
-  from those helpers.
-- **The marker strategy is the reset detector.** If it is missing,
-  playerbots reset the bot: restore everything. If it is present but a
-  managed strategy drifted while a human is in the group, the human changed
-  it: lock that name. Do not "fix" this by re-applying unconditionally.
+  per flush. The service index (`AutopilotWorld_Build`) is built once at
+  startup from `GetAllCreatureData`; never walk spawns per order.
 - **The planner's prompt template is filled by literal `{name}`
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
-- **Never undo a strategy change by inverting it.** Playerbots defaults include
-  `potions`, `chat`, `loot`, `gather` and `emote`, so "-x on revert" strips
-  them. `AutopilotStrategies_Apply` records each strategy's state on first
-  touch (`AutopilotBaseline`) and restores exactly that when it stops being
-  managed; clear the baseline whenever playerbots resets the bot.
-- **Playerbots persists the marker.** `PlayerbotRepository::Save` writes every
-  strategy, `autopilot` included, when a grouped bot logs out or on any
-  `nc`/`co` command, and `Load` restores them at login. A marker present at
-  login is not a master's request; only one that appears mid-session is.
-  `ResetStrategies` does not reload the repository; `HandBack` does, for alts.

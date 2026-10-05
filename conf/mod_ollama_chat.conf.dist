@@ -2006,28 +2006,32 @@ OllamaChat.FrequencyPenalty = -1000
 #
 #   OLLAMA CHAT - AUTOPILOT (EXPERIMENTAL)
 #
-#   Hands selected playerbots to the LLM. The LLM decides who each character
-#   is (it writes the bot's identity: playstyle, outlook, what it loves, what
-#   bores and tempts it), what it is working toward (measurable goals), and
-#   what it does about it, by switching existing playerbots strategies on
-#   and off ("+quest", "-grind", "+flee") and choosing an rpg focus ("do
-#   quest", "wander npc"). Playerbots' own AI does the walking and fighting.
+#   Makes the LLM the master of selected playerbots. The LLM decides who each
+#   character is (it writes the bot's identity: playstyle, outlook, what it
+#   loves, what bores and tempts it), what it is working toward (measurable
+#   goals), and what it does about it -- and gives the orders a player would
+#   whisper to their own bot: switch strategies ("nc +grind", "co +flee"),
+#   work on a quest, go train, repair and sell junk, spend talents, put on
+#   better gear, walk to another zone, queue for a dungeon. Playerbots' own
+#   AI carries the orders out.
 #
 #   The code decides nothing about behaviour. It reports facts to the LLM
-#   (progress, rewards, deaths, temptations, history), enforces an allow-list
-#   of strategies, and applies a few safety guards. When the LLM cannot be
-#   asked (budget spent, nobody nearby, provider down), a bot keeps doing what
-#   the LLM last chose.
+#   (quest log, nearby services, zones for the level, progress, rewards,
+#   deaths, what its last orders did) and runs the orders. When the LLM
+#   cannot be asked (budget spent, nobody nearby, provider down), a bot keeps
+#   doing what it was last told.
 #
 #   Requires:
 #     - OllamaChat.EnableChatBotSnapshotTemplate = 1
 #     - the tables in data/sql/characters/base/2026_10_05_autopilot.sql
+#       (a table from an earlier draft is migrated at startup)
 #
 #   Enrolled bots carry the `autopilot` playerbots strategy (visible in
 #   `nc ?`). It is a marker that mirrors enrollment. Enrollment lives in the
 #   mod_ollama_chat_autopilot table, because playerbots resets wipe strategies
-#   all the time; autopilot adds the marker back. For the same reason
-#   `nc -autopilot` cannot unenroll a bot: use `.ollama autopilot off <bot>`.
+#   all the time; autopilot adds the marker back, and puts the LLM's
+#   strategies back with it. For the same reason `nc -autopilot` cannot
+#   unenroll a bot: use `.ollama autopilot off <bot>`.
 #
 #   Commands (GM):
 #     .ollama autopilot status [bot]          overview, or one bot in detail
@@ -2138,55 +2142,56 @@ OllamaChat.Autopilot.AllowMasterEnroll = 1
 OllamaChat.Autopilot.MaxEnrolled = 0
 
 # ----------------------------------------------
-# What the LLM may control
+# What the LLM may order
 # ----------------------------------------------
 #
-# The LLM switches these playerbots strategies on (+name) and off (-name)
-# and picks an rpg focus from the statuses below. Each is shown to the LLM
-# with a one-line description. Anything not listed here is off-limits: class,
-# spec and role strategies, chat, follow, food and the like are never on the
-# default lists, so the LLM cannot break a bot's rotation or its command
-# handling. Names must be unique across the two lists, and each must go on the
-# list for the engine playerbots actually reads it from (`attack tagged` is
-# checked out of combat; `save mana` lives on both engines, so it is left off).
-# Narrowing a list takes effect at once: strategies the LLM chose earlier
-# that are no longer allowed stop being enforced.
+# The LLM's orders are playerbots chat commands, run through the bot's own
+# command handling with the bot itself as the sender -- exactly as if its
+# master had whispered them. Strategy changes (nc / co) go straight to the
+# bot's strategy engine instead, so they are not saved into playerbots' own
+# store as if a master had made them.
+#
+# A few autopilot orders fill gaps where playerbots needs a human master:
+#   goto <service>     walk to the nearest friendly repair, vendor, trainer,
+#                      profession trainer, inn, flightmaster, bank or auction
+#                      house on this continent and use it on arrival (repair
+#                      and sell junk, learn every spell it can afford, make
+#                      the inn its home)
+#   goto zone <name>   walk to a town or camp in that zone
+#   quest <id>         work on that quest from the log
+#   rpg <status>       focus the bot's own life on one thing: do quest,
+#                      wander npc, go camp, go grind, wander random, travel
+#                      flight, rest
 #
 # Where they apply:
-#   out-of-combat strategies and the rpg focus apply while the bot is its own:
-#     not in a human's group, not following a bot group's leader, not in an
-#     instance or battleground. Entering one of those puts them back to what
-#     the bot had; leaving restores the LLM's choices.
-#   combat strategies apply everywhere, plus a per-situation playbook the LLM
-#     writes (dungeon, battleground, with_player).
-# Whenever a strategy stops being managed it goes back to what the bot had
-# before autopilot first touched it (recorded once and kept in the database),
-# along with any sibling strategy playerbots dropped when it was added (e.g.
-# `accept all quests` when `quest` goes on).
+#   while the bot is its own (not in a human's group, not following a bot
+#     group's leader, not in an instance or battleground): every order.
+#   otherwise: only co (combat) orders. Entering a group or an instance puts
+#     the bot's out-of-combat strategies back to what it had before the LLM;
+#     leaving puts the LLM's back.
+# When a bot is unenrolled, it is handed back exactly as it was before the
+# LLM's first change (recorded once and kept in the database).
 
-#    OllamaChat.Autopilot.Strategies.NonCombat
-#        Default: "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group,attack tagged"
-OllamaChat.Autopilot.Strategies.NonCombat = "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group,attack tagged"
+#    OllamaChat.Autopilot.DeniedCommands
+#        Orders the LLM may never give, by leading words: "nc" denies every
+#        out-of-combat strategy change, "nc +pvp" only that one. The default
+#        blocks logging out, resets, destroying items, teleports, summons,
+#        mail, cheats, debug, raw actions (do / d), leaving the group,
+#        releasing the spirit, and guild management.
+#        Default: "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave"
+OllamaChat.Autopilot.DeniedCommands = "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave"
 
-#    OllamaChat.Autopilot.Strategies.Combat
-#        Default: "flee,potions,avoid aoe,aggressive,threat,kite"
-OllamaChat.Autopilot.Strategies.Combat = "flee,potions,avoid aoe,aggressive,threat,kite"
-
-#    OllamaChat.Autopilot.RpgStatuses
-#        NewRpg statuses the LLM may focus a bot on. Steering uses playerbots'
-#        own target selection; a status whose weight is 0 in playerbots.conf
-#        (AiPlayerbot.RpgStatusProbWeight.*) is skipped.
-#        Default: "do quest,wander npc,go camp,go grind,wander random,travel flight,rest,outdoor pvp"
-OllamaChat.Autopilot.RpgStatuses = "do quest,wander npc,go camp,go grind,wander random,travel flight,rest,outdoor pvp"
-
-#    OllamaChat.Autopilot.StrategyDescription.<name>
-#        What the LLM is told a strategy does. Built in for every strategy on
-#        the default lists; give one for any strategy you add. Example:
-# OllamaChat.Autopilot.StrategyDescription.mount = "ride a mount when travelling"
+#    OllamaChat.Autopilot.CommandReference
+#        What the LLM is told it can order. Empty = the built-in reference
+#        (the useful strategies, the autopilot orders above, and talents,
+#        autogear, s gray, repair, go travel, follow, stay). Use \n for new
+#        lines. Anything you list here must still pass DeniedCommands.
+#        Default: ""
+OllamaChat.Autopilot.CommandReference = ""
 
 #    OllamaChat.Autopilot.Control
-#        Apply the LLM's choices at all. 0 = diary only: bots are selected and
-#        recorded, the LLM is not asked, and anything applied earlier is
+#        Run the LLM's orders at all. 0 = diary only: bots are selected and
+#        recorded, the LLM is not asked, and anything it changed earlier is
 #        handed back to playerbots.
 #        Default: 1
 OllamaChat.Autopilot.Control = 1
@@ -2194,13 +2199,42 @@ OllamaChat.Autopilot.Control = 1
 #    OllamaChat.Autopilot.WithRealPlayer
 #        In a group with a real player:
 #          0 = hands off entirely
-#          1 = combat strategies and the with_player playbook only; the player
-#              leads
-#        If someone in the group changes a strategy autopilot set, by hand
-#        (e.g. `co -flee`), autopilot leaves that strategy alone until the
-#        group breaks up.
+#          1 = combat orders only; the player leads
 #        Default: 1
 OllamaChat.Autopilot.WithRealPlayer = 1
+
+#    OllamaChat.Autopilot.NoTeleport
+#        Make autopilot random bots travel the old-fashioned way. Playerbots
+#        normally teleports random bots: every hour or so to a spot for their
+#        level, straight after a death instead of a corpse run, and when a
+#        long walk is stuck for 90 seconds. With this on, for enrolled bots:
+#          - the periodic teleport is pushed back, every hour
+#          - a dead bot runs back to its body (playerbots' dead strategy);
+#            after CorpseRunMinutes it is revived playerbots' way instead
+#          - a walk that gets stuck is abandoned before playerbots would
+#            teleport it, and the LLM is told it could not get there
+#        Getting somewhere far is then the LLM's job: `goto`, flights, the
+#        travel strategy. AiPlayerbot.AutoTeleportForLevel (playerbots.conf)
+#        still teleports on level-up; turn it off for full coverage (the log
+#        warns at startup). Has no effect on alts, which playerbots does not
+#        teleport.
+#        Default: 1
+OllamaChat.Autopilot.NoTeleport = 1
+
+#    OllamaChat.Autopilot.CorpseRunMinutes
+#        How long a dead autopilot bot may take to run back to its body before
+#        playerbots revives it its own way (which teleports it).
+#        Default: 10
+OllamaChat.Autopilot.CorpseRunMinutes = 10
+
+#    OllamaChat.Autopilot.NoRandomize
+#        Hold playerbots' periodic re-roll of autopilot random bots. It
+#        re-gears them and, below level 3 or at the level cap, rolls them a
+#        new level somewhere else -- undoing whatever the LLM was working on.
+#        Gear and talents are then the LLM's call (autogear, talents,
+#        maintenance).
+#        Default: 1
+OllamaChat.Autopilot.NoRandomize = 1
 
 # ----------------------------------------------
 # When the LLM is asked, and the budget
@@ -2208,13 +2242,14 @@ OllamaChat.Autopilot.WithRealPlayer = 1
 #
 # A bot asks for a new plan when the LLM's own "minutes" run out, when it has
 # no identity yet, or when something happens that warrants it (a level, a
-# goal done or stalled, leaving a dungeon, battleground or group, landing
-# after a flight). How often it may ask depends on its tier:
+# goal done or stalled, an errand finished or failed, a walk that got stuck,
+# an alert, leaving a dungeon, battleground or group, landing after a
+# flight). How often it may ask depends on its tier:
 #   foreground  a real player is within ForegroundScope, or a guildmate is
 #               online: at most every DecisionIntervalMinutes
 #   background  a real player is within BackgroundScope: at most every
 #               GoalRefreshMinutes
-#   dormant     otherwise: not asked; it keeps its last plan until someone
+#   dormant     otherwise: not asked; it keeps its last orders until someone
 #               comes near (a new bot keeps its playerbots defaults until then)
 # Every plan spends one token from a shared hourly budget, and planning is
 # refused while the shared request queue is more than half full, so chat
@@ -2245,9 +2280,9 @@ OllamaChat.Autopilot.DecisionIntervalMinutes = 15
 OllamaChat.Autopilot.GoalRefreshMinutes = 90
 
 #    OllamaChat.Autopilot.DefaultPlanMinutes
-#        How long a plan holds when the LLM does not say (10-180).
-#        Default: 45
-OllamaChat.Autopilot.DefaultPlanMinutes = 45
+#        How long a plan holds when the LLM does not say (5-180).
+#        Default: 30
+OllamaChat.Autopilot.DefaultPlanMinutes = 30
 
 #    OllamaChat.Autopilot.ForegroundScope
 #    OllamaChat.Autopilot.BackgroundScope
@@ -2296,8 +2331,8 @@ OllamaChat.Autopilot.Model = ""
 
 #    OllamaChat.Autopilot.NumPredict
 #        Output token cap for a plan; the chat cap is far too small for one.
-#        Default: 400
-OllamaChat.Autopilot.NumPredict = 400
+#        Default: 600
+OllamaChat.Autopilot.NumPredict = 600
 
 #    OllamaChat.Autopilot.SystemPrompt
 #        System prompt for planning. Empty = a short built-in instruction to
@@ -2307,16 +2342,17 @@ OllamaChat.Autopilot.SystemPrompt = ""
 
 #    OllamaChat.Autopilot.PromptTemplate
 #        The planning prompt. Empty = the built-in one, which puts the static
-#        instructions and allow-lists first so prompt caching works.
+#        instructions and command reference first so prompt caching works.
 #        Placeholders (replaced literally, so JSON braces need no escaping):
-#          {strategies} {rpg_statuses} {goal_kinds} {situations} {identity_rule}
+#          {commands} {goal_kinds} {max_commands} {identity_rule}
 #          {bot_name} {bot_level} {bot_race} {bot_class} {guild} {personality}
-#          {identity} {doing} {doing_minutes} {goal} {live_strategies}
-#          {rpg_focus} {rpg_status} {playbook} {rewards} {decisions}
-#          {progress} {events} {temptations} {guards} {state} {memories}
+#          {identity} {doing} {doing_minutes} {goal} {strategies}
+#          {rpg_status} {errand} {concerns} {quests} {services} {zones}
+#          {results} {rewards} {decisions} {progress} {events} {temptations}
+#          {state} {memories}
 #        The reply is a JSON object with any of: identity {style, outlook,
-#        profile}, doing, strategies ["+x","-y"], rpg [...], minutes,
-#        goal {kind, target, text}, playbook {situation: ["+x"]}, reason.
+#        profile}, doing, commands ["...", "..."] (at most 8), minutes,
+#        goal {kind, target, text}, reason.
 #        Default: ""
 OllamaChat.Autopilot.PromptTemplate = ""
 
@@ -2338,32 +2374,33 @@ OllamaChat.Autopilot.PromptTemplate = ""
 OllamaChat.Autopilot.GoalStaleMinutes = 120
 
 # ----------------------------------------------
-# Self-preservation guards
+# Alerts
 # ----------------------------------------------
 #
-# The only behaviour the code decides. A guard overrides the rpg focus for
-# HoldMinutes (rest after a death streak; visit NPCs when gear is broken or
-# bags are full), and the reason goes into the LLM's next prompt. Each guard
-# then stays quiet for four holds, so a condition the bot cannot fix does not
-# loop. 0 disables a check.
+# Self-preservation facts that ask the LLM early instead of at its next
+# scheduled look: a death streak, gear falling apart, full bags. The code does
+# nothing about them itself; the LLM is told what is wrong and decides (repair,
+# sell, move somewhere easier, take a break). Each kind then stays quiet for
+# CooldownMinutes, so a condition the bot cannot fix quickly does not burn the
+# budget. 0 disables a check.
 
-#    OllamaChat.Autopilot.Guard.Deaths
-#    OllamaChat.Autopilot.Guard.DeathWindowMinutes
+#    OllamaChat.Autopilot.Alert.Deaths
+#    OllamaChat.Autopilot.Alert.DeathWindowMinutes
 #        Default: 3 and 15
-OllamaChat.Autopilot.Guard.Deaths = 3
-OllamaChat.Autopilot.Guard.DeathWindowMinutes = 15
+OllamaChat.Autopilot.Alert.Deaths = 3
+OllamaChat.Autopilot.Alert.DeathWindowMinutes = 15
 
-#    OllamaChat.Autopilot.Guard.DurabilityPct
+#    OllamaChat.Autopilot.Alert.DurabilityPct
 #        Default: 20
-OllamaChat.Autopilot.Guard.DurabilityPct = 20
+OllamaChat.Autopilot.Alert.DurabilityPct = 20
 
-#    OllamaChat.Autopilot.Guard.FreeBagSlots
+#    OllamaChat.Autopilot.Alert.FreeBagSlots
 #        Default: 2
-OllamaChat.Autopilot.Guard.FreeBagSlots = 2
+OllamaChat.Autopilot.Alert.FreeBagSlots = 2
 
-#    OllamaChat.Autopilot.Guard.HoldMinutes
-#        Default: 10
-OllamaChat.Autopilot.Guard.HoldMinutes = 10
+#    OllamaChat.Autopilot.Alert.CooldownMinutes
+#        Default: 30
+OllamaChat.Autopilot.Alert.CooldownMinutes = 30
 
 # ----------------------------------------------
 # Diary and performance

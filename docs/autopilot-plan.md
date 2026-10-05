@@ -1,31 +1,49 @@
-# LLM Autopilot — design
+# LLM Autopilot: design
 
 Branch: `feature/llm-autopilot`
 
 ## Principle
 
-**The LLM makes every behavioural decision. Code never does.**
+**The LLM is the bot's master. It makes every behavioural decision; code
+never does.**
 
 For each enrolled bot, the LLM decides:
-- who the character is: an identity it writes itself
-- what the character is working toward: measurable goals
-- what the character does about it: which existing playerbots strategies are
-  on, what it focuses on, and how it behaves in each situation
 
-Playerbots' own AI does the walking and fighting.
+- **Who the character is.** It writes the identity itself.
+- **What the character is working toward.** These are measurable goals.
+- **What the character does about it.** It gives orders the way a player
+  whispers to their own bot: switch strategies, work on this quest, go
+  train, repair and sell, spend talents, walk to that zone, queue for a
+  dungeon.
 
-Code does four things only:
-1. Reports facts to the LLM.
-2. Enforces an allow-list of strategies.
-3. Applies a few safety guards.
-4. Carries out the LLM's choices.
+Playerbots' AI carries the orders out: walking, fighting, looting, and the
+details inside each order.
 
-When the LLM cannot be asked, a bot keeps the plan the LLM last gave it. Cost
-controls decide *when* the LLM is asked, never *what* a bot does.
+Code does two things only:
 
-An earlier draft went the other way: preset playstyles, activity weight
-tables, a dice-roll fallback policy and a boredom formula. It was removed for
-that reason. Do not reintroduce code-side decision logic.
+1. **Reports facts to the LLM.** This covers the quest log, nearby services,
+   zones for the level, progress, rewards, deaths, alerts, and what each of
+   the LLM's last orders did.
+2. **Carries out the orders.** It keeps them standing through playerbots
+   resets, stays out of the way where a human or an instance owns the bot, and
+   stops playerbots from teleporting the bot.
+
+When the LLM cannot be asked, a bot keeps its last orders. Cost controls
+decide *when* the LLM is asked, never *what* a bot does.
+
+Two earlier drafts went the other way, and both were removed:
+
+- The first used preset playstyles, activity weight tables, a dice-roll
+  fallback and a boredom formula.
+- The second let the LLM toggle only an allow-list of strategies and an rpg
+  focus. In practice it behaved like plain NewRpg: the LLM had no visible
+  effect.
+
+Do not reintroduce code-side decision logic, and do not shrink the LLM's
+reach back to toggles.
+
+This is a module-only feature. Everything below uses public playerbots and
+core APIs; nothing requires changing another repository.
 
 ## Data flow
 
@@ -33,14 +51,18 @@ that reason. Do not reintroduce code-side decision logic.
  world thread (Autopilot_Update, after MapMgr::Update)        worker pool
  ┌──────────────────────────────────────────────────┐
  │ sweep: fixed budget of enrolled bots per tick     │
+ │  ├ HoldTeleports: periodic teleport, re-roll,     │
+ │  │   revive-teleport (corpse run instead)         │
  │  ├ facts: diary snapshot, zone, gold/skill, goal │
- │  ├ guards (safety only)                          │
- │  ├ Reassert: marker, allow-list, situation,       │
- │  │   apply the LLM's wanted strategies           │
- │  ├ plan due? → build prompt → Submit ────────────┼─► QueryOllama(Autopilot)
- │  └ SteerRpg: keep the bot in the LLM's focus     │     parse JSON
- │ drain decisions ◄────────────────────────────────┼── AutopilotDecision
- │  └ ApplyDecision: validate, store, apply now     │
+ │  ├ alerts: death streak, gear, bags → ask early  │
+ │  ├ Reassert: marker = reset detector; replay the │
+ │  │   LLM's strategies; situation (group/instance)│
+ │  ├ CheckStuck: abandon a stuck walk, tell the LLM│
+ │  ├ errand: keep walking, use the service on      │
+ │  │   arrival, report back                         │
+ │  └ plan due? → build prompt → Submit ────────────┼─► QueryOllama(Autopilot)
+ │ drain decisions ◄────────────────────────────────┼── parse JSON
+ │  └ ApplyDecision: identity, goal, RunCommands     │
  └──────────────────────────────────────────────────┘
  PlayerScript hooks (map threads): counters, events, temptations (under g_mutex)
 ```
@@ -51,115 +73,108 @@ that reason. Do not reintroduce code-side decision logic.
 |---|---|---|
 | `identity {style, outlook, profile}` | Who the character is. Required on the first plan; revised only when it really changes | Stored; shown in every later prompt |
 | `doing` | Its own label for the current plan | Shown in status and prompts |
-| `strategies ["+quest", "-grind", "+flee"]` | Behaviours to switch; unmentioned ones keep their state | Merged into the bot's wanted set (allow-listed names only) |
-| `rpg ["do quest", "wander npc"]` | NewRpg focus; `[]` lets the bot roam | Steered with playerbots' own target selection |
-| `minutes` | When to ask again (10–180) | `plan_until` |
+| `commands ["nc +grind", "quest 783", "goto trainer"]` | Up to 8 orders, run in order | See *Orders* |
+| `minutes` | When to look again (5–180) | `plan_until` |
 | `goal {kind, target, text}` | Measurable aim | Resolved against game data; progress measured from the bot |
-| `playbook {situation: ["+x"]}` | Combat strategies for `dungeon`, `battleground` or `with_player` | Applied on entering, reverted on leaving |
 | `reason` | Why, in its own terms | Diary and later prompts |
 
-## What code reports to the LLM
+## Orders
 
-- The character: race, class, level and guild, plus the module's chat
-  personality, if any.
-- Its identity, current plan, goal and progress, and live strategies with
-  descriptions.
-- History:
-  - recent decisions
-  - recent events
-  - progress across snapshots
-  - last-hour rewards, as plain counts
-  - temptations (a door just opened, an epic drop, a capped profession, a
-    goal just achieved)
-- Surroundings (for foreground bots) and memories.
-- Strict roleplay realms add "must be in character".
+`mod-ollama-chat_autopilot_commands.cpp`:
 
-## Applying the LLM's choices
+- **`nc ...` / `co ...`.** Applied with `ChangeStrategy` directly, not
+  through the chat command, because the chat command would also save the
+  change into playerbots' own store. Recorded in `Row::strategies` and
+  replayed after every playerbots reset (the marker on each engine detects
+  one).
+- **`goto <service>`.** Walks to the nearest friendly repair vendor, vendor,
+  class trainer, profession trainer, innkeeper, flightmaster, banker or
+  auctioneer on this map. The startup index (`AutopilotWorld_Build`) is built
+  from `GetAllCreatureData` with npcflags, faction and
+  `Trainer::IsTrainerValidForPlayer`. The walk is NewRpg's `go camp`. On
+  arrival, the errand does the job:
+  - repair vendor: `repair` + `s gray`
+  - vendor: `s gray`
+  - trainer: `Trainer::TeachSpell` for everything affordable
+  - inn: `SetHomebind`
+- **`goto zone <name>`.** Walks to the friendly service NPC nearest the
+  zone's centre, which is somewhere a walk can end. Same continent only.
+- **`quest <id|title>`.** `rpgInfo.ChangeToDoQuest`. The quest must be in the
+  log.
+- **`rpg <status>`.** NewRpg focus through `AutopilotRpg_Steer`.
+- **Anything else** goes to `PlayerbotAI::HandleCommand(CHAT_MSG_WHISPER,
+  text, bot)` with the bot as sender, exactly as a master's whisper would.
 
-- **Allow-list** (`Strategies.NonCombat`, `.Combat`, `RpgStatuses`):
-  - Names are checked against the engine playerbots actually reads them from.
-  - Narrowing the list stops enforcing earlier choices at once.
-- **Situations:**
-  - Out-of-combat strategies and the focus apply only while the bot is its
-    own: not in a human's group, not following a bot group, not in an
-    instance or battleground.
-  - Combat strategies and the playbook apply everywhere.
-  - `WithRealPlayer = 0` means hands off entirely in a human's group.
-- **Focus needs `new rpg`:** a focus turns `new rpg` on and legacy `rpg`
-  off, unless the LLM itself turned `new rpg` off.
-- **Baseline:**
-  - Each touched strategy, and the siblings playerbots drops when it is
-    added, is recorded as it was before autopilot, once, in the database.
-  - A strategy that stops being managed goes back to its baseline.
-  - Hand-back (turning a bot off, autopilot off, `Control = 0`) resets the
-    bot, reloads an alt's saved strategies, then restores the baseline. That
-    undoes anything playerbots' own store captured from us.
-- **Reset detection:**
-  - A marker strategy (`autopilot`) sits on both engines.
-  - If one goes missing, playerbots reset that engine, and our choices for it
-    are re-applied.
-  - If something we set changes while the marker stays and a human is in the
-    group, the human did it, and that strategy is left to them until the
-    group breaks up.
+`Autopilot.DeniedCommands` blocks orders by leading words. Each order's result
+("done", "sent", "walking to …", "that quest is not in the log", "denied by
+the server", …) is stored and shown in the next prompt, so a failed order
+leads to a different one.
 
-## When the LLM is asked
+## Situations
 
-A bot's plan is due when:
-- its `plan_until` has passed
-- it has no identity yet
-- an event happened: a level, a goal done or stalled, leaving a
-  dungeon/battleground/group, or landing from a flight
+| Situation | Orders carried out | On entry | On exit |
+|---|---|---|---|
+| On its own | all | — | — |
+| Human's group | `co` only (`WithRealPlayer = 1`); none with `0` | out-of-combat engine back to baseline, errand ends | LLM's strategies replayed, LLM asked |
+| Dungeon / battleground | `co` only | same | same |
+| Following a bot leader | `co` only | same | same |
+| Dead | none | corpse run (see below) | — |
 
-Two limits apply:
-- **Tier spacing:**
-  - foreground (a player near, or a guildmate online): `DecisionIntervalMinutes`
-  - background (a player on the map): `GoalRefreshMinutes`
-  - dormant: never
-  - `ForegroundScope`, `BackgroundScope`, `MinimumTier` and
-    `RealPlayerGuildTier` widen this.
-- **Event gap:** events may ask sooner, but at most once per 5 minutes.
+## No teleporting
 
-Each plan spends one token from `LlmCallsPerHour`, and `MaxConcurrentPlans`
-caps plans in flight. A plan is not built at all while the shared queue is
-past half full, so chat comes first. `plan_until` and `last_plan_at` persist,
-so relogging does not trigger a new plan.
+Playerbots moves random bots by teleport in three places. Autopilot stops
+each one for enrolled bots, using public `RandomPlayerbotMgr` calls only:
 
-## Safety guards (the only behaviour code decides)
-
-| Condition | Override |
+| Source | Hold |
 |---|---|
-| A death streak | rpg focus `rest` |
-| Durability below the threshold | `wander npc` / `go camp` |
-| Bags nearly full | `wander npc` / `go camp` |
+| Periodic "teleport for level" (`ProcessBot`, every 1–5 h) | `ScheduleTeleport(low, 2h)` every hour |
+| Revive after death (`ProcessBot` → `Revive` → `RandomTeleportGrindForLevel`) | Set `dead` and `revive` before `ProcessBot` marks the death; the dead strategy runs the corpse. After `CorpseRunMinutes`, release `revive`. When alive again, clear both |
+| NewRpg MoveFarTo stuck for 90 s | At 60 s, `SetMoveFarTo(WorldPosition())` + idle; the LLM is told |
 
-Each override lasts `Guard.HoldMinutes`. The reason goes into the next prompt.
-Each guard then stays quiet for four holds, so an unfixable condition cannot
-loop.
+`NoRandomize` also holds the periodic re-roll (`SetValue(low, "randomize", 1)`).
+That re-roll re-gears the bot and, below level 3 or at the cap, re-levels and
+moves it. `AiPlayerbot.AutoTeleportForLevel` is config-only in playerbots, so
+autopilot warns at startup if it is on.
 
-## Selection, diary, scale
+## Handing back
 
-- **Selection** (once per login and reload):
-  - Sources: random-bot percent, real-player guilds, guild/account ids,
-    include/exclude names, alts, a master's `nc +autopilot`, GM on/off.
-  - `MaxEnrolled` caps the rule-based sources.
-  - Deleted characters are removed: in the delete transaction, and by an
-    orphan sweep at startup and hourly.
-- **Diary:**
-  - Staggered snapshots and notable events, written in batches.
-  - Snapshots are thinned hourly after a day and daily after a week.
-- **Sweep:** a fixed number of enrolled bots per tick, so per-tick cost
-  doesn't grow with the bot count.
+Before the LLM's first strategy change, both engines' full strategy lists are
+captured (`Row::baseline`, persisted). Handing back means:
 
-## Threading
+1. `ResetStrategies`.
+2. For alts, `PlayerbotRepository::Load`.
+3. Make each engine equal to the baseline.
+4. For alts, save.
 
-Hooks run on map threads and touch only their own player plus state under
-`g_mutex`. Everything else is on the world thread. The planner job does HTTP
-and string work only.
+Errands end, and held revives are released. Hand-back happens on unenroll,
+on `Control = 0`, and when autopilot goes inactive.
 
-## Possible next steps
+## Planning
 
-- Feed the bot's goal and plan into its chat prompts, so it can talk about
-  what it's doing.
-- A `with_player` mode where the bot voices what it wants in party chat.
-- New playerbots actions for things no strategy covers yet, such as posting
-  auctions.
+A plan is asked for in these cases:
+
+- when `plan_until` passes
+- when the bot has no identity
+- on an event: a level, a goal done or stalled, an errand done or failed, a
+  stuck walk, an alert, or leaving a dungeon, battleground, group or flight
+
+Asks are limited by tier (foreground / background / dormant, from real
+players' proximity) and a shared token bucket. Planning is refused while the
+shared request queue is more than half full, so chat comes first.
+
+The prompt puts static instructions and the command reference first, for
+prompt caching, and the character last.
+
+## Persistence
+
+`data/sql/characters/base/2026_10_05_autopilot.sql`:
+
+- **`mod_ollama_chat_autopilot`.** Enrollment, identity, goal, the LLM's
+  strategies, last order results, baseline and plan timing. A table from the
+  previous draft is migrated in place at startup.
+- **`_snapshots`.** Progress samples, thinned with age.
+- **`_events`.** Plans, orders, errands, alerts, levels, deaths, quests, loot
+  and zones; capped per bot.
+
+Rows for deleted characters are removed by the delete hook. A startup and
+hourly anti-join catches deletions made with raw SQL.

@@ -108,7 +108,7 @@ uint32_t    g_OllamaNumThreads = 0;
 std::string g_OllamaStop = "";
 std::string g_OllamaSystemPrompt = "";
 std::string g_AutopilotModel;
-uint32_t    g_AutopilotNumPredict = 400;
+uint32_t    g_AutopilotNumPredict = 600;
 std::string g_AutopilotSystemPrompt;
 std::string g_OllamaSeed = "";
 int32_t     g_OllamaTopK             = -1;
@@ -625,13 +625,13 @@ void LoadOllamaChatConfig()
     g_OllamaSeed                      = sConfigMgr->GetOption<std::string>("OllamaChat.Seed", "");
 
     g_AutopilotModel                  = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.Model", "");
-    g_AutopilotNumPredict             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.NumPredict", 400);
+    g_AutopilotNumPredict             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.NumPredict", 600);
     g_AutopilotSystemPrompt           = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.SystemPrompt", "");
     if (g_AutopilotSystemPrompt.empty())
         g_AutopilotSystemPrompt =
             "You are the mind of a World of Warcraft character who plays on their own: you decide who "
-            "they are, what they want and which of their behaviours are switched on. You never control "
-            "movement or combat directly. Answer with a single JSON object and nothing else.";
+            "they are, what they want and what they do, and give orders to their own AI the way a player "
+            "commands their bot. Answer with a single JSON object and nothing else.";
 
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
 

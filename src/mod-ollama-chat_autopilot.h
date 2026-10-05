@@ -11,20 +11,24 @@ class Player;
 // --------------------------------------------------------------------------
 // LLM autopilot: the LLM runs selected playerbots. See docs/autopilot-plan.md.
 //
-// The model decides who each bot is (an identity it writes itself), what it
-// is working toward, and which playerbots strategies to switch on and off to
-// get there. This file carries that out and reports facts back:
+// The model is each bot's master. It decides who the bot is (an identity it
+// writes itself), what it is working toward, and gives the orders a player
+// would whisper to their own bot -- strategies, quests, training, repairs,
+// where to go (mod-ollama-chat_autopilot_commands.h). This file carries them
+// out and reports facts back:
 //
 //   selection   which bots are autopilot characters, from conf rules plus
 //               explicit GM on/off. Rules are evaluated once per login (and on
 //               reload), never per tick.
-//   control     applies the model's desired strategies and rpg focus, filtered
-//               by situation, restoring exactly what the bot had when a
-//               strategy stops being managed. Safety guards may override the
-//               rpg focus for a while.
+//   control     runs the model's orders (combat ones only while a human leads
+//               the bot or it is in an instance), puts its strategies back
+//               after playerbots resets, walks errands to their end, and
+//               holds playerbots' random-bot teleports so the bot travels on
+//               foot. Hands the bot back exactly as it was when unenrolled.
 //   planning    asks the model when it wanted to be asked again, or when
-//               something happened; within a shared hourly budget. When it
-//               cannot be asked, the bot keeps doing what it last chose.
+//               something happened (an errand ended, a goal was reached, gear
+//               is breaking); within a shared hourly budget. When it cannot be
+//               asked, the bot keeps doing what it was last told.
 //   marker      the `autopilot` playerbots strategy mirrors enrollment and
 //               doubles as the reset detector.
 //   diary       staggered progress snapshots and notable events, written in

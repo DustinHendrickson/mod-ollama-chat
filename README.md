@@ -366,7 +366,7 @@ Lists all available personalities and their descriptions.
 - **Console Equivalent:** `ollama personality list`
 
 ### `.ollama autopilot ...`
-Controls the autopilot feature: `status`, `preview`, `on`, `off`, `rules`, `history`, `identity`, `goal`, `replan`. See [Autopilot commands](#commands).
+Controls the autopilot feature (the LLM as the bot's master): `status`, `preview`, `on`, `off`, `rules`, `history`, `identity`, `goal`, `replan`. See [Autopilot commands](#commands).
 
 > [!NOTE]
 > All commands can also be executed from the server console by replacing the leading dot (.) with the command prefix used in your console (typically none or a custom prefix).
@@ -581,158 +581,171 @@ off for the session if the provider rejects it.
 > [!WARNING]
 > Experimental and off by default. Try it on a few bots first.
 
-Autopilot hands selected bots to the LLM. **The LLM decides who each
-character is and what it does with its time.** It does this by switching
-playerbots' existing strategies on and off and choosing what the bot focuses
-on. Playerbots' own AI still does the walking and fighting.
+Autopilot makes the LLM the **master** of selected bots. It decides who each
+character is, what it wants, and what it does about it, and then gives the
+orders a player would whisper to their own bot:
+
+```
+nc +grind,-quest          quest 783          goto trainer
+goto zone Westfall        talents            autogear
+co +flee,+potions         nc +lfg            rpg wander npc
+```
+
+Playerbots' AI carries the orders out: it walks, fights and loots. The LLM
+picks the quest, sends the bot to train, repair or change zones, sets how it
+fights, and decides when to grind, explore, gather, queue for a dungeon or take
+a break.
+
+### A bot's evening
+
+```
+[plan]  "head into town to train, then back to the Defias" for 30m
+        [goto trainer; quest 12]: just hit 10, new spells to learn
+[order] goto trainer -> walking to the trainer Llane Beshere (412 yd)
+[errand] trained at the trainer Llane Beshere: learned 3 spells
+[plan]  "clearing the farmhouse" for 45m [talents; quest 12; nc +loot]
+[alert] gear is badly damaged (18% durability)
+[plan]  "patch up my armour" for 15m [goto repair]
+[errand] arrived at the repair vendor Corina Steele: repairing and selling junk
+```
+
+Every line is in `.ollama autopilot history <bot>`.
 
 ### What the LLM decides
 
-- **Identity:** on a bot's first plan, the LLM writes who it is:
-  - its playstyle, in a few words
-  - its outlook: *in-character* (doesn't know it's a game), casual *player*,
-    or *metagamer*
-  - what it loves, what bores it and what tempts it
-
-  It can revise this as the character grows.
-- **Strategies:** which playerbots behaviours are on, from an allow-list with
-  plain descriptions. For example `+quest +new rpg -grind`, or `+gather` for
-  a herbalist, `+lfg` to queue for a dungeon, `+flee +potions` for a careful
-  fighter.
-- **Focus:** what the bot concentrates on, such as `do quest`, `wander npc`,
-  `go grind` or `travel flight`. Playerbots picks the actual quest, camp,
-  spot or flight path.
-- **Goals:** reach a level, raise a profession, earn gold, visit a zone,
+- **Identity.** On a bot's first plan the LLM writes who it is: its playstyle,
+  its outlook (*in-character*, casual *player* or *metagamer*), and what it
+  loves, what bores it and what tempts it. It can revise this later.
+- **Goals.** Reach a level, raise a profession, earn gold, visit a zone,
   finish quests, run dungeons, or anything else in its own words. Progress is
   measured from the bot, not taken on the LLM's word.
-- **Playbook:** combat behaviour per situation, e.g. careful in dungeons,
-  reckless in battlegrounds.
-- **When to rethink:** each plan says how long it holds.
+- **Orders.** Up to 8 per plan, run in order. Any playerbots command works
+  unless the operator denies it.
+- **When to look again.** Each plan says how long it holds.
 
-### What the code does
+### What the LLM sees
 
-It gives the LLM the facts, carries out its choices, and stays out of the
-decisions:
-- **Facts:** progress over time, rewards in the last hour, deaths, recent
-  events, temptations (a dungeon just unlocked, an epic drop, a capped
-  profession) and its own past decisions.
-- **Allow-list:** class, spec and role strategies and chat commands are never
-  on it, so a bot can't be broken.
-- **Situations:**
-  - In a human's group, an instance or a battleground, the bot's out-of-combat
-    behaviour goes back to normal and only its combat choices apply.
-  - Leaving one of those restores the LLM's choices and asks it what next.
-- **Humans win:** if a player in the group toggles a strategy by hand,
-  autopilot leaves it alone.
-- **Safety:** a death streak makes the bot rest; broken gear or full bags send
-  it to NPCs. These hold for a few minutes, and the LLM is told why.
-- **Diary:** snapshots and an event log in the database, thinned
-  automatically as they age.
-- **Undo:** each strategy autopilot touches is recorded as it was before
-  autopilot first changed it, and kept in the database. When a strategy stops
-  being managed, or a bot is turned off, it goes back to that, even if
-  playerbots saved autopilot's choices into its own store in between.
+The bot's level, class, zone, gold, gear and bags. Its quest log with ids.
+The nearest services, such as the trainer, repair vendor and inn. Zones that
+suit its level. Its live strategies and what its AI is doing right now. What
+each of its last orders actually did, so it can try something else when one
+fails. Its goal and progress, rewards in the last hour, recent events and
+temptations (a dungeon just unlocked, an epic drop, a capped profession).
 
 ### What autopilot controls, and what it doesn't
 
-Autopilot makes the big decisions. Playerbots still does everything else.
-
 **The LLM controls:**
 
-| Area | What exactly | Where |
+| Area | Orders | Where |
 |---|---|---|
-| Behaviours | Turning these playerbots strategies on or off. Out of combat: `new rpg`, `quest`, `grind`, `rpg`, `travel`, `explore`, `move random`, `gather`, `loot`, `lfg`, `bg`, `pvp`, `duel`, `start duel`, `emote`, `guild`, `group`, `attack tagged`. In combat: `flee`, `potions`, `avoid aoe`, `aggressive`, `threat`, `kite` | Out-of-combat ones only while the bot is on its own; combat ones everywhere |
-| Focus | Which NewRpg status the bot stays in: `do quest`, `wander npc`, `go camp`, `go grind`, `wander random`, `travel flight`, `rest`, `outdoor pvp` | Only while the bot is on its own |
-| Situational combat | Combat behaviours used only in dungeons, battlegrounds, or a human's group (the playbook) | In that situation |
-| Goals | One measurable aim at a time, or a free-form one | Always |
-| Identity | Who the character is: style, outlook, what it loves, what bores it | Shapes all of the above |
-| Timing | How long a plan holds before it rethinks | Always |
+| Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy (grind, quest, explore, gather, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
+| Quests | `quest <id>` works on a quest from the log; `nc +quest` accepts and turns in | On its own |
+| Errands | `goto repair / vendor / trainer / profession / inn / flightmaster / bank / auction`: walks there and uses it (repairs and sells junk, learns every affordable spell, sets the inn as home) | On its own |
+| Travel | `goto zone <name>` walks to a town or camp in a zone on this continent; `go travel`, flights | On its own |
+| Upkeep | `talents`, `autogear`, `s gray`, `repair`, `maintenance` | On its own |
+| What it lives for | `rpg <status>`: `do quest`, `wander npc`, `go grind`, `go camp`, `wander random`, `travel flight`, `rest` | On its own |
+| Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 
-The operator can widen or narrow both lists in the conf
-(`Autopilot.Strategies.*`, `Autopilot.RpgStatuses`).
+**Autopilot doesn't control:**
 
-**Autopilot does not control:**
+- **Steering, targeting, casting and rotations.** Playerbots' AI does all of
+  this, as it always has.
+- **Orders on the deny-list.** By default that means logout, resets,
+  destroying items, teleports, summons, mail, cheats, debug, raw `do`
+  actions, leaving the group, releasing the spirit and guild management
+  (`Autopilot.DeniedCommands`).
+- **Bots in a human's group.** The player leads, and only the LLM's combat
+  orders (`co ...`) are carried out. With `WithRealPlayer = 0`, autopilot
+  doesn't touch them at all.
+- **Bots in a dungeon or battleground, or following a bot group's leader.**
+  Only combat orders are carried out. On entry, the bot's out-of-combat
+  strategies go back to what it had before the LLM. When it leaves, the
+  LLM's strategies return and it is asked what to do next.
+- **Crossing to another continent.** `goto` only finds places on the same
+  map. Boats and zeppelins are up to playerbots' travel and flight
+  strategies.
+- **Buying, crafting and the auction house.** Selling junk, repairing and
+  training are covered. Anything else depends on a playerbots command the LLM
+  can give, such as `wts` or `craft`.
+- **Chat.** Chat replies don't mention the bot's plan yet. Autopilot and chat
+  run side by side.
+- **Bots it can't plan for.** With nobody nearby (the default reach), a bot
+  keeps its last orders. A newly enrolled bot behaves like an ordinary
+  playerbot until its first plan.
 
-- **Moving, targeting, casting, rotations, talents or gear.** Playerbots' own
-  AI handles all of it, as usual.
-- **The details inside a focus.** "Do quest" doesn't pick the quest, and
-  "go grind" doesn't pick the spot. Playerbots chooses the quest, camp,
-  hunting ground, NPC or flight path.
-- **Strategies outside the allow-list.** That includes class, spec and role
-  strategies (tank, heal, dps), chat-command handling, `follow`/`stay`,
-  eating and drinking, buffs and mounting. They stay as playerbots set them
-  unless you add them to the list yourself.
-- **Shopping and crafting.** No playerbots strategy buys, sells, repairs,
-  uses the auction house, crafts or trains on command. When gear breaks or
-  bags fill up, a safety guard sends the bot to NPCs for a while. Whether it
-  actually repairs or sells there is up to playerbots.
-- **Bots in a human's group.** The player leads. Only the bot's combat
-  behaviours apply, and a player toggling one by hand overrides autopilot.
-  With `WithRealPlayer = 0` autopilot doesn't touch the bot at all.
-- **Bots following a bot group's leader, or in a dungeon or battleground.**
-  Out-of-combat behaviour and focus are paused until they leave; combat
-  behaviour still applies.
-- **Dead bots.** Nothing changes until they are alive.
-- **Playerbots' own random-bot maintenance.** Random bots are still
-  periodically teleported, refreshed and re-randomised by playerbots on its
-  own schedule. Autopilot carries on from wherever the bot ends up.
-- **Chat.** The bot's chat replies don't yet mention its goal or plan.
-  Autopilot and chat run side by side.
-- **Bots it can't plan for.** A bot outside the planning reach (no player
-  nearby by default) keeps its last plan. A newly enrolled bot keeps
-  ordinary playerbots behaviour until it gets its first plan.
+**No teleporting** (`NoTeleport`, on by default). Playerbots normally moves
+random bots by teleport: every hour or so to a spot for their level, after a
+death instead of a corpse run, and when a long walk is stuck. For autopilot
+bots, all three are stopped:
 
-When a bot is turned off, or autopilot is disabled, every strategy autopilot
-changed goes back to what the bot had before.
+- The periodic teleport is pushed back every hour.
+- A dead bot runs back to its body. After `CorpseRunMinutes` (10) it is
+  revived the normal way.
+- A stuck walk is abandoned before playerbots would teleport it, and the LLM
+  is told it couldn't get there.
+
+`NoRandomize` also holds playerbots' periodic re-roll, which would otherwise
+re-gear the bot and, at level 1–2 or the level cap, give it a new level
+somewhere else. `AiPlayerbot.AutoTeleportForLevel` in `playerbots.conf` is
+separate; turn it off for full coverage.
+
+**Handing back.** Before its first strategy change, the bot's strategies are
+recorded and saved in the database. When the bot is turned off or autopilot
+is disabled, the bot goes back to exactly that.
 
 ### Quick start
 
 1. Apply `data/sql/characters/base/2026_10_05_autopilot.sql` to your
-   characters database.
+   characters database. If you applied an earlier version, the table is
+   migrated at startup.
 2. In `mod_ollama_chat.conf`:
    ```ini
    OllamaChat.EnableChatBotSnapshotTemplate = 1   # required
    OllamaChat.Autopilot.Enable = 1
    OllamaChat.Autopilot.Select.RandomBotPercent = 5
-   OllamaChat.Autopilot.Debug = 1                 # log every plan while you watch
+   OllamaChat.Autopilot.Debug = 1                 # log every plan and order
    ```
 3. Restart, or run `.ollama reload`. Stand near some bots: bots near real
-   players are planned first.
-4. Run `.ollama autopilot status <bot>`. It shows the identity the LLM wrote,
-   what it's doing and why, which strategies it wants, its focus, goal and
-   playbook. `.ollama autopilot history <bot>` shows the diary.
+   players are planned for first.
+4. Run `.ollama autopilot status <bot>` to see the bot's identity, plan,
+   goal, the LLM's strategies, what its AI is doing, and what each order did.
+   Run `.ollama autopilot history <bot>` for the full diary.
 
 ### Choosing which bots
 
 | Setting | Selects |
 |---|---|
-| `Select.RandomBotPercent` | That share of random bots. The selection is stable: raising it only adds bots |
+| `Select.RandomBotPercent` | That share of random bots. The selection is stable, so raising it only adds bots |
 | `Select.RealPlayerGuilds` | Every bot in a guild that has a human member, online or not |
 | `Select.Guilds` / `Select.Accounts` | Bots in the listed guild or account ids |
 | `Select.Include` / `Select.Exclude` | Bots by name. Exclude always wins |
 | `Select.AltBots` | Alt and addclass bots (off by default) |
 | `Select.MinLevel` / `MaxLevel` | Level band for the rules above |
-| `MaxEnrolled` | Cap on rule-selected bots; deleted characters free their place |
+| `MaxEnrolled` | Cap on rule-selected bots. Deleted characters free their place |
 | `AllowMasterEnroll` | Lets a bot's master whisper `nc +autopilot` |
 
-`.ollama autopilot on|off <bot>` always overrides the rules. Use it rather
-than `nc -autopilot` to turn a bot off.
+`.ollama autopilot on|off <bot>` always overrides the rules. To turn a bot
+off, use it rather than `nc -autopilot`.
 
 ### Controlling cost
 
-A bot asks for a new plan when its last one runs out, or when something
-happens: a level, a goal finished or stalled, leaving a dungeon,
-battleground or group. How often it may ask depends on its tier:
+A bot asks for a new plan in two cases:
+
+- **Its last plan runs out.**
+- **Something happens:** a level, a goal finished or stalled, an errand done
+  or failed, a stuck walk, an alert (death streak, broken gear, full bags), or
+  leaving a dungeon, battleground or group.
+
+How often it may ask depends on its tier:
 
 | Tier | When (defaults) | Asks at most every |
 |---|---|---|
 | foreground | a real player in the same zone, or a guildmate online | `DecisionIntervalMinutes` (15) |
 | background | a real player on the same map | `GoalRefreshMinutes` (90) |
-| dormant | nobody around | not asked; keeps its last plan |
+| dormant | nobody around | not asked; keeps its last orders |
 
-All plans share `LlmCallsPerHour` (300). A bot that can't be asked keeps
-doing what the LLM last chose. To give the LLM to more bots, if you have the
-hardware or API budget:
+All plans share `LlmCallsPerHour` (300). If you have the hardware or API
+budget to give the LLM to more bots:
 
 | Profile | `ForegroundScope` | `BackgroundScope` | `MinimumTier` |
 |---|---|---|---|
@@ -748,33 +761,31 @@ Raise `LlmCallsPerHour` and `MaxConcurrentPlans` to match.
 
 | Command | Does |
 |---|---|
-| `.ollama autopilot status [bot]` | Overview, or one bot's identity, plan, strategies, goal and progress |
+| `.ollama autopilot status [bot]` | Overview, or one bot's identity, plan, strategies, orders, goal and progress |
 | `.ollama autopilot preview` | Dry-runs the selection rules: matches, tiers, LLM demand vs budget |
 | `.ollama autopilot on\|off\|rules <bot>` | Force on, force off, or hand back to the rules |
-| `.ollama autopilot history <bot> [n]` | The bot's diary, including every plan and its reason |
+| `.ollama autopilot history <bot> [n]` | The bot's diary: every plan, order, errand and event |
 | `.ollama autopilot identity <bot> [clear]` | Show the identity, or have the LLM write a new one |
 | `.ollama autopilot goal <bot> [kind target\|clear]` | Show or set a goal, e.g. `goal Bob reach_skill mining 150` |
 | `.ollama autopilot replan <bot>` | Ask the LLM now |
 
 ### Making it yours
 
-- `Autopilot.Strategies.NonCombat` / `.Combat` set which strategies the LLM
-  may touch. `Autopilot.RpgStatuses` sets which focuses it may choose.
-- `Autopilot.StrategyDescription.<name>` sets what the LLM is told a
-  strategy does.
-- `Autopilot.PromptTemplate` replaces the planning prompt.
+- `Autopilot.DeniedCommands` lists orders the LLM may never give. `nc +pvp`
+  denies one change; `nc` denies all out-of-combat strategy changes.
+- `Autopilot.CommandReference` replaces what the LLM is told it can order.
+- `Autopilot.PromptTemplate` replaces the whole planning prompt.
 
 Every option is documented in `mod_ollama_chat.conf.dist` under *AUTOPILOT*.
 Design notes are in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
 
 ### Good to know
 
-- Focus steering uses playerbots' **NewRpg** system. A status whose weight is
-  0 in `playerbots.conf` (`AiPlayerbot.RpgStatusProbWeight.*`) can't be
-  steered to.
-- The quality of the decisions is the quality of your model. A small model
-  may give thin identities or ignore the allow-list. Refused strategy names
-  are counted in `.ollama autopilot status`.
+- Orders use playerbots' **NewRpg** system (`new rpg`) to walk. Autopilot
+  switches it on, and the older `rpg` off, when an order needs it.
+- Decisions are only as good as your model. A small model may give thin
+  identities or orders that don't fit. Each refused or failed order is shown
+  to the LLM on its next plan and counted in `.ollama autopilot status`.
 
 ## Threading Model
 

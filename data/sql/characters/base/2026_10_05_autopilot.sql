@@ -2,11 +2,11 @@
 --
 --   autopilot            One row per bot that has ever been considered: how it
 --                        was enrolled, the identity the LLM wrote for it, and
---                        the LLM's current plan (strategies it wants on/off, rpg
---                        focus, playbook, goal). The row survives unenrollment
---                        so a bot that comes back keeps who it is. `mode`
---                        records an explicit GM decision, which always beats
---                        the selection rules.
+--                        the LLM's current plan (its goal, the strategies it
+--                        switched, what its last orders did). The row
+--                        survives unenrollment so a bot that comes back
+--                        keeps who it is. `mode` records an explicit GM
+--                        decision, which always beats the selection rules.
 --
 --   autopilot_snapshots  Periodic progress samples. Counters are running
 --                        totals, so thinning old rows (hourly after a day,
@@ -20,8 +20,9 @@
 -- Times are unix seconds so the downsampling buckets are plain integer
 -- division and do not depend on the server time zone.
 --
--- If you created mod_ollama_chat_autopilot from an earlier draft of this
--- file, drop it and apply this file again (the worldserver log says so).
+-- A table created from an earlier draft of this file is migrated in place at
+-- startup; if that is not possible the worldserver log says to drop it and
+-- apply this file again.
 
 CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     bot_guid BIGINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -38,9 +39,8 @@ CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     doing VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'The LLM''s label for what the bot is doing',
     doing_since INT UNSIGNED NOT NULL DEFAULT 0,
     decided_by VARCHAR(16) NOT NULL DEFAULT '',
-    strategies VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Strategies the LLM wants: +nc:quest,-nc:grind,+co:flee',
-    rpg VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'RPG focus the LLM wants: do quest,wander npc',
-    playbook VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'situation=+co:flee|-co:aggressive;...',
+    strategies VARCHAR(2000) NOT NULL DEFAULT '' COMMENT 'Strategies the LLM switched with nc/co, as it last set them: +nc:grind,-co:aoe',
+    last_results VARCHAR(2000) NOT NULL DEFAULT '' COMMENT 'The LLM''s last orders and what each did, one per line',
     goal_kind VARCHAR(24) NOT NULL DEFAULT '' COMMENT 'reach_level, reach_skill, earn_gold, explore_zone, complete_quests, run_dungeon, free; empty = none',
     goal_target VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Display form of the target',
     goal_target_id INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Zone or skill id',
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     goal_set_at INT UNSIGNED NOT NULL DEFAULT 0,
     goal_text VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'The goal in the character''s own words',
     last_reason VARCHAR(255) NOT NULL DEFAULT '',
-    baseline VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Each touched strategy as it was before autopilot: +nc:loot,-co:flee',
+    baseline VARCHAR(4000) NOT NULL DEFAULT '' COMMENT 'Both engines'' strategies before the LLM changed any: nc:a,b;co:c,d',
     plan_until INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'When the LLM asked to be consulted again',
     last_plan_at INT UNSIGNED NOT NULL DEFAULT 0,
     enrolled_at INT UNSIGNED NOT NULL DEFAULT 0,

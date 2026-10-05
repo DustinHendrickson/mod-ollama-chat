@@ -1,7 +1,6 @@
 #include "mod-ollama-chat_autopilot_planner.h"
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_autopilot_goals.h"
-#include "mod-ollama-chat_autopilot_strategies.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat-utilities.h"
 
@@ -18,68 +17,64 @@ namespace
 {
     using Clock = std::chrono::steady_clock;
 
-    // Static instructions and allow-lists first, the character last. Ollama
-    // reuses its KV cache for an identical prefix and hosted providers cache
-    // on the prefix too, so everything above THE CHARACTER is close to free on
-    // every call after the first.
+    // Static instructions and the command reference first, the character
+    // last. Ollama reuses its KV cache for an identical prefix and hosted
+    // providers cache on the prefix too, so everything above THE CHARACTER is
+    // close to free on every call after the first.
     //
     // Placeholders are replaced literally (not with fmt), so the JSON braces
     // in the template need no escaping -- including in an operator's own.
     const char* const kDefaultTemplate =
-        "You are the mind behind a World of Warcraft character that plays on its own. You decide who this "
-        "character is, what they want, and what they do with their time -- the way a real player decides "
-        "their evening, or the way the character themselves would live, depending on their outlook. You do "
-        "not steer, target or cast: you switch the character's behaviours (strategies) on and off, choose "
-        "what they focus on, and set their goals. Their own AI does the walking and fighting.\n"
+        "You are the player behind a World of Warcraft character -- or, if they are in-character, the "
+        "character's own mind. You decide who they are, what they want, and what they do with their time, "
+        "and you make it happen by giving orders to the character's own AI, exactly as a player whispers "
+        "commands to their bot. The AI does the walking, fighting and looting; you decide where, what and why: "
+        "which quest to chase, when to go train, when to repair and sell, when to grind, explore, gather, "
+        "queue for a dungeon, change zones, or take a break.\n"
         "\n"
-        "STRATEGIES you may switch on (+name) or off (-name):\n"
-        "{strategies}\n"
-        "\n"
-        "RPG FOCUS -- what the character concentrates on while new rpg is on (pick one or more):\n"
-        "{rpg_statuses}\n"
+        "COMMANDS\n"
+        "{commands}\n"
         "\n"
         "GOAL KINDS (a longer-term aim the game can measure):\n"
         "{goal_kinds}\n"
         "\n"
-        "PLAYBOOK: combat strategies to switch only while in a situation ({situations}), on top of the "
-        "rest -- e.g. careful in dungeons, reckless in battlegrounds.\n"
-        "\n"
         "Reply with one JSON object and nothing else, shaped like this:\n"
         "{\"identity\": {\"style\": \"...\", \"outlook\": \"...\", \"profile\": \"...\"}, "
-        "\"doing\": \"...\", \"strategies\": [\"+name\", \"-name\"], \"rpg\": [\"...\"], \"minutes\": 45, "
-        "\"goal\": {\"kind\": \"...\", \"target\": \"...\", \"text\": \"...\"}, "
-        "\"playbook\": {\"dungeon\": [\"+name\"]}, \"reason\": \"...\"}\n"
+        "\"doing\": \"...\", \"commands\": [\"...\", \"...\"], \"minutes\": 30, "
+        "\"goal\": {\"kind\": \"...\", \"target\": \"...\", \"text\": \"...\"}, \"reason\": \"...\"}\n"
         "- identity: who this character is. style = their way of playing in a few words; outlook = "
         "in-character (they do not know it is a game), player (plays for fun, knows it is a game) or "
         "metagamer (knows the systems and optimises); profile = two or three sentences: what they love, "
         "what bores them, what tempts them, how they see the world. {identity_rule}\n"
         "- doing: a few words for what they are doing now, in their own terms.\n"
-        "- strategies: only the changes to make now; anything you do not mention stays as it is. Make sure "
-        "the strategies that are on actually fit what they are doing (e.g. new rpg + quest for questing, "
-        "grind for hunting, gather for gathering, lfg to queue for a dungeon).\n"
-        "- rpg: the focus while new rpg is on; [] lets them roam as they please; omit to keep the current one.\n"
-        "- minutes: how long before you reconsider (10 to 180).\n"
+        "- commands: up to {max_commands} orders to give now, in order. Strategies stay as they are unless you "
+        "change them, so make sure what is on fits what they should be doing. Send [] to carry on as they are.\n"
+        "- minutes: how long before you look again (5 to 180). Short while running an errand or when things "
+        "are changing; long when they are settled into something.\n"
         "- goal: keep the current goal unless it is done, stalled or no longer fits them; omit to keep it. "
         "text is the aim in one sentence, phrased the way this character thinks.\n"
-        "- playbook: optional; omit to keep it.\n"
         "- reason: one short sentence on why this, now -- the way they would explain it.\n"
-        "Decide from who they are and what has actually happened to them. People get bored, get tempted, "
-        "change their minds and take breaks.\n"
+        "Decide from who they are, what they want, and what has actually happened to them. Look after them "
+        "(repair, train, sell junk, stay alive), but people also get bored, get tempted, change their minds "
+        "and take breaks. If an order did not work last time, do something else.\n"
         "\n"
         "THE CHARACTER\n"
         "{bot_name}, level {bot_level} {bot_race} {bot_class}{guild}.\n"
         "{personality}"
         "Identity: {identity}\n"
         "Doing: {doing} (for {doing_minutes} minutes). Current goal: {goal}\n"
-        "Strategies now: {live_strategies}\n"
-        "RPG focus: {rpg_focus} (right now: {rpg_status})\n"
-        "Playbook: {playbook}\n"
+        "Strategies on: {strategies}\n"
+        "Their AI is: {rpg_status}{errand}\n"
+        "{concerns}"
+        "Quest log:\n{quests}\n"
+        "Nearest services: {services}\n"
+        "Zones for their level on this continent: {zones}\n"
+        "What your last orders did:\n{results}\n"
         "Last hour: {rewards}\n"
         "Recent decisions:\n{decisions}\n"
         "{progress}\n"
         "Recent events:\n{events}\n"
         "Tempting right now:\n{temptations}\n"
-        "{guards}"
         "{state}\n"
         "{memories}";
 
@@ -193,47 +188,31 @@ namespace
         return s;
     }
 
-    // "+quest" / "-grind" / "quest" (= on). Returns false for anything else.
-    bool ParseChange(const std::string& raw, std::pair<std::string, bool>& out)
+    std::vector<std::string> ParseCommands(const nlohmann::json& value)
     {
-        std::string s = Lower(Clip(raw, 40));
-        bool on = true;
-        if (!s.empty() && (s[0] == '+' || s[0] == '-'))
+        std::vector<std::string> out;
+        auto add = [&out](const std::string& raw)
         {
-            on = s[0] == '+';
-            s = Trim(s.substr(1));
-        }
-        if (s.empty())
-            return false;
-        out = { s, on };
-        return true;
-    }
-
-    std::vector<std::pair<std::string, bool>> ParseChanges(const nlohmann::json& value)
-    {
-        std::vector<std::pair<std::string, bool>> out;
-        std::pair<std::string, bool> change;
+            if (out.size() >= AUTOPILOT_MAX_COMMANDS)
+                return;
+            std::string s = Clip(raw, AUTOPILOT_MAX_COMMAND_CHARS);
+            // One command per entry: a newline would be a second whisper.
+            std::replace(s.begin(), s.end(), '\n', ' ');
+            std::replace(s.begin(), s.end(), '\r', ' ');
+            if (!s.empty())
+                out.push_back(std::move(s));
+        };
 
         if (value.is_array())
         {
             for (const auto& item : value)
-                if (item.is_string() && ParseChange(item.get<std::string>(), change))
-                    out.push_back(change);
+                if (item.is_string())
+                    add(item.get<std::string>());
         }
         else if (value.is_string())
         {
-            for (const std::string& item : SplitString(value.get<std::string>(), ','))
-                if (ParseChange(item, change))
-                    out.push_back(change);
-        }
-        else if (value.is_object())
-        {
-            // {"on": [...], "off": [...]} -- some models prefer it.
-            for (const char* key : { "on", "off" })
-                if (auto it = value.find(key); it != value.end() && it->is_array())
-                    for (const auto& item : *it)
-                        if (item.is_string() && ParseChange(item.get<std::string>(), change))
-                            out.emplace_back(change.first, std::string_view(key) == "on");
+            for (const std::string& item : SplitString(value.get<std::string>(), ';'))
+                add(item);
         }
         return out;
     }
@@ -266,6 +245,7 @@ namespace
     }
 }
 
+
 const char* AutopilotPlanner_DefaultTemplate()
 {
     return kDefaultTemplate;
@@ -273,15 +253,6 @@ const char* AutopilotPlanner_DefaultTemplate()
 
 std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, const std::string& templ)
 {
-    std::string strategies;
-    for (const AutopilotStrategyInfo& s : AutopilotStrategies_Allowed())
-        strategies += SafeFormat("{}- {} ({}): {}", strategies.empty() ? "" : "\n", s.name,
-                                 s.combat ? "combat" : "out of combat", s.description);
-
-    std::string rpg;
-    for (const auto& [name, description] : AutopilotStrategies_RpgStatuses())
-        rpg += SafeFormat("{}- {}: {}", rpg.empty() ? "" : "\n", name, description);
-
     std::string text = templ.empty() ? std::string(kDefaultTemplate) : templ;
 
     // Conf values carry "\n" literally; the default carries real newlines.
@@ -301,10 +272,11 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
         identity = SafeFormat("{} ({}). {}", ctx.style.empty() ? "?" : ctx.style,
                               ctx.outlook.empty() ? "?" : ctx.outlook, ctx.profile);
 
-    ReplaceAll(text, "strategies", strategies.empty() ? "- (none allowed)" : strategies);
-    ReplaceAll(text, "rpg_statuses", rpg.empty() ? "- (none allowed)" : rpg);
+    // The command reference may itself mention {braces}; nothing after it is
+    // a key it could contain except by an operator's own choice.
+    ReplaceAll(text, "commands", ctx.commandReference);
     ReplaceAll(text, "goal_kinds", Goal_KindMenu());
-    ReplaceAll(text, "situations", "dungeon, battleground, with_player");
+    ReplaceAll(text, "max_commands", std::to_string(AUTOPILOT_MAX_COMMANDS));
     ReplaceAll(text, "identity_rule", identityRule);
     ReplaceAll(text, "bot_name", ctx.botName);
     ReplaceAll(text, "bot_level", std::to_string(ctx.level));
@@ -316,16 +288,19 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
     ReplaceAll(text, "doing_minutes", std::to_string(ctx.doingMinutes));
     ReplaceAll(text, "doing", ctx.doing.empty() ? "nothing decided yet" : NoBraces(ctx.doing));
     ReplaceAll(text, "goal", ctx.goal.empty() ? "none yet" : NoBraces(ctx.goal));
-    ReplaceAll(text, "live_strategies", ctx.liveStrategies);
-    ReplaceAll(text, "rpg_focus", ctx.rpgFocus.empty() ? "free roaming" : ctx.rpgFocus);
-    ReplaceAll(text, "rpg_status", ctx.rpgStatus.empty() ? "-" : ctx.rpgStatus);
-    ReplaceAll(text, "playbook", ctx.playbook.empty() ? "none" : ctx.playbook);
+    ReplaceAll(text, "strategies", ctx.strategiesOn.empty() ? "-" : ctx.strategiesOn);
+    ReplaceAll(text, "rpg_status", ctx.rpgStatus.empty() ? "idle" : NoBraces(ctx.rpgStatus));
+    ReplaceAll(text, "errand", ctx.errand.empty() ? "" : "; " + NoBraces(ctx.errand));
+    ReplaceAll(text, "concerns", ctx.concerns.empty() ? "" : NoBraces(ctx.concerns) + "\n");
+    ReplaceAll(text, "quests", ctx.questLog.empty() ? "- empty" : NoBraces(ctx.questLog));
+    ReplaceAll(text, "services", ctx.services.empty() ? "none known" : NoBraces(ctx.services));
+    ReplaceAll(text, "zones", ctx.zones.empty() ? "-" : NoBraces(ctx.zones));
+    ReplaceAll(text, "results", Lines(ctx.lastResults, "no orders given yet"));
     ReplaceAll(text, "rewards", ctx.rewards.empty() ? "nothing rewarding happened" : ctx.rewards);
     ReplaceAll(text, "decisions", Lines(ctx.decisions, "none yet"));
     ReplaceAll(text, "progress", ctx.progress.empty() ? "No progress history yet." : NoBraces(ctx.progress));
     ReplaceAll(text, "events", Lines(ctx.events, "nothing notable"));
     ReplaceAll(text, "temptations", Lines(ctx.temptations, "nothing in particular"));
-    ReplaceAll(text, "guards", ctx.guards.empty() ? "" : ctx.guards + "\n");
     ReplaceAll(text, "state", NoBraces(ctx.state));
     ReplaceAll(text, "memories", NoBraces(ctx.memories));
     return text;
@@ -498,33 +473,8 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
         }
     }
 
-    if (auto it = json.find("strategies"); it != json.end())
-        d.strategies = ParseChanges(*it);
-
-    if (auto it = json.find("rpg"); it != json.end())
-    {
-        d.rpgGiven = true;
-        if (it->is_array())
-        {
-            for (const auto& item : *it)
-                if (item.is_string())
-                    if (std::string s = Lower(Clip(item.get<std::string>(), 32)); !s.empty())
-                        d.rpg.push_back(s);
-        }
-        else if (it->is_string())
-        {
-            for (const std::string& item : SplitString(it->get<std::string>(), ','))
-                if (std::string s = Lower(Clip(item, 32)); !s.empty())
-                    d.rpg.push_back(s);
-        }
-    }
-
-    if (auto it = json.find("playbook"); it != json.end() && it->is_object())
-    {
-        d.playbookGiven = true;
-        for (auto p = it->begin(); p != it->end(); ++p)
-            d.playbook.emplace_back(Lower(Clip(p.key(), 24)), ParseChanges(*p));
-    }
+    if (auto it = json.find("commands"); it != json.end())
+        d.commands = ParseCommands(*it);
 
     // Goal: {"kind", "target", "text"}, or a bare sentence (a free goal).
     if (auto it = json.find("goal"); it != json.end())
@@ -545,7 +495,9 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
         }
     }
 
-    if (d.strategies.empty() && !d.rpgGiven && !d.playbookGiven && d.goalKind.empty() && d.profile.empty() &&
+    // "commands": [] is a real decision (carry on), as long as something
+    // else in the reply shows the model answered the question.
+    if (d.commands.empty() && json.find("commands") == json.end() && d.goalKind.empty() && d.profile.empty() &&
         d.style.empty() && d.doing.empty() && d.minutes == 0)
     {
         d.error = "reply decides nothing";

@@ -3,29 +3,29 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 // --------------------------------------------------------------------------
-// Autopilot planner: the LLM is the decision-maker.
+// Autopilot planner: the LLM is the bot's master.
 //
-// The model decides who the character is (its identity, written by the model
-// the first time and revised when it sees fit), what it is working toward,
-// and which playerbots strategies to switch on and off to get there. The code
-// only reports facts and carries out the choice within the allow-list.
+// The model decides who the character is, what it is working toward, and
+// what to do about it now -- and says so as a list of commands, the same ones
+// a player whispers to their own bot ("nc +grind", "talents", "goto trainer",
+// "quest 783"). The code reports facts and runs the commands.
 //
 //   world thread   AutopilotPlanner_BuildPrompt formats the facts -- the
-//                  character, its identity, its live strategies, history,
-//                  progress, temptations -- and the allow-lists into one
-//                  string. AutopilotPlanner_Submit hands it to a worker.
+//                  character, its identity, its live strategies, quest log,
+//                  services nearby, history, what its last commands did --
+//                  and the command reference into one string.
+//                  AutopilotPlanner_Submit hands it to a worker.
 //   worker         QueryOllama (kind Autopilot), then JSON parsing into an
 //                  AutopilotDecision. Strings only: no Player, no config.
 //   world thread   AutopilotPlanner_Drain returns decisions for the autopilot
-//                  to validate against the allow-lists and the live bot.
+//                  to run.
 //
 // Cost is bounded by a token bucket (LlmCallsPerHour) shared by every bot and
 // a cap on plans in flight. When a bot cannot be planned for, it keeps doing
-// what the model last chose.
+// what the model last told it to.
 // --------------------------------------------------------------------------
 
 struct AutopilotPromptContext
@@ -45,18 +45,23 @@ struct AutopilotPromptContext
 
     std::string doing;                  // the model's own label for the current plan
     uint32_t    doingMinutes = 0;
-    std::string liveStrategies;         // "on: quest, loot; off: grind, explore"
-    std::string rpgStatus;              // live NewRpg status
-    std::string rpgFocus;               // what the model asked for last time
     std::string goal;                   // with measured progress; may be empty
-    std::string playbook;               // may be empty
 
-    std::vector<std::string> decisions; // newest last
-    std::vector<std::string> events;    // newest last
+    std::string commandReference;       // static: what commands exist
+    std::string strategiesOn;           // "nc: ...; co: ..." live
+    std::string rpgStatus;              // live NewRpg status (+ quest)
+    std::string errand;                 // walk in progress, may be empty
+    std::string questLog;               // "- [id] title (level, done/not)" lines
+    std::string services;               // nearest services with distance
+    std::string zones;                  // zones on this continent for their level
+
+    std::vector<std::string> lastResults;  // "command -> what happened"
+    std::vector<std::string> decisions;    // newest last
+    std::vector<std::string> events;       // newest last
     std::vector<std::string> temptations;
     std::string progress;               // change over recent snapshots
     std::string rewards;                // last hour, plain counts
-    std::string guards;                 // self-preservation facts, may be empty
+    std::string concerns;               // health, gear, bags, money facts
     std::string state;
     std::string memories;
 };
@@ -76,13 +81,7 @@ struct AutopilotDecision
     std::string reason;
     uint32_t    minutes = 0;
 
-    std::vector<std::pair<std::string, bool>> strategies;   // name -> on, unvalidated
-
-    bool                     rpgGiven = false;               // "rpg" present ([] clears)
-    std::vector<std::string> rpg;
-
-    bool playbookGiven = false;
-    std::vector<std::pair<std::string, std::vector<std::pair<std::string, bool>>>> playbook;
+    std::vector<std::string> commands;  // in order, unvalidated
 
     // Goal, unvalidated. A plain string goal arrives as kind "free". All
     // empty means "keep the current goal".
@@ -92,6 +91,9 @@ struct AutopilotDecision
 
     uint64_t    latencyMs = 0;
 };
+
+inline constexpr size_t AUTOPILOT_MAX_COMMANDS      = 8;
+inline constexpr size_t AUTOPILOT_MAX_COMMAND_CHARS = 120;
 
 // World thread. `templ` is the configured template; empty uses the default.
 std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, const std::string& templ);

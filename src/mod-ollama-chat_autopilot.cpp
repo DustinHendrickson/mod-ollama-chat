@@ -1,8 +1,9 @@
 #include "mod-ollama-chat_autopilot.h"
+#include "mod-ollama-chat_autopilot_commands.h"
 #include "mod-ollama-chat_autopilot_goals.h"
 #include "mod-ollama-chat_autopilot_planner.h"
-#include "mod-ollama-chat_autopilot_strategies.h"
 #include "mod-ollama-chat_autopilot_strategy.h"
+#include "mod-ollama-chat_autopilot_world.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_handler.h"
@@ -79,14 +80,17 @@ namespace
         uint32_t eventRetention          = 300;
 
         // Control.
-        bool     control                 = true;    // apply the model's strategies at all
+        bool     control                 = true;    // run the model's commands at all
         uint32_t withRealPlayer          = 1;       // 0 hands off, 1 combat strategies only
+        bool     noTeleport              = true;    // hold playerbots' random-bot teleports
+        bool     noRandomize             = true;    // hold playerbots' periodic re-rolls
+        uint32_t corpseRunMinutes        = 10;      // then let playerbots revive it
         bool     llmEnable               = true;
         uint32_t llmCallsPerHour         = 300;
         uint32_t maxConcurrentPlans      = 2;
         uint32_t decisionIntervalMinutes = 15;      // foreground
         uint32_t goalRefreshMinutes      = 90;      // background
-        uint32_t defaultPlanMinutes      = 45;
+        uint32_t defaultPlanMinutes      = 30;
         float    foregroundRange         = 100.0f;  // yards, for Scope::Range
 
         // Reach: who gets LLM time.
@@ -101,12 +105,13 @@ namespace
         uint32_t planTimeoutSeconds      = 300;
         std::string promptTemplate;
 
-        // Guards.
-        uint32_t guardDeaths             = 3;
-        uint32_t guardDeathWindowMinutes = 15;
-        uint32_t guardDurabilityPct      = 20;
-        uint32_t guardFreeBagSlots       = 2;
-        uint32_t guardHoldMinutes        = 10;
+        // Alerts: conditions that ask the model early. The model decides
+        // what to do about them.
+        uint32_t alertDeaths             = 3;
+        uint32_t alertDeathWindowMinutes = 15;
+        uint32_t alertDurabilityPct      = 20;
+        uint32_t alertFreeBagSlots       = 2;
+        uint32_t alertCooldownMinutes    = 30;
 
         uint32_t goalStaleMinutes        = 120;
     };
@@ -134,9 +139,12 @@ namespace
     // rules never matched get no row at all, so a realm of thousands of random
     // bots does not grow a table of thousands of "no" rows.
     //
+    // Strategy state as "engine:name" -> on, e.g. "nc:grind" -> true.
+    using StrategyMap = std::map<std::string, bool>;
+
     // Everything about who the bot is and what it does comes from the model:
-    // the identity, the strategies it wants on and off, its rpg focus, goal
-    // and playbook. Nothing here is chosen by code.
+    // the identity, the goal, and the commands it gives. Nothing here is
+    // chosen by code.
     struct Row
     {
         uint8_t     mode        = MODE_RULES;
@@ -153,16 +161,21 @@ namespace
         std::string      doing;
         uint32_t         doingSince = 0;
         std::string      decidedBy;
-        AutopilotDesired desired;                         // strategies it wants on/off
-        std::vector<std::string> rpg;                     // rpg focus; empty = roam freely
-        std::map<std::string, AutopilotDesired> playbook; // situation -> combat strategies
         AutopilotGoal    goal;
         std::string      lastReason;
 
-        // What each strategy autopilot has touched looked like before it first
-        // did. Persisted, so it survives logouts and is never re-learned from
-        // playerbots' own store (which can capture our changes for alts).
-        AutopilotBaseline baseline;
+        // Every strategy the model has switched with nc/co, as it last set
+        // it. Playerbots resets wipe strategies constantly; these are put back
+        // afterwards, as a player would re-type them.
+        StrategyMap      strategies;
+
+        // What the model's last orders did, for its next prompt.
+        std::vector<std::string> lastResults;
+
+        // Both engines' full strategy lists before the model first changed
+        // anything. Persisted, so the bot can be handed back exactly --
+        // playerbots' own store may have captured the model's changes.
+        std::string      baseline;
 
         // When the model asked to be consulted again, and when it last was.
         // Persisted, so a relog does not cost a fresh plan.
@@ -221,22 +234,25 @@ namespace
         bool     urgentPlan      = false;
         Tier     tier            = Tier::Dormant;
 
-        // What autopilot is enforcing right now.
-        AutopilotDesired  applied;
-        bool              controlled = false;
+        // Out-of-combat strategies are only the model's while the bot is its
+        // own; true while they need putting back once it is again.
+        bool     ncReplay        = false;
+        bool     coReplay        = false;   // put the combat ones back on the next visit
 
-        // Strategies a human changed by hand while grouped with the bot, and
-        // the group that lock belongs to.
-        std::set<std::string> locked;
-        uint64_t              lockGroup = 0;
+        // A walk to a service or a zone, from `goto`.
+        AutopilotErrand errand;
 
-        // Safety overrides of the rpg focus.
+        // Teleport holds (NoTeleport): when the random-bot teleport was last
+        // pushed back, and the corpse run in progress.
+        uint32_t teleportDeferredAt = 0;
+        uint32_t deadSince          = 0;
+        bool     reviveHeld         = false;
+
+        // Conditions the model should hear about early.
         std::deque<uint32_t>     deathTimes;
-        std::unordered_map<std::string, uint32_t> guardCooldown;   // kind -> may fire again at
-        std::vector<std::string> guardRpg;
-        uint32_t                 guardUntil  = 0;
-        std::string              lastGuard;
-        uint32_t                 lastGuardAt = 0;
+        std::unordered_map<std::string, uint32_t> alertCooldown;   // kind -> may fire again at
+        std::string              lastAlert;
+        uint32_t                 lastAlertAt = 0;
 
         // Recent history, for prompts without a DB round trip.
         bool                          historyRequested = false;
@@ -293,10 +309,12 @@ namespace
     // Counters for `.ollama autopilot status`.
     uint64_t g_statPlans    = 0;
     uint64_t g_statInvalid  = 0;
-    uint64_t g_statRejected = 0;   // strategy names off the allow-list
-    uint64_t g_statGuard    = 0;
-    uint64_t g_statSteer    = 0;
-    uint64_t g_statLocks    = 0;
+    uint64_t g_statCommands = 0;   // commands run
+    uint64_t g_statRefused  = 0;   // commands denied or that could not run
+    uint64_t g_statAlerts   = 0;
+    uint64_t g_statReplays  = 0;   // strategies put back after a playerbots reset
+    uint64_t g_statStuck    = 0;   // walks abandoned instead of teleporting
+    uint64_t g_statCorpse   = 0;   // corpse runs held / given up on
 
     constexpr uint32_t kLogoutSnapshotMinGap = 300;
     constexpr uint32_t kUrgentGapSeconds     = 300;
@@ -395,22 +413,148 @@ namespace
         return bot ? PlayerbotsMgr::instance().GetPlayerbotAI(bot) : nullptr;
     }
 
-    // Return a bot to exactly what playerbots would give it without us: its
-    // defaults, plus -- for alts -- the strategies its master saved, which
-    // ResetStrategies alone does not reload (its Load call is commented out).
-    // Mirrors PlayerbotHolder::OnBotLogin.
-    //
-    // Then every strategy autopilot ever touched is set back to its recorded
-    // baseline, which undoes anything playerbots' store captured from us (it
-    // saves every strategy when a grouped alt logs out, or on any nc/co
-    // command) and anything ResetStrategies re-rolled differently.
-    void HandBack(PlayerbotAI* ai, const AutopilotBaseline& baseline)
+    // --- strategy bookkeeping ---------------------------------------------
+
+    BotState EngineOf(const std::string& key)
+    {
+        return key.rfind("co:", 0) == 0 ? BOT_STATE_COMBAT : BOT_STATE_NON_COMBAT;
+    }
+
+    // "nc +grind,-quest" / "co ~aoe" -> the changes it makes, by key. Toggles
+    // resolve against the live bot. Resets ("!") and queries ("?") change no
+    // stored choice.
+    StrategyMap ParseStrategyCommand(PlayerbotAI* ai, const std::string& command)
+    {
+        StrategyMap out;
+        const std::string lower = Lower(command);
+        const std::string engine = lower.substr(0, 2);
+        const BotState state = engine == "co" ? BOT_STATE_COMBAT : BOT_STATE_NON_COMBAT;
+        for (std::string item : SplitString(lower.size() > 3 ? lower.substr(3) : "", ','))
+        {
+            item.erase(0, item.find_first_not_of(" \t"));
+            item.erase(item.find_last_not_of(" \t") + 1);
+            if (item.size() < 2 || (item[0] != '+' && item[0] != '-' && item[0] != '~'))
+                continue;
+            const std::string name = item.substr(1);
+            if (name == AUTOPILOT_STRATEGY_NAME)
+                continue;
+            const bool on = item[0] == '+' || (item[0] == '~' && !ai->HasStrategy(name, state));
+            out[engine + ":" + name] = on;
+        }
+        return out;
+    }
+
+    // Make one stored choice true on the bot. False when it already was.
+    bool ApplyStrategy(PlayerbotAI* ai, const std::string& key, bool on)
+    {
+        const std::string name = key.substr(3);
+        const BotState state = EngineOf(key);
+        if (ai->HasStrategy(name, state) == on)
+            return false;
+        ai->ChangeStrategy((on ? "+" : "-") + name, state);
+        return true;
+    }
+
+    // Put the model's choices back on one or both engines.
+    uint32_t ReplayStrategies(PlayerbotAI* ai, const Row& row, bool nc, bool co)
+    {
+        uint32_t changed = 0;
+        for (const auto& [key, on] : row.strategies)
+        {
+            const bool combat = EngineOf(key) == BOT_STATE_COMBAT;
+            if ((combat ? co : nc) && ApplyStrategy(ai, key, on))
+                ++changed;
+        }
+        return changed;
+    }
+
+    std::string FormatStrategies(const StrategyMap& m)
+    {
+        std::string out;
+        for (const auto& [key, on] : m)
+            out += SafeFormat("{}{}{}", out.empty() ? "" : ",", on ? "+" : "-", key);
+        return out;
+    }
+
+    StrategyMap ParseStrategies(const std::string& text)
+    {
+        StrategyMap out;
+        for (const std::string& item : SplitString(text, ','))
+            if (item.size() > 4 && (item[0] == '+' || item[0] == '-'))
+                out[item.substr(1)] = item[0] == '+';
+        return out;
+    }
+
+    // "nc:a,b,c;co:d,e" -- both engines' full lists.
+    std::string CaptureStrategies(PlayerbotAI* ai)
+    {
+        auto join = [](const std::vector<std::string>& v)
+        {
+            std::string s;
+            for (const std::string& n : v)
+                if (n != AUTOPILOT_STRATEGY_NAME)
+                    s += (s.empty() ? "" : ",") + n;
+            return s;
+        };
+        return "nc:" + join(ai->GetStrategies(BOT_STATE_NON_COMBAT)) + ";co:" +
+               join(ai->GetStrategies(BOT_STATE_COMBAT));
+    }
+
+    // Make one engine's strategies exactly the recorded list.
+    void RestoreEngine(PlayerbotAI* ai, const std::string& baseline, BotState state)
+    {
+        const std::string prefix = state == BOT_STATE_COMBAT ? "co:" : "nc:";
+        std::set<std::string> want;
+        bool found = false;
+        for (const std::string& part : SplitString(baseline, ';'))
+            if (part.rfind(prefix, 0) == 0)
+            {
+                found = true;
+                for (const std::string& n : SplitString(part.substr(3), ','))
+                    want.insert(n);
+            }
+        if (!found)
+            return;
+
+        for (const std::string& n : ai->GetStrategies(state))
+            if (n != AUTOPILOT_STRATEGY_NAME && !want.count(n))
+                ai->ChangeStrategy("-" + n, state);
+        for (const std::string& n : want)
+            if (!ai->HasStrategy(n, state))
+                ai->ChangeStrategy("+" + n, state);
+    }
+
+    // Return a bot to what it was before the model touched it: playerbots'
+    // defaults (plus, for alts, what their master saved -- ResetStrategies
+    // alone does not reload it; mirrors PlayerbotHolder::OnBotLogin), then
+    // exactly the lists recorded before the model's first change, which
+    // undoes anything playerbots' store captured from us.
+    void HandBack(PlayerbotAI* ai, Row* row, Online* ob)
     {
         ai->ResetStrategies();
-        if (Player* bot = ai->GetBot())
-            if (!sRandomPlayerbotMgr.IsRandomBot(bot))
-                PlayerbotRepository::instance().Load(ai);
-        AutopilotStrategies_RestoreBaseline(ai, baseline);
+        Player* bot = ai->GetBot();
+        if (bot && !sRandomPlayerbotMgr.IsRandomBot(bot))
+            PlayerbotRepository::instance().Load(ai);
+        if (row && !row->baseline.empty())
+        {
+            RestoreEngine(ai, row->baseline, BOT_STATE_NON_COMBAT);
+            RestoreEngine(ai, row->baseline, BOT_STATE_COMBAT);
+            if (bot && !sRandomPlayerbotMgr.IsRandomBot(bot))
+                PlayerbotRepository::instance().Save(ai);
+        }
+
+        // Walks and teleport holds end with control.
+        if (ob)
+        {
+            if (ob->errand.active)
+                AutopilotRpg_Abandon(ai);
+            ob->errand = AutopilotErrand();
+            // A dead bot may be on a held revive from an earlier session too.
+            if (bot && (ob->reviveHeld || !bot->IsAlive()) && sRandomPlayerbotMgr.IsRandomBot(bot))
+                sRandomPlayerbotMgr.SetValue(bot->GetGUID().GetCounter(), "revive", 0);
+            ob->reviveHeld = false;
+            ob->ncReplay   = false;
+        }
     }
 
     // The marker sits on both engines. The non-combat one is the enrollment
@@ -451,7 +595,7 @@ namespace
         // The prompt already carries the model's own plans (as recent
         // decisions) and its identity; echoing them here would push real
         // facts out of the short event list.
-        if (type == "plan" || type == "identity" || type == "identity_changed")
+        if (type == "plan" || type == "order" || type == "identity" || type == "identity_changed")
             return;
 
         auto it = g_online.find(guid);
@@ -466,16 +610,6 @@ namespace
         PushCapped(it->second.events, std::move(e), kEventRing);
     }
 
-    // "+quest -grind +flee" -- the model's own words for a change list.
-    std::string ChangesText(const AutopilotDesired& d)
-    {
-        std::string out;
-        for (const auto& [key, on] : d)
-            out += SafeFormat("{}{}{}", out.empty() ? "" : " ", on ? "+" : "-",
-                              key.size() > 3 ? key.substr(3) : key);
-        return out;
-    }
-
     std::string JoinList(const std::vector<std::string>& items)
     {
         std::string out;
@@ -484,31 +618,11 @@ namespace
         return out;
     }
 
-    // Playbook <-> DB: "dungeon=+co:flee|+co:potions;battleground=+co:aggressive"
-    std::string SerializePlaybook(const std::map<std::string, AutopilotDesired>& playbook)
+    std::string JoinLines(const std::vector<std::string>& items)
     {
         std::string out;
-        for (const auto& [situation, changes] : playbook)
-        {
-            std::string list = AutopilotStrategies_Format(changes);
-            std::replace(list.begin(), list.end(), ',', '|');
-            out += (out.empty() ? "" : ";") + situation + "=" + list;
-        }
-        return out;
-    }
-
-    std::map<std::string, AutopilotDesired> ParsePlaybook(const std::string& text)
-    {
-        std::map<std::string, AutopilotDesired> out;
-        for (const std::string& entry : SplitString(text, ';'))
-        {
-            const size_t eq = entry.find('=');
-            if (eq == std::string::npos)
-                continue;
-            std::string list = entry.substr(eq + 1);
-            std::replace(list.begin(), list.end(), '|', ',');
-            out[entry.substr(0, eq)] = AutopilotStrategies_Parse(list);
-        }
+        for (const std::string& s : items)
+            out += (out.empty() ? "" : "\n") + s;
         return out;
     }
 
@@ -528,27 +642,35 @@ namespace
         bool     follower       = false;   // in a bot group, not its leader
         uint64_t groupGuid      = 0;
 
-        // Key into the playbook, or "" in the open world.
-        const char* PlaybookKey() const
-        {
-            if (inBattleground) return "battleground";
-            if (inInstance)     return "dungeon";
-            if (withRealPlayer) return "with_player";
-            return "";
-        }
-
-        // Combat strategies and the playbook hold everywhere -- dungeons, a
-        // human's group -- except where the operator asked for hands off.
+        // Combat strategies are the model's everywhere -- dungeons, a human's
+        // group -- except where the operator asked for hands off.
         bool CanUseCombat() const
         {
             return !dead && !(withRealPlayer && g_cfg.withRealPlayer == 0);
         }
 
-        // Out-of-combat strategies and the rpg focus only while the bot is
-        // its own: something else owns its movement in a group or instance.
+        // Everything else only while the bot is its own: a group leader or
+        // an instance owns its movement otherwise.
         bool CanUseNonCombat() const
         {
             return !dead && !withRealPlayer && !inInstance && !follower;
+        }
+
+        // For the prompt: why only some orders will be carried out.
+        std::string Limits() const
+        {
+            if (!CanUseCombat())
+                return "";
+            if (withRealPlayer)
+                return "They are in a group with a real player, who leads them: only co (combat) orders will be "
+                       "carried out until the group breaks up.";
+            if (inBattleground)
+                return "They are in a battleground: only co (combat) orders will be carried out until it ends.";
+            if (inInstance)
+                return "They are in a dungeon: only co (combat) orders will be carried out until they leave.";
+            if (follower)
+                return "They are following a group leader: only co (combat) orders will be carried out.";
+            return "";
         }
     };
 
@@ -677,64 +799,14 @@ namespace
     }
 
     // ----------------------------------------------------------------------
-    // Carrying out the model's plan. World thread, g_mutex held.
+    // Carrying out the model's orders. World thread, g_mutex held.
     // ----------------------------------------------------------------------
 
-    // Is this stored key still something the model may control? The operator
-    // may have narrowed the allow-list, or moved a name between the combat and
-    // non-combat lists, since the model chose it.
-    bool StillAllowed(const std::string& key)
-    {
-        const AutopilotStrategyInfo* info = AutopilotStrategies_Find(key.size() > 3 ? key.substr(3) : key);
-        return info && info->Key() == key;
-    }
-
-    // The strategies to enforce right now: the model's choices that are still
-    // allowed, filtered by what the situation allows, plus the playbook entry
-    // for the situation.
-    //
-    // A focus only works with `new rpg` on and the legacy `rpg` off, so when
-    // the model chose a focus those two follow it -- unless the model itself
-    // turned `new rpg` off (its explicit choice wins; the focus then simply
-    // does nothing) or the operator took them off the allow-list.
-    AutopilotDesired Wanted(const Row& row, const Online& ob, const Situation& sit)
-    {
-        AutopilotDesired wanted;
-        if (!sit.CanUseCombat())
-            return wanted;
-
-        for (const auto& [key, on] : row.desired)
-            if (StillAllowed(key) && (key.rfind("co:", 0) == 0 || sit.CanUseNonCombat()))
-                wanted[key] = on;
-
-        const bool focus = !row.rpg.empty() || !ob.guardRpg.empty();
-        if (focus && sit.CanUseNonCombat())
-        {
-            auto chosen = row.desired.find("nc:new rpg");
-            const bool modelTurnedOff = chosen != row.desired.end() && !chosen->second;
-            if (StillAllowed("nc:new rpg") && (!modelTurnedOff || !ob.guardRpg.empty()))
-            {
-                wanted["nc:new rpg"] = true;
-                if (StillAllowed("nc:rpg"))
-                    wanted["nc:rpg"] = false;
-            }
-        }
-
-        if (const std::string key = sit.PlaybookKey(); !key.empty())
-            if (auto it = row.playbook.find(key); it != row.playbook.end())
-                for (const auto& [k, on] : it->second)
-                    if (k.rfind("co:", 0) == 0 && StillAllowed(k))
-                        wanted[k] = on;
-
-        return wanted;
-    }
-
-    // Restore whatever a playerbots reset wiped, recognise a human's hand on
-    // the controls, and bring the bot to what the model wants for this
-    // situation. The marker on each engine is that engine's reset detector:
-    // a reset clears it together with everything else, a human toggling
-    // `co -flee` does not.
-    void Reassert(PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, const Situation& sit)
+    // Put back what a playerbots reset wiped, and keep out-of-combat
+    // strategies the bot's own only while it is. The marker on each engine is
+    // that engine's reset detector: a reset clears it together with
+    // everything else, a human toggling `co -flee` does not.
+    void Reassert(PlayerbotAI* ai, Row& row, Online& ob, const Situation& sit)
     {
         const bool ncReset = !HasMarker(ai, BOT_STATE_NON_COMBAT);
         const bool coReset = !HasMarker(ai, BOT_STATE_COMBAT);
@@ -742,82 +814,209 @@ namespace
         {
             AddMarker(ai);
             ob.markerOurs = true;
-            // That engine is back to playerbots' defaults: nothing of ours is
-            // left on it. The baseline stays -- it records the bot as it was
-            // before autopilot, and a reset does not change that.
-            for (auto it = ob.applied.begin(); it != ob.applied.end();)
-            {
-                const bool combat = it->first.rfind("co:", 0) == 0;
-                it = (combat ? coReset : ncReset) ? ob.applied.erase(it) : std::next(it);
-            }
+            if (ncReset)
+                ob.ncReplay = true;
         }
 
         if (!g_cfg.control)
         {
             // Diary only (`Autopilot.Control = 0`, possibly just reloaded):
-            // nothing of ours may stay on the bot.
-            if (ob.controlled || !ob.applied.empty())
+            // nothing of the model's may stay on the bot.
+            if (!row.baseline.empty())
             {
-                HandBack(ai, row.baseline);
+                HandBack(ai, &row, &ob);
                 AddMarker(ai);
-                ob.applied.clear();
-                ob.controlled = false;
+                row.baseline.clear();
+                row.dirty = true;
             }
             return;
         }
 
-        const AutopilotDesired wanted = Wanted(row, ob, sit);
+        // Replaying is the first change to a bot whose "before" was given
+        // back; take it again first.
+        if (row.baseline.empty() && !row.strategies.empty())
+            row.baseline = CaptureStrategies(ai);
 
-        // Someone in the group switched something we had set, by hand.
-        // Theirs now, until the group breaks up.
-        if (sit.withRealPlayer && ob.controlled)
+        if ((coReset || ob.coReplay) && sit.CanUseCombat())
         {
-            AutopilotDesired held;
-            for (const auto& [key, on] : wanted)
-                if (auto it = ob.applied.find(key); it != ob.applied.end() && it->second == on)
-                    held[key] = on;
-
-            for (const std::string& name : AutopilotStrategies_Drift(ai, held, ob.locked))
-            {
-                ob.locked.insert(name);
-                ++g_statLocks;
-                RecordEvent(guid, "locked", name + " (changed by a player in the group)");
-            }
+            g_statReplays += ReplayStrategies(ai, row, false, true);
+            ob.coReplay = false;
         }
 
-        if (AutopilotStrategies_Apply(ai, wanted, ob.applied, ob.locked, row.baseline))
-            row.dirty = true;
-        if (!ob.applied.empty())
-            ob.controlled = true;
+        // Joined a human's group, or walked into a dungeon: its movement is
+        // someone else's now, so the out-of-combat engine goes back to what
+        // the bot had before the model, and the walk in progress ends.
+        if (!sit.CanUseNonCombat() && !sit.dead && !ob.ncReplay)
+        {
+            if (!row.baseline.empty())
+                RestoreEngine(ai, row.baseline, BOT_STATE_NON_COMBAT);
+            if (ob.errand.active)
+            {
+                AutopilotRpg_Abandon(ai);
+                ob.errand.active = false;
+            }
+            ob.ncReplay = true;
+        }
+
+        if (ob.ncReplay && sit.CanUseNonCombat())
+        {
+            g_statReplays += ReplayStrategies(ai, row, true, false);
+            ob.ncReplay = false;
+        }
     }
 
-    std::vector<int> StatusIds(const std::vector<std::string>& names)
+    // Run the model's orders, in order. Returns what each did.
+    std::vector<std::string> RunCommands(Player* bot, PlayerbotAI* ai, Row& row, Online& ob,
+                                         const std::vector<std::string>& commands, const Situation& sit,
+                                         uint32_t now)
     {
-        std::vector<int> out;
-        for (const std::string& n : names)
-            if (int s = AutopilotRpg_StatusFromName(n); s >= 0)
-                out.push_back(s);
-        return out;
+        std::vector<std::string> results;
+        for (const std::string& command : commands)
+        {
+            const bool strategy = AutopilotCommands_IsStrategyChange(command);
+            const bool combat   = strategy && Lower(command).rfind("co", 0) == 0;
+
+            std::string result;
+            if (AutopilotCommands_IsDenied(command))
+                result = "denied by the server";
+            else if (!sit.CanUseCombat())
+                result = "not carried out (hands off in a player's group)";
+            else if (!combat && !sit.CanUseNonCombat())
+                result = "not carried out (only combat orders right now)";
+            else
+            {
+                // The first change the model makes is when "before" is taken.
+                if (strategy && row.baseline.empty())
+                    row.baseline = CaptureStrategies(ai);
+
+                if (strategy)
+                {
+                    // Directly on the engine, not through the chat command:
+                    // the command would also save the change into
+                    // playerbots' own store as if a master had made it.
+                    const StrategyMap changes = ParseStrategyCommand(ai, command);
+                    std::string unknown;
+                    size_t      unknownCount = 0;
+                    for (const auto& [key, on] : changes)
+                    {
+                        // A name playerbots does not know changes nothing;
+                        // say so rather than keep replaying it.
+                        ApplyStrategy(ai, key, on);
+                        if (ai->HasStrategy(key.substr(3), EngineOf(key)) != on)
+                        {
+                            unknown += (unknown.empty() ? "" : ", ") + key.substr(3);
+                            ++unknownCount;
+                        }
+                        else
+                            row.strategies[key] = on;
+                    }
+                    if (changes.empty())
+                        result = "nothing to change";
+                    else if (!unknown.empty())
+                        result = (unknownCount == changes.size() ? "" : "done, except ") +
+                                 std::string("no such strategy: ") + unknown;
+                    else
+                        result = "done";
+                }
+                else
+                {
+                    result = AutopilotCommands_Run(bot, ai, command, ob.errand, now);
+                }
+            }
+
+            const bool ran = result.rfind("done", 0) == 0 || result == "sent" || result.rfind("walking", 0) == 0 ||
+                             result.rfind("working", 0) == 0 || result.rfind("focus", 0) == 0;
+            ++(ran ? g_statCommands : g_statRefused);
+            results.push_back(command + " -> " + result);
+        }
+
+        if (!results.empty())
+        {
+            row.lastResults = results;
+            row.dirty       = true;
+        }
+        return results;
     }
 
-    // Keep the bot in the rpg focus the model chose (or a guard's override).
-    void SteerRpg(PlayerbotAI* ai, const Row& row, const Online& ob, const Situation& sit)
+    // NoTeleport: playerbots moves random bots around by teleport -- every
+    // hour or so "for level", and straight after a death instead of a corpse
+    // run. For bots the model runs, it gets them there the old-fashioned way.
+    void HoldTeleports(Player* bot, uint64_t guid, Online& ob, const Situation& sit, uint32_t now)
     {
-        if (!sit.CanUseNonCombat() || sit.inCombat || sit.travelling)
+        if (!g_cfg.control || !sRandomPlayerbotMgr.IsRandomBot(bot))
+            return;
+        const uint32_t low = bot->GetGUID().GetCounter();
+
+        // The periodic teleport: keep pushing it two hours out. The periodic
+        // re-roll (NoRandomize) too: it re-gears the bot, and below level 3 or
+        // at the level cap rolls it a new level and a new place.
+        if (!ob.teleportDeferredAt || now - ob.teleportDeferredAt >= kHour)
+        {
+            if (g_cfg.noTeleport)
+                sRandomPlayerbotMgr.ScheduleTeleport(low, 2 * kHour);
+            if (g_cfg.noRandomize)
+                sRandomPlayerbotMgr.SetValue(low, "randomize", 1);
+            ob.teleportDeferredAt = now;
+        }
+
+        if (!g_cfg.noTeleport)
             return;
 
-        const std::vector<std::string>& focus = ob.guardRpg.empty() ? row.rpg : ob.guardRpg;
-        if (focus.empty() || !ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+        // A death: playerbots marks it, then revives and teleports the bot to
+        // a grind spot 1-5 minutes later. Mark it ourselves first, with the
+        // revive held, so the dead strategy walks the ghost back.
+        if (sit.dead && !bot->InBattleground())
+        {
+            if (!ob.deadSince)
+                ob.deadSince = now;
+            if (!ob.reviveHeld && now - ob.deadSince < g_cfg.corpseRunMinutes * 60)
+            {
+                if (!sRandomPlayerbotMgr.GetValue(low, "dead"))
+                    sRandomPlayerbotMgr.SetValue(low, "dead", 1);
+                sRandomPlayerbotMgr.SetValue(low, "revive", 1);
+                ob.reviveHeld = true;
+                ++g_statCorpse;
+            }
+            else if (ob.reviveHeld && now - ob.deadSince >= g_cfg.corpseRunMinutes * 60)
+            {
+                // Could not make it back: let playerbots revive it its way.
+                sRandomPlayerbotMgr.SetValue(low, "revive", 0);
+                ob.reviveHeld = false;
+                RecordEvent(guid, "corpse_run", SafeFormat("could not reach the body in {} minutes",
+                                                           g_cfg.corpseRunMinutes));
+            }
+            return;
+        }
+
+        if (ob.deadSince)
+        {
+            // Alive again. Clear the marks, or the next death would find
+            // "dead" already set and be revived (and teleported) at once.
+            if (ob.reviveHeld)
+            {
+                sRandomPlayerbotMgr.SetValue(low, "revive", 0);
+                sRandomPlayerbotMgr.SetValue(low, "dead", 0);
+                RecordEvent(guid, "corpse_run", SafeFormat("made it back to the body in {}",
+                                                           Span(now - ob.deadSince)));
+            }
+            ob.deadSince  = 0;
+            ob.reviveHeld = false;
+        }
+    }
+
+    // NewRpg teleports a bot to a far destination it has been stuck short of
+    // for 90 seconds. Give up on the walk before that, and tell the model.
+    void CheckStuck(PlayerbotAI* ai, uint64_t guid, Online& ob, const Situation& sit)
+    {
+        if (!g_cfg.noTeleport || !sit.CanUseNonCombat() || sit.inCombat || !AutopilotRpg_IsStuck(ai, 60 * 1000))
             return;
 
-        const std::vector<int> allowed = StatusIds(focus);
-        const int status = AutopilotRpg_CurrentStatus(ai);
-        if (status != AutopilotRpg_StatusFromName("idle") &&
-            std::find(allowed.begin(), allowed.end(), status) != allowed.end())
-            return;
-
-        if (AutopilotRpg_Steer(ai, allowed))
-            ++g_statSteer;
+        AutopilotRpg_Abandon(ai);
+        ++g_statStuck;
+        const std::string where = ob.errand.active ? ob.errand.label : std::string("their destination");
+        ob.errand.active = false;
+        RecordEvent(guid, "stuck", "could not find a way to " + where);
+        ob.urgentPlan = true;
     }
 
     // ----------------------------------------------------------------------
@@ -980,76 +1179,105 @@ namespace
         ob.prevInFlight   = sit.inFlight;
     }
 
-    // Deterministic self-preservation, checked before anyone is asked. It
-    // only overrides the rpg focus, for a while; the reason goes into the
-    // next prompt. Returns true when a guard fired.
-    bool CheckGuards(Player* bot, uint64_t guid, Online& ob, uint32_t now)
+    // Self-preservation facts the model should hear about now rather than at
+    // its next scheduled look: dying again and again, gear falling apart,
+    // full bags. Code never acts on them; it asks the model early and tells
+    // it why. Each kind then keeps quiet for a while, since some cannot be
+    // fixed quickly (a broke bot cannot repair).
+    void CheckAlerts(Player* bot, uint64_t guid, Online& ob, uint32_t now)
     {
-        const uint32_t window = g_cfg.guardDeathWindowMinutes * 60;
+        const uint32_t window = g_cfg.alertDeathWindowMinutes * 60;
         while (!ob.deathTimes.empty() && now - ob.deathTimes.front() > window)
             ob.deathTimes.pop_front();
 
-        if (ob.guardUntil && now >= ob.guardUntil)
-        {
-            ob.guardRpg.clear();
-            ob.guardUntil = 0;
-        }
-        if (!ob.guardRpg.empty())
-            return false;
-
-        // A guard that fired keeps quiet for a while. Some conditions cannot
-        // be fixed by what it does (a broke bot cannot repair, bags can be
-        // full of unsellable items); re-firing after every hold would only
-        // churn and fill the diary.
         auto ready = [&](const char* kind)
         {
-            auto it = ob.guardCooldown.find(kind);
-            return it == ob.guardCooldown.end() || now >= it->second;
+            auto it = ob.alertCooldown.find(kind);
+            return it == ob.alertCooldown.end() || now >= it->second;
         };
 
         std::string reason;
         const char* kind = nullptr;
-        std::vector<std::string> focus;
 
-        if (g_cfg.guardDeaths > 0 && ob.deathTimes.size() >= g_cfg.guardDeaths && ready("deaths"))
+        if (g_cfg.alertDeaths > 0 && ob.deathTimes.size() >= g_cfg.alertDeaths && ready("deaths"))
         {
             reason = SafeFormat("died {} times in {} minutes in {}", ob.deathTimes.size(),
-                                g_cfg.guardDeathWindowMinutes, Progress_ZoneName(bot->GetZoneId()));
-            kind  = "deaths";
-            focus = { "rest" };
+                                g_cfg.alertDeathWindowMinutes, Progress_ZoneName(bot->GetZoneId()));
+            kind = "deaths";
             ob.deathTimes.clear();
         }
-        else if (g_cfg.guardDurabilityPct > 0 && Progress_DurabilityPct(bot) < g_cfg.guardDurabilityPct &&
+        else if (g_cfg.alertDurabilityPct > 0 && Progress_DurabilityPct(bot) < g_cfg.alertDurabilityPct &&
                  ready("durability"))
         {
             reason = SafeFormat("gear is badly damaged ({}% durability)", uint32_t(Progress_DurabilityPct(bot)));
             kind   = "durability";
-            focus  = { "wander npc", "go camp" };
         }
-        else if (g_cfg.guardFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.guardFreeBagSlots &&
+        else if (g_cfg.alertFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.alertFreeBagSlots &&
                  ready("bags"))
         {
             reason = "bags are full";
             kind   = "bags";
-            focus  = { "wander npc", "go camp" };
         }
 
         if (!kind)
-            return false;
+            return;
 
-        ob.guardCooldown[kind] = now + g_cfg.guardHoldMinutes * 60 * 4;
-        ob.guardRpg    = std::move(focus);
-        ob.guardUntil  = now + g_cfg.guardHoldMinutes * 60;
-        ob.lastGuard   = reason;
-        ob.lastGuardAt = now;
-        ++g_statGuard;
-        RecordEvent(guid, "guard", reason);
-        return true;
+        ob.alertCooldown[kind] = now + g_cfg.alertCooldownMinutes * 60;
+        ob.lastAlert   = reason;
+        ob.lastAlertAt = now;
+        ob.urgentPlan  = true;
+        ++g_statAlerts;
+        RecordEvent(guid, "alert", reason);
     }
 
     // ----------------------------------------------------------------------
     // Asking the model. World thread, g_mutex held.
     // ----------------------------------------------------------------------
+
+    // "nc: quest, loot, new rpg | co: dps, flee" -- what is on right now.
+    std::string DescribeLiveStrategies(PlayerbotAI* ai)
+    {
+        auto list = [ai](BotState state)
+        {
+            std::string s;
+            for (const std::string& n : ai->GetStrategies(state))
+                if (n != AUTOPILOT_STRATEGY_NAME)
+                    s += (s.empty() ? "" : ", ") + n;
+            return s.empty() ? std::string("-") : s;
+        };
+        return "nc: " + list(BOT_STATE_NON_COMBAT) + " | co: " + list(BOT_STATE_COMBAT);
+    }
+
+    std::string DescribeRpg(PlayerbotAI* ai)
+    {
+        if (!ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+            return "not living on their own (new rpg is off)";
+        std::string out = AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai));
+        if (const uint32_t questId = AutopilotRpg_CurrentQuest(ai))
+            if (Quest const* q = sObjectMgr->GetQuestTemplate(questId))
+                out += SafeFormat(" [{}] {}", questId, q->GetTitle());
+        return out;
+    }
+
+    // "- [783] A Threat Within (level 1): ready to turn in"
+    std::string DescribeQuestLog(Player* bot)
+    {
+        std::string out;
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            const uint32 id = bot->GetQuestSlotQuestId(slot);
+            Quest const* q = id ? sObjectMgr->GetQuestTemplate(id) : nullptr;
+            if (!q)
+                continue;
+            const QuestStatus status = bot->GetQuestStatus(id);
+            const char* state = status == QUEST_STATUS_COMPLETE ? "ready to turn in"
+                              : status == QUEST_STATUS_FAILED   ? "failed"
+                                                                : "in progress";
+            out += SafeFormat("{}- [{}] {} (level {}): {}", out.empty() ? "" : "\n", id, q->GetTitle(),
+                              q->GetQuestLevel() > 0 ? q->GetQuestLevel() : int32(bot->GetLevel()), state);
+        }
+        return out;
+    }
 
     AutopilotPromptContext BuildPromptContext(Player* bot, PlayerbotAI* ai, const Row& row,
                                               const Online& ob, Tier tier, uint32_t now)
@@ -1080,11 +1308,26 @@ namespace
         if (row.goal.Active() && ob.goalProgressAt && now - ob.goalProgressAt > 1800)
             ctx.goal += SafeFormat(" (no progress for {})", Span(now - ob.goalProgressAt));
 
-        ctx.liveStrategies = AutopilotStrategies_DescribeLive(ai);
-        ctx.rpgStatus      = AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai));
-        ctx.rpgFocus       = JoinList(row.rpg);
-        for (const auto& [situation, changes] : row.playbook)
-            ctx.playbook += (ctx.playbook.empty() ? "" : "; ") + situation + ": " + ChangesText(changes);
+        ctx.commandReference = AutopilotCommands_Reference();
+        ctx.strategiesOn     = DescribeLiveStrategies(ai);
+        ctx.rpgStatus        = DescribeRpg(ai);
+        if (ob.errand.active)
+            ctx.errand = SafeFormat("walking to {} ({} yd away, for {})", ob.errand.label,
+                                    uint32_t(bot->GetDistance(ob.errand.x, ob.errand.y, ob.errand.z)),
+                                    Span(now - ob.errand.startedAt));
+        ctx.questLog    = DescribeQuestLog(bot);
+        ctx.services    = AutopilotWorld_DescribeServices(bot);
+        ctx.zones       = AutopilotWorld_ZonesForLevel(bot);
+        ctx.lastResults = row.lastResults;
+
+        const Situation sit = Classify(bot, ai);
+        ctx.concerns = sit.Limits();
+        if (!ob.lastAlert.empty() && now - ob.lastAlertAt < kHour)
+            ctx.concerns += SafeFormat("{}Worry ({}): {}.", ctx.concerns.empty() ? "" : "\n",
+                                       Ago(ob.lastAlertAt, now), ob.lastAlert);
+        if (ob.reviveHeld)
+            ctx.concerns += SafeFormat("{}They are dead, running back to their body as a ghost.",
+                                       ctx.concerns.empty() ? "" : "\n");
 
         ctx.decisions.assign(ob.decisions.begin(), ob.decisions.end());
         for (const ProgressEvent& e : ob.events)
@@ -1100,10 +1343,6 @@ namespace
         window.back().deathsTotal = row.deathsTotal;
         window.back().questsTotal = row.questsTotal;
         ctx.progress = Progress_Summarize(window);
-
-        if (!ob.lastGuard.empty() && now - ob.lastGuardAt < kHour)
-            ctx.guards = SafeFormat("Recently ({}): their instincts made them stop because {}.",
-                                    Ago(ob.lastGuardAt, now), ob.lastGuard);
 
         // The full surroundings scan is for bots someone can see. A choice for
         // an unwatched bot needs only the macro state.
@@ -1232,53 +1471,6 @@ namespace
                             SafeFormat("{} ({}): {}", row.style, row.outlook, row.profile));
         }
 
-        // Strategies: only names on the allow-list are taken.
-        AutopilotDesired changes;
-        std::vector<std::string> rejected;
-        for (const auto& [strategy, on] : d.strategies)
-        {
-            if (const AutopilotStrategyInfo* info = AutopilotStrategies_Find(strategy))
-            {
-                row.desired[info->Key()] = on;
-                changes[info->Key()]     = on;
-            }
-            else
-            {
-                rejected.push_back(strategy);
-            }
-        }
-        if (!rejected.empty())
-        {
-            g_statRejected += rejected.size();
-            if (g_cfg.debug)
-                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} asked for strategies not on the "
-                         "allow-list: {}", name, JoinList(rejected));
-        }
-
-        if (d.rpgGiven)
-        {
-            row.rpg.clear();
-            for (const std::string& s : d.rpg)
-                if (AutopilotStrategies_RpgAllowed(s) && std::find(row.rpg.begin(), row.rpg.end(), s) == row.rpg.end())
-                    row.rpg.push_back(s);
-        }
-
-        if (d.playbookGiven)
-        {
-            row.playbook.clear();
-            for (const auto& [situation, list] : d.playbook)
-            {
-                if (situation != "dungeon" && situation != "battleground" && situation != "with_player")
-                    continue;
-                AutopilotDesired entry;
-                for (const auto& [strategy, on] : list)
-                    if (const AutopilotStrategyInfo* info = AutopilotStrategies_Find(strategy); info && info->combat)
-                        entry[info->Key()] = on;
-                if (!entry.empty())
-                    row.playbook[situation] = std::move(entry);
-            }
-        }
-
         // Goal: resolved against the live bot so progress can be measured.
         if (bot && !d.goalKind.empty())
         {
@@ -1312,28 +1504,41 @@ namespace
         if (!d.reason.empty())
             row.lastReason = d.reason;
 
-        const uint32_t minutes = d.minutes ? std::clamp<uint32_t>(d.minutes, 10, 180) : g_cfg.defaultPlanMinutes;
-        const std::string summary = SafeFormat(
-            "{}{}{} for {}m: {}", row.doing.empty() ? "?" : row.doing,
-            changes.empty() ? "" : " [" + ChangesText(changes) + "]",
-            row.rpg.empty() ? "" : " focus " + JoinList(row.rpg), minutes, d.reason.empty() ? "-" : d.reason);
-        RecordEvent(d.botGuid, "plan", summary);
+        const uint32_t minutes = d.minutes ? std::clamp<uint32_t>(d.minutes, 5, 180) : g_cfg.defaultPlanMinutes;
         row.planUntil = now + minutes * 60;
 
-        if (g_cfg.debug)
-            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} -> {}", name, summary);
-
-        if (!ob)
-            return;   // logged out while the model was thinking: applied at next login
-
-        PushCapped(ob->decisions, summary, kDecisionRing);
-
-        if (bot && ai)
+        // The orders. Only a bot that is online, and only while the model is
+        // allowed to give them; otherwise they are recorded as not carried out
+        // so the next prompt says so.
+        std::vector<std::string> results;
+        if (ob && bot && ai && g_cfg.control)
+            results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot, ai), now);
+        else if (!d.commands.empty())
         {
-            const Situation sit = Classify(bot, ai);
-            Reassert(ai, d.botGuid, row, *ob, sit);
-            SteerRpg(ai, row, *ob, sit);
+            for (const std::string& c : d.commands)
+                results.push_back(c + " -> not carried out (" + (g_cfg.control ? "offline" : "control is off") + ")");
+            row.lastResults = results;
         }
+
+        std::string orders;
+        for (const std::string& c : d.commands)
+            orders += (orders.empty() ? "" : "; ") + c;
+        const std::string summary = SafeFormat(
+            "{} for {}m{}: {}", row.doing.empty() ? "?" : row.doing, minutes,
+            orders.empty() ? "" : " [" + orders + "]", d.reason.empty() ? "-" : d.reason);
+        RecordEvent(d.botGuid, "plan", summary);
+        for (const std::string& r : results)
+            RecordEvent(d.botGuid, "order", r);
+
+        if (g_cfg.debug)
+        {
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} -> {}", name, summary);
+            for (const std::string& r : results)
+                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {}   {}", name, r);
+        }
+
+        if (ob)
+            PushCapped(ob->decisions, summary, kDecisionRing);
     }
 
     // ----------------------------------------------------------------------
@@ -1531,6 +1736,10 @@ namespace
                 AddMarker(ai);
             ob.markerOurs = true;
 
+            // Login, a reload or a re-enrollment: put the model's choices back.
+            ob.ncReplay = true;
+            ob.coReplay = true;
+
             // A first enrollment gets a baseline now; otherwise snapshots are
             // staggered across the interval so a wave of logins does not
             // produce a wave of writes.
@@ -1554,16 +1763,15 @@ namespace
                 LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: unenrolled {}.", bot->GetName());
         }
 
-        // Hand the bot back to playerbots exactly as it would be without us.
-        if (ob.controlled || !ob.applied.empty())
+        // Hand the bot back to playerbots exactly as it was before the model.
+        // Its choices are kept in the row: enrolling it again resumes them.
+        if (it != g_rows.end() && (!it->second.baseline.empty() || ob.errand.active || ob.reviveHeld || !bot->IsAlive()))
         {
-            static const AutopilotBaseline kNone;
-            HandBack(ai, it != g_rows.end() ? it->second.baseline : kNone);
-            ob.controlled = false;
-            ob.applied.clear();
+            HandBack(ai, &it->second, &ob);
+            it->second.baseline.clear();
+            it->second.dirty = true;
         }
         ob.planPending = false;
-        ob.guardRpg.clear();
 
         RemoveMarker(ai);
         ob.markerOurs = false;
@@ -1588,46 +1796,59 @@ namespace
     void Control(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
     {
         const Situation sit = Classify(bot, ai);
-        if (sit.dead)
-            return;
-
-        // Locks belong to one group with a human in it.
-        if (!sit.withRealPlayer || sit.groupGuid != ob.lockGroup)
-        {
-            ob.locked.clear();
-            ob.lockGroup = sit.withRealPlayer ? sit.groupGuid : 0;
-        }
 
         if (!ob.historyRequested)
             RequestHistory(guid, ob);
 
+        // Teleport holds run while dead too: that is when the revive teleport
+        // would happen.
+        HoldTeleports(bot, guid, ob, sit, now);
+        if (sit.dead)
+            return;
+
         CheckBoundaries(bot, guid, row, ob, sit, now);
         UpdateFacts(bot, ob, now);
         CheckGoal(bot, guid, row, ob, now);
-        if (g_cfg.control && sit.CanUseNonCombat())
-            CheckGuards(bot, guid, ob, now);
+        CheckAlerts(bot, guid, ob, now);
 
-        // Out-of-combat strategies follow the situation: joining a group puts
-        // them back to the bot's own, leaving it puts the model's back.
-        Reassert(ai, guid, row, ob, sit);
+        // Put back what a playerbots reset wiped; keep out-of-combat
+        // strategies the bot's own only while it is.
+        Reassert(ai, row, ob, sit);
+
+        if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
+        {
+            CheckStuck(ai, guid, ob, sit);
+
+            // A walk the model sent the bot on: keep it walking, and use the
+            // service on arrival. Finishing or failing is a moment to ask the
+            // model what next.
+            if (std::string done = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now); !done.empty())
+            {
+                RecordEvent(guid, "errand", done);
+                row.lastResults.push_back(done);
+                if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
+                    row.lastResults.erase(row.lastResults.begin());
+                row.dirty     = true;
+                ob.urgentPlan = true;
+            }
+        }
 
         // A plan that never came back (provider down, server restarted the
         // dispatcher) must not block the next one forever.
         if (ob.planPending && now - ob.planSubmittedAt > g_cfg.planTimeoutSeconds)
             ob.planPending = false;
 
-        if (!g_cfg.control || !sit.CanUseNonCombat())
+        if (!g_cfg.control || !sit.CanUseCombat() || sit.inFlight)
             return;
 
         // Ask the model when it wanted to be asked again, when something
         // happened that warrants it, or when the bot has no identity yet.
-        // When it cannot be asked (no budget, nobody around), the bot keeps
-        // doing what it last chose.
+        // In a group or a dungeon it is still asked -- only its combat orders
+        // are carried out there. When it cannot be asked (no budget, nobody
+        // around), the bot keeps doing what it was last told.
         const bool due = !row.HasIdentity() || ob.urgentPlan || now >= row.planUntil;
         if (due)
             TrySubmitPlan(bot, ai, guid, row, ob, now, false);
-
-        SteerRpg(ai, row, ob, sit);
     }
 
     // ----------------------------------------------------------------------
@@ -1713,17 +1934,15 @@ namespace
         {
             if (PlayerbotAI* ai = BotAI(ObjectAccessor::FindPlayer(ObjectGuid(guid))))
             {
-                if (ob.controlled || !ob.applied.empty())
+                auto row = g_rows.find(guid);
+                if (row != g_rows.end() && (!row->second.baseline.empty() || ob.errand.active || ob.reviveHeld || !ai->GetBot()->IsAlive()))
                 {
-                    static const AutopilotBaseline kNone;
-                    auto row = g_rows.find(guid);
-                    HandBack(ai, row != g_rows.end() ? row->second.baseline : kNone);
+                    HandBack(ai, &row->second, &ob);
+                    row->second.baseline.clear();
+                    row->second.dirty = true;
                 }
                 RemoveMarker(ai);
             }
-            ob.controlled = false;
-            ob.applied.clear();
-            ob.guardRpg.clear();
             ob.markerOurs  = false;
             ob.evaluated   = false;
             ob.planPending = false;
@@ -1804,7 +2023,7 @@ namespace
             CharacterDatabase.Execute(
                 "INSERT INTO mod_ollama_chat_autopilot "
                 "(bot_guid, mode, enrolled, source, style, outlook, profile, kills_total, deaths_total, "
-                "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, rpg, playbook, "
+                "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, last_results, "
                 "goal_kind, goal_target, goal_target_id, goal_value, goal_baseline, goal_set_at, goal_text, "
                 "last_reason, baseline, plan_until, last_plan_at, enrolled_at, updated_at) VALUES " + values +
                 " ON DUPLICATE KEY UPDATE mode = VALUES(mode), enrolled = VALUES(enrolled), "
@@ -1813,7 +2032,7 @@ namespace
                 "deaths_total = VALUES(deaths_total), quests_total = VALUES(quests_total), "
                 "dungeons_total = VALUES(dungeons_total), doing = VALUES(doing), "
                 "doing_since = VALUES(doing_since), decided_by = VALUES(decided_by), "
-                "strategies = VALUES(strategies), rpg = VALUES(rpg), playbook = VALUES(playbook), "
+                "strategies = VALUES(strategies), last_results = VALUES(last_results), "
                 "goal_kind = VALUES(goal_kind), goal_target = VALUES(goal_target), "
                 "goal_target_id = VALUES(goal_target_id), goal_value = VALUES(goal_value), "
                 "goal_baseline = VALUES(goal_baseline), goal_set_at = VALUES(goal_set_at), "
@@ -1842,17 +2061,16 @@ namespace
                 values += ',';
             const AutopilotGoal& g = row.goal;
             values += SafeFormat(
-                "({}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {}, {}, '{}', {}, '{}', '{}', '{}', '{}', "
+                "({}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {}, {}, '{}', {}, '{}', '{}', '{}', "
                 "'{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', {}, {}, {}, {})",
                 guid, uint32_t(row.mode), row.enrolled ? 1 : 0, esc(row.source, 32),
                 esc(row.style, 64), esc(row.outlook, 32), esc(row.profile, 1000),
                 row.killsTotal, row.deathsTotal, row.questsTotal, row.dungeonsTotal,
                 esc(row.doing, 64), row.doingSince, esc(row.decidedBy, 16),
-                esc(AutopilotStrategies_Format(row.desired), 1000), esc(JoinList(row.rpg), 255),
-                esc(SerializePlaybook(row.playbook), 1000),
+                esc(FormatStrategies(row.strategies), 2000), esc(JoinLines(row.lastResults), 2000),
                 g.Active() ? Goal_KindName(g.kind) : "", esc(g.target, 64), g.targetId, g.value,
                 g.baseline, g.setAt, esc(g.text, 255), esc(row.lastReason, 255),
-                esc(AutopilotStrategies_Format(row.baseline), 1000), row.planUntil, row.lastPlanAt,
+                esc(row.baseline, 4000), row.planUntil, row.lastPlanAt,
                 row.enrolledAt, now);
             row.dirty = false;
 
@@ -2004,9 +2222,10 @@ namespace
 
             const AutopilotPlannerStats ps = AutopilotPlanner_GetStats();
             handler->SendSysMessage(SafeFormat(
-                "  plans applied {} | unusable replies {} | strategies refused (not allowed) {} | guards {} | "
-                "rpg steers {} | human locks {}",
-                g_statPlans, g_statInvalid, g_statRejected, g_statGuard, g_statSteer, g_statLocks));
+                "  plans applied {} | unusable replies {} | orders run {}, refused {} | alerts {} | "
+                "strategies put back after resets {} | stuck walks abandoned {} | corpse runs {}",
+                g_statPlans, g_statInvalid, g_statCommands, g_statRefused, g_statAlerts, g_statReplays,
+                g_statStuck, g_statCorpse));
             handler->SendSysMessage(SafeFormat(
                 "  llm: {} | budget {:.1f}/{:.0f} tokens ({}/h) | in flight {} | submitted {}, refused {}, "
                 "parsed {}, failed {}{}",
@@ -2055,15 +2274,17 @@ namespace
             "  doing: {} (since {}) | next plan due: {}",
             row.doing.empty() ? "-" : row.doing, row.doingSince ? Ago(row.doingSince, now) : "-",
             row.planUntil > now ? "in " + Span(row.planUntil - now) : "now"));
-        handler->SendSysMessage("  wants: " + (row.desired.empty() ? std::string("-") : ChangesText(row.desired)));
-        handler->SendSysMessage(SafeFormat("  rpg focus: {}{} | now: {}",
-            row.rpg.empty() ? "free roaming" : JoinList(row.rpg),
-            ob.guardRpg.empty() ? "" : " (overridden: " + ob.lastGuard + ")",
-            ai ? AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai)) : "-"));
+        handler->SendSysMessage("  model's strategies: " +
+                                (row.strategies.empty() ? std::string("-") : FormatStrategies(row.strategies)));
         if (ai)
-            handler->SendSysMessage("  live: " + AutopilotStrategies_DescribeLive(ai));
-        for (const auto& [situation, changes] : row.playbook)
-            handler->SendSysMessage(SafeFormat("  playbook {}: {}", situation, ChangesText(changes)));
+        {
+            handler->SendSysMessage("  live: " + DescribeLiveStrategies(ai));
+            handler->SendSysMessage("  ai: " + DescribeRpg(ai) +
+                                    (ob.errand.active ? " | errand: " + ob.errand.label : std::string()) +
+                                    (ob.reviveHeld ? " | corpse run" : ""));
+        }
+        for (const std::string& r : row.lastResults)
+            handler->SendSysMessage("  order: " + r);
         handler->SendSysMessage("  goal: " + (row.goal.Active() ? Goal_Describe(bot, row.goal, Counters(row))
                                                                 : std::string("-")));
         handler->SendSysMessage("  last reason: " + (row.lastReason.empty() ? std::string("-") : row.lastReason));
@@ -2072,13 +2293,6 @@ namespace
         for (const auto& [at, text] : ob.temptations)
             if (now - at <= kHour)
                 handler->SendSysMessage(SafeFormat("  tempted ({}): {}", Ago(at, now), text));
-        if (!ob.locked.empty())
-        {
-            std::string locked;
-            for (const std::string& s : ob.locked)
-                locked += (locked.empty() ? "" : ", ") + s;
-            handler->SendSysMessage("  left to the group's human: " + locked);
-        }
         handler->SendSysMessage(SafeFormat(
             "  since enrollment: {} kills, {} deaths, {} quests completed, {} dungeons",
             row.killsTotal, row.deathsTotal, row.questsTotal, row.dungeonsTotal));
@@ -2224,11 +2438,11 @@ namespace
             return true;
 
         PlayerbotAI* ai = BotAI(bot);
-        if (!Classify(bot, ai).CanUseNonCombat())
+        if (!Classify(bot, ai).CanUseCombat())
         {
             ob->urgentPlan = true;
             handler->SendSysMessage(SafeFormat(
-                "OllamaChat: {} is in a group, instance or dead; it will replan when that ends.", bot->GetName()));
+                "OllamaChat: {} is dead or in a hands-off group; it will replan when that ends.", bot->GetName()));
             return true;
         }
 
@@ -2324,12 +2538,15 @@ void Autopilot_LoadConfig()
 
     c.control                 = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Control", true);
     c.withRealPlayer          = std::min<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.WithRealPlayer", 1));
+    c.noTeleport              = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.NoTeleport", true);
+    c.noRandomize             = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.NoRandomize", true);
+    c.corpseRunMinutes        = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.CorpseRunMinutes", 10));
     c.llmEnable               = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Llm.Enable", true);
     c.llmCallsPerHour         = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.LlmCallsPerHour", 300);
     c.maxConcurrentPlans      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.MaxConcurrentPlans", 2));
     c.decisionIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DecisionIntervalMinutes", 15));
     c.goalRefreshMinutes      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 90));
-    c.defaultPlanMinutes      = std::clamp<uint32_t>(sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DefaultPlanMinutes", 45), 10, 180);
+    c.defaultPlanMinutes      = std::clamp<uint32_t>(sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DefaultPlanMinutes", 30), 5, 180);
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
@@ -2362,18 +2579,18 @@ void Autopilot_LoadConfig()
     c.realGuildTier           = parseTier("OllamaChat.Autopilot.RealPlayerGuildTier", "background", Tier::Background);
     c.realGuildRefreshMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.RealPlayerGuildRefreshMinutes", 10));
 
-    c.guardDeaths             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.Deaths", 3);
-    c.guardDeathWindowMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.DeathWindowMinutes", 15));
-    c.guardDurabilityPct      = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.DurabilityPct", 20);
-    c.guardFreeBagSlots       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.FreeBagSlots", 2);
-    c.guardHoldMinutes        = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.HoldMinutes", 10));
+    c.alertDeaths             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.Deaths", 3);
+    c.alertDeathWindowMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.DeathWindowMinutes", 15));
+    c.alertDurabilityPct      = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.DurabilityPct", 20);
+    c.alertFreeBagSlots       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.FreeBagSlots", 2);
+    c.alertCooldownMinutes    = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.CooldownMinutes", 30));
 
     c.goalStaleMinutes        = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalStaleMinutes", 120);
 
     if (c.minLevel > c.maxLevel)
         std::swap(c.minLevel, c.maxLevel);
 
-    AutopilotStrategies_Load();
+    AutopilotCommands_Load();
     AutopilotPlanner_ConfigureBudget(c.llmCallsPerHour, c.maxConcurrentPlans);
 
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2387,11 +2604,17 @@ void Autopilot_LoadConfig()
         LOG_WARN("module.ollamachat",
                  "[Ollama Chat] OllamaChat.Autopilot.Enable is on, but autopilot needs "
                  "OllamaChat.EnableChatBotSnapshotTemplate = 1. Autopilot stays off.");
+
+    if (g_cfg.enable && g_cfg.noTeleport && sPlayerbotAIConfig.autoTeleportForLevel)
+        LOG_WARN("module.ollamachat",
+                 "[Ollama Chat] AiPlayerbot.AutoTeleportForLevel is on: playerbots will still teleport "
+                 "autopilot bots on level-up. Set it to 0 for OllamaChat.Autopilot.NoTeleport to cover them.");
 }
 
 void Autopilot_Load()
 {
     AutopilotStrategy_Register();
+    AutopilotWorld_Build();
 
     g_tablesOk = false;
     if (QueryResult result = CharacterDatabase.Query(
@@ -2400,13 +2623,37 @@ void Autopilot_Load()
             "'mod_ollama_chat_autopilot_events')"))
         g_tablesOk = (*result)[0].Get<uint64>() == 3;
 
+    auto hasColumn = [](const char* column)
+    {
+        QueryResult r = CharacterDatabase.Query(SafeFormat(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+            "AND table_name = 'mod_ollama_chat_autopilot' AND column_name = '{}'", column));
+        return r && (*r)[0].Get<uint64>() > 0;
+    };
+
+    // The draft before the LLM gave orders kept an rpg focus and a playbook,
+    // and recorded "before" per strategy. Move it to this layout in place:
+    // the model's strategy choices keep their format; the old "before" does
+    // not, so it is dropped (bots are handed back to playerbots' defaults).
+    if (g_tablesOk && !hasColumn("last_results") && hasColumn("rpg") && hasColumn("playbook"))
+    {
+        CharacterDatabase.DirectExecute(
+            "ALTER TABLE mod_ollama_chat_autopilot DROP COLUMN rpg, DROP COLUMN playbook, "
+            "MODIFY strategies VARCHAR(2000) NOT NULL DEFAULT '', "
+            "ADD COLUMN last_results VARCHAR(2000) NOT NULL DEFAULT '' AFTER strategies, "
+            "MODIFY baseline VARCHAR(4000) NOT NULL DEFAULT ''");
+        CharacterDatabase.DirectExecute("UPDATE mod_ollama_chat_autopilot SET baseline = ''");
+        LOG_INFO("server.loading", "[Ollama Chat] Autopilot: migrated mod_ollama_chat_autopilot to the "
+                 "orders layout.");
+    }
+
     if (g_tablesOk)
     {
         // Columns changed while the table was still unreleased; a database
-        // set up from an earlier draft needs the file re-applied.
+        // set up from an even earlier draft needs the file re-applied.
         if (QueryResult result = CharacterDatabase.Query(
                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                "AND table_name = 'mod_ollama_chat_autopilot' AND column_name IN ('profile', 'strategies', 'baseline')"))
+                "AND table_name = 'mod_ollama_chat_autopilot' AND column_name IN ('profile', 'last_results', 'baseline')"))
             g_tablesOk = (*result)[0].Get<uint64>() == 3;
     }
 
@@ -2444,7 +2691,7 @@ void Autopilot_Load()
 
     if (QueryResult result = CharacterDatabase.Query(
             "SELECT bot_guid, mode, enrolled, source, style, outlook, profile, kills_total, deaths_total, "
-            "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, rpg, playbook, "
+            "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, last_results, "
             "goal_kind, goal_target, goal_target_id, goal_value, goal_baseline, goal_set_at, goal_text, "
             "last_reason, enrolled_at, baseline, plan_until, last_plan_at FROM mod_ollama_chat_autopilot"))
     {
@@ -2468,23 +2715,24 @@ void Autopilot_Load()
             row.doing         = f[11].Get<std::string>();
             row.doingSince    = f[12].Get<uint32>();
             row.decidedBy     = f[13].Get<std::string>();
-            row.desired       = AutopilotStrategies_Parse(f[14].Get<std::string>());
-            row.rpg           = SplitString(f[15].Get<std::string>(), ',');
-            row.playbook      = ParsePlaybook(f[16].Get<std::string>());
+            row.strategies    = ParseStrategies(f[14].Get<std::string>());
+            for (const std::string& r : SplitString(f[15].Get<std::string>(), '\n'))
+                if (!r.empty())
+                    row.lastResults.push_back(r);
 
-            const std::string kind = f[17].Get<std::string>();
+            const std::string kind = f[16].Get<std::string>();
             row.goal.kind     = kind.empty() ? GoalKind::None : Goal_KindFromName(kind);
-            row.goal.target   = f[18].Get<std::string>();
-            row.goal.targetId = f[19].Get<uint32>();
-            row.goal.value    = f[20].Get<uint32>();
-            row.goal.baseline = f[21].Get<uint32>();
-            row.goal.setAt    = f[22].Get<uint32>();
-            row.goal.text     = f[23].Get<std::string>();
-            row.lastReason    = f[24].Get<std::string>();
-            row.enrolledAt    = f[25].Get<uint32>();
-            row.baseline      = AutopilotStrategies_Parse(f[26].Get<std::string>());
-            row.planUntil     = f[27].Get<uint32>();
-            row.lastPlanAt    = f[28].Get<uint32>();
+            row.goal.target   = f[17].Get<std::string>();
+            row.goal.targetId = f[18].Get<uint32>();
+            row.goal.value    = f[19].Get<uint32>();
+            row.goal.baseline = f[20].Get<uint32>();
+            row.goal.setAt    = f[21].Get<uint32>();
+            row.goal.text     = f[22].Get<std::string>();
+            row.lastReason    = f[23].Get<std::string>();
+            row.enrolledAt    = f[24].Get<uint32>();
+            row.baseline      = f[25].Get<std::string>();
+            row.planUntil     = f[26].Get<uint32>();
+            row.lastPlanAt    = f[27].Get<uint32>();
 
             if (row.enrolled)
                 CountEnrolled(row, +1);

@@ -271,6 +271,52 @@ bool AutopilotRpg_IsTravelling(PlayerbotAI* ai)
     return ai->rpgInfo.GetStatus() == RPG_TRAVEL_FLIGHT;
 }
 
+bool AutopilotRpg_GoTo(PlayerbotAI* ai, uint32_t map, float x, float y, float z)
+{
+    if (!ai)
+        return false;
+    ai->rpgInfo.ChangeToGoCamp(WorldPosition(map, x, y, z));
+    return true;
+}
+
+bool AutopilotRpg_DoQuest(PlayerbotAI* ai, uint32_t questId)
+{
+    if (!ai || !questId)
+        return false;
+    Player* bot = ai->GetBot();
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!bot || !quest)
+        return false;
+    const QuestStatus status = bot->GetQuestStatus(questId);
+    if (status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE)
+        return false;
+    ai->rpgInfo.ChangeToDoQuest(questId, quest);
+    return true;
+}
+
+uint32_t AutopilotRpg_CurrentQuest(PlayerbotAI* ai)
+{
+    if (!ai || ai->rpgInfo.GetStatus() != RPG_DO_QUEST)
+        return 0;
+    return std::get<NewRpgInfo::DoQuest>(ai->rpgInfo.data).questId;
+}
+
+bool AutopilotRpg_IsStuck(PlayerbotAI* ai, uint32_t ms)
+{
+    if (!ai)
+        return false;
+    const NewRpgInfo& info = ai->rpgInfo;
+    return info.stuckTs != 0 && info.stuckAttempts >= 3 && GetMSTimeDiffToNow(info.stuckTs) >= ms;
+}
+
+void AutopilotRpg_Abandon(PlayerbotAI* ai)
+{
+    if (!ai)
+        return;
+    ai->rpgInfo.SetMoveFarTo(WorldPosition());
+    ai->rpgInfo.ChangeToIdle();
+}
+
 bool AutopilotRpg_Steer(PlayerbotAI* ai, const std::vector<int>& allowed)
 {
     if (!ai || allowed.empty())

@@ -31,12 +31,10 @@ bool AutopilotStrategy_IsRegistered();
 // --------------------------------------------------------------------------
 // NewRpg steering. World thread only.
 //
-// An autopilot activity is, in part, "the set of NewRpg statuses this bot may
-// be in" (questing allows do quest / wander npc / go camp, and so on). When
-// the bot drifts outside the set, Steer moves it back in by calling
-// playerbots' own NewRpgBaseAction::RandomChangeStatus restricted to the set.
-// That uses playerbots' weights and its own target selection (grind spots,
-// camps, quests with POIs, flight paths), so nothing here duplicates it.
+// The LLM's `rpg <status>`, `quest <id>` and `goto` orders, and the no-teleport
+// handling of stuck walks, act on the bot's NewRpg state through these.
+// Steer uses playerbots' own target selection (grind spots, camps, quests
+// with POIs, flight paths), so nothing here duplicates it.
 //
 // Status ids are playerbots' NewRpgStatus values carried as int, so callers
 // need no playerbots engine headers.
@@ -55,6 +53,28 @@ int  AutopilotRpg_CurrentStatus(PlayerbotAI* ai);
 
 // Taking or walking to a flight. Never interrupt one.
 bool AutopilotRpg_IsTravelling(PlayerbotAI* ai);
+
+// Walk to a spot using NewRpg's own "go camp" status: playerbots does the
+// pathing, and on arrival switches to wandering the NPCs there. Needs the
+// `new rpg` strategy on. Returns false if the bot has no AI.
+bool AutopilotRpg_GoTo(PlayerbotAI* ai, uint32_t map, float x, float y, float z);
+
+// Work on one specific quest from the bot's log with NewRpg's "do quest"
+// status (playerbots finds the objectives and the turn-in). False when the
+// quest is not in the log or not in a state to work on.
+bool AutopilotRpg_DoQuest(PlayerbotAI* ai, uint32_t questId);
+
+// The quest NewRpg is working on right now, or 0.
+uint32_t AutopilotRpg_CurrentQuest(PlayerbotAI* ai);
+
+// NewRpg's MoveFarTo teleports a bot to its destination after `stuckTime`
+// (90s) without real progress. True when that is close: the bot has been
+// stuck on its current far destination for at least `ms`.
+bool AutopilotRpg_IsStuck(PlayerbotAI* ai, uint32_t ms);
+
+// Give up on the current far destination: forget it (so NewRpg's stuck
+// counter starts over for whatever comes next) and return to idle.
+void AutopilotRpg_Abandon(PlayerbotAI* ai);
 
 // Move the bot into one of `allowed` that is available right now. Returns
 // false, changing nothing, when none is -- rather than letting playerbots fall
