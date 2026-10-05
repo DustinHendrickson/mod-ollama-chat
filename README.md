@@ -645,7 +645,7 @@ drop, a capped profession).
 | Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy except the overhead controllers (grind, quest, gather, loot, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
 | Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in | On its own |
 | Errands | `goto repair / vendor / trainer / profession / inn / flightmaster / bank / auction` goes there and uses it: repairs and sells junk, learns every affordable spell, or sets the inn as home | On its own |
-| Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats and zeppelins as needed | On its own |
+| Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
 | Upkeep | `talents`, `autogear`, `s gray`, `repair`, `maintenance` | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 
@@ -666,8 +666,6 @@ drop, a capped profession).
   strategies go back to what it had before autopilot, and any trip under
   way ends. When it leaves, the LLM's strategies return and it is asked what
   to do next.
-- **Portals.** The Dark Portal and city portals aren't used. Outland is
-  reachable only where a boat goes (Azuremyst Isle).
 - **Buying, crafting and the auction house.** Selling junk, repairing and
   training are covered. Anything else depends on a playerbots command the LLM
   can give, such as `wts` or `craft`.
@@ -688,10 +686,18 @@ NewRpg.
 - **Flights.** On the same continent, a flight is taken when it clearly
   saves distance and the bot can pay for it. Otherwise the bot walks.
 - **Boats and zeppelins.** These are found at startup from the server's
-  transports. A bot only uses docks whose NPCs are friendly to its faction,
-  so an Alliance bot never goes to a Horde zeppelin tower. Several crossings
-  are chained when needed. The bot waits at the dock, walks on when the ship
-  docks, stays on deck, and steps off at the other end.
+  transports. A dock that belongs to the other faction (its guards and dock
+  master) is never used, so an Alliance bot never goes to a Horde zeppelin
+  tower; neutral ports such as Booty Bay are open to both. The bot waits at
+  the dock, walks on when the ship docks, stays on deck, and steps off at the
+  other end. Bots at a dock or aboard are checked every sweep, so they don't
+  miss the minute a ship is in.
+- **Portals.** The Dark Portal both ways (the bot walks into it, as a player
+  does), and the city portals in Shattrath and Dalaran, the Silvermoon orb
+  and the like (the bot uses them). A portal belonging to the other faction
+  is never used.
+- **Chained.** Crossings are chained as needed, for example Kalimdor by boat
+  to the Eastern Kingdoms, then through the Dark Portal to Outland.
 
 **No teleporting** (`NoTeleport`, on by default). Playerbots normally moves
 random bots by teleport: every hour or so to a spot for their level, and
@@ -801,7 +807,13 @@ Design notes are in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
 
 - Boats and zeppelins depend on the server's transports running. If a bot
   waits at a dock for `Travel.BoatWaitMinutes` and nothing comes, the trip
-  fails and the LLM is told.
+  fails and the LLM is told. The startup log line "indexed N boat/zeppelin
+  crossings ..., N portal triggers and N city portals" shows what was found.
+- If a ship's deck can't be found by probing, the bot is made a passenger
+  beside it rather than miss the crossing.
+- Alts ask their master to choose a quest reward, and an autopilot bot has
+  none. If playerbots doesn't pick one, autopilot takes the usable choice
+  with the highest item level.
 - Decisions are only as good as your model. A small model may give thin
   identities or orders that don't fit. Each refused or failed order is shown
   to the LLM on its next plan and counted in `.ollama autopilot status`.

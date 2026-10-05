@@ -69,7 +69,7 @@ namespace
         "{concerns}"
         "Quest log:\n{quests}\n"
         "Nearest services: {services}\n"
-        "Zones for their level on this continent: {zones}\n"
+        "Zones for their level (another continent in [brackets]): {zones}\n"
         "What your last orders did:\n{results}\n"
         "Last hour: {rewards}\n"
         "Recent decisions:\n{decisions}\n"

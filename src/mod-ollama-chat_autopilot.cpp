@@ -294,6 +294,7 @@ namespace
     std::vector<uint64_t>                g_roster;     // round-robin order
     std::unordered_set<uint64_t>         g_realOnline; // real players, for tiers
     std::unordered_set<uint32_t>         g_realGuilds; // guilds with a human member, online or not
+    std::unordered_set<uint64_t>         g_aboard;     // at a dock or on a boat: visited every sweep
     size_t                               g_cursor        = 0;
     uint32_t                             g_enrolledCount = 0;
     uint32_t                             g_cappedCount   = 0;   // enrolled via a capped rule
@@ -1800,6 +1801,29 @@ namespace
     // Sweep. World thread, g_mutex held.
     // ----------------------------------------------------------------------
 
+    // A trip the model sent the bot on: keep it going, and do the job on
+    // arrival. Finishing or failing is the moment to ask the model what next
+    // -- soon, since without orders the bot stands idle.
+    void StepErrand(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
+    {
+        const AutopilotErrandUpdate u = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now);
+        if (!u.note.empty())
+            RecordEvent(guid, u.finished ? "errand" : "travel", u.note);
+        if (u.finished)
+        {
+            row.lastResults.push_back(u.note);
+            if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
+                row.lastResults.erase(row.lastResults.begin());
+            row.dirty    = true;
+            ob.quickPlan = true;
+        }
+
+        if (ob.errand.active && AutopilotTravel_IsTimeCritical(ob.errand.trip))
+            g_aboard.insert(guid);
+        else
+            g_aboard.erase(guid);
+    }
+
     void Control(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
     {
         const Situation sit = Classify(bot, ai);
@@ -1823,22 +1847,7 @@ namespace
         Reassert(ai, row, ob, sit);
 
         if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
-        {
-            // A trip the model sent the bot on: keep it going, and do the job
-            // on arrival. Finishing or failing is the moment to ask the model
-            // what next -- soon, since without orders the bot stands idle.
-            const AutopilotErrandUpdate u = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now);
-            if (!u.note.empty())
-                RecordEvent(guid, u.finished ? "errand" : "travel", u.note);
-            if (u.finished)
-            {
-                row.lastResults.push_back(u.note);
-                if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
-                    row.lastResults.erase(row.lastResults.begin());
-                row.dirty    = true;
-                ob.quickPlan = true;
-            }
-        }
+            StepErrand(bot, ai, guid, row, ob, now);
 
         // A plan that never came back (provider down, server restarted the
         // dispatcher) must not block the next one forever.
@@ -2856,6 +2865,25 @@ void Autopilot_Update(uint32_t diff)
         if (it != g_online.end() && VisitBot(guid, it->second, now))
             ++full;
     }
+
+    // Bots waiting at a dock or aboard a ship get a look every sweep: a ship
+    // is docked for well under a minute, and the rotation can be slower than
+    // that on a busy realm. Only the trip is advanced here.
+    const std::vector<uint64_t> aboard(g_aboard.begin(), g_aboard.end());
+    for (uint64_t guid : aboard)
+    {
+        auto on  = g_online.find(guid);
+        auto row = g_rows.find(guid);
+        Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(guid));
+        PlayerbotAI* ai = BotAI(bot);
+        if (on == g_online.end() || row == g_rows.end() || !row->second.enrolled || !ai || !bot->IsInWorld() ||
+            !bot->IsAlive() || bot->IsInCombat() || !g_cfg.control)
+        {
+            g_aboard.erase(guid);
+            continue;
+        }
+        StepErrand(bot, ai, guid, row->second, on->second, now);
+    }
 }
 
 void Autopilot_SaveAll()
@@ -2948,6 +2976,7 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
     std::lock_guard<std::mutex> lock(g_mutex);
 
     g_realOnline.erase(guid);
+    g_aboard.erase(guid);
 
     auto onIt = g_online.find(guid);
     if (onIt == g_online.end())

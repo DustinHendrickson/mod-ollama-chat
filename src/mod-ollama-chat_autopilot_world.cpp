@@ -299,17 +299,26 @@ std::string AutopilotWorld_DescribeServices(Player* bot)
 
 std::string AutopilotWorld_ZonesForLevel(Player* bot)
 {
+    // Every continent: the bot can get anywhere (boats, zeppelins, portals).
+    // Other continents are marked, since getting there takes a while.
     const int32_t level = static_cast<int32_t>(bot->GetLevel());
     std::vector<std::pair<int32_t, std::string>> zones;
     for (uint32_t i = 0; i < sAreaTableStore.GetNumRows(); ++i)
     {
         AreaTableEntry const* area = sAreaTableStore.LookupEntry(i);
-        if (!area || area->zone != 0 || area->mapid != bot->GetMapId() || area->area_level <= 0 ||
-            !area->area_name[0] || !*area->area_name[0])
+        if (!area || area->zone != 0 || area->area_level <= 0 || !area->area_name[0] || !*area->area_name[0])
+            continue;
+        const uint32_t map = area->mapid;
+        if (map != 0 && map != 1 && map != 530 && map != 571)
             continue;
         if (area->area_level < level - 4 || area->area_level > level + 6)
             continue;
-        zones.emplace_back(area->area_level, area->area_name[0]);
+
+        std::string name = area->area_name[0];
+        if (map != bot->GetMapId())
+            if (MapEntry const* m = sMapStore.LookupEntry(map))
+                name += SafeFormat(" [{}]", m->name[0]);
+        zones.emplace_back(area->area_level, std::move(name));
     }
 
     std::sort(zones.begin(), zones.end(), [level](const auto& a, const auto& b)
@@ -318,7 +327,7 @@ std::string AutopilotWorld_ZonesForLevel(Player* bot)
     });
 
     std::string out;
-    for (size_t i = 0; i < zones.size() && i < 10; ++i)
+    for (size_t i = 0; i < zones.size() && i < 14; ++i)
         out += SafeFormat("{}{} ({})", out.empty() ? "" : ", ", zones[i].second, zones[i].first);
     return out;
 }

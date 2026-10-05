@@ -2165,8 +2165,8 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 #                      sell junk, learn every spell it can afford, make the
 #                      inn its home)
 #   goto zone <name>   any zone in the world. The bot walks, takes a flight
-#                      master when that saves real distance, and takes boats
-#                      and zeppelins between continents.
+#                      master when that saves real distance, and takes boats,
+#                      zeppelins and portals between continents.
 #   quest <id>         to where the quest's objective is (the nearest spawn
 #                      of a creature it still needs, or the quest's map
 #                      marker); once complete, to the NPC who takes it in,
@@ -2239,11 +2239,14 @@ OllamaChat.Autopilot.Travel.Flights = 1
 OllamaChat.Autopilot.Travel.FlightMinYards = 700
 
 #    OllamaChat.Autopilot.Travel.BoatWaitMinutes
-#        Boats and zeppelins between continents are found at startup from
-#        the server's transports, with only the docks whose NPCs are friendly
-#        to the bot's faction (an Alliance bot is never sent to a Horde
-#        zeppelin tower). Several hops are chained when needed. This is how
-#        long a bot waits at a dock before giving up on that crossing.
+#        Crossings between continents are found at startup: boats and
+#        zeppelins from the server's transports, the Dark Portal from its area
+#        triggers, and city portals (Shattrath, Dalaran, the Silvermoon orb)
+#        from gameobjects that cast a teleport. A dock or portal belonging to
+#        the other faction is never used (no Alliance bot at a Horde zeppelin
+#        tower); neutral ports are open to both. Several crossings are chained
+#        when needed. This is how long a bot waits at a dock before giving up
+#        on that crossing.
 #        Default: 20
 OllamaChat.Autopilot.Travel.BoatWaitMinutes = 20
 

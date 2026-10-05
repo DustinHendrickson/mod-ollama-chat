@@ -143,11 +143,22 @@ Playerbots' own out-of-combat movement waits for it, and combat outranks it.
 way playerbots' flight action does. TravelMgr's flight-master cache and
 `FindTaxiPath` provide the path. If the bot cannot pay, it walks.
 
-**Boats and zeppelins.** These come from `TransportMgr` templates: the stop
-key frames of every non-instance `MO_TRANSPORT`. Each dock gets a place to
-stand ashore (the nearest creature spawn) and a faction check (any nearby
-creature friendly to Human or Orc). A breadth-first search over continents
-picks the first crossing on a shortest chain the bot's faction can use.
+**Crossings between continents** are indexed at startup. A breadth-first
+search over continents picks the first crossing on a shortest chain the
+bot's faction can use. There are three kinds:
+
+- **Boats and zeppelins.** The stop key frames of every non-instance
+  `MO_TRANSPORT` in `TransportMgr`. Each dock gets a place to stand ashore
+  (the nearest creature spawn) and an owner: NPCs hostile to one side only
+  belong to the other. A dock owned only by the other faction is not used.
+- **Area-trigger portals** (the Dark Portal both ways), from
+  `GetAllAreaTriggerTeleports`. A bot never sends the area-trigger packet, so
+  autopilot walks it into the trigger and does what
+  `HandleAreaTriggerOpcode` does: `PlayerCannotEnter`, then `TeleportTo`.
+- **City portals** (Shattrath, Dalaran, the Silvermoon orb): spellcaster or
+  goober gameobjects whose spell teleports to another continent. The bot
+  walks up to one and calls `GameObject::Use`. The gameobject's faction
+  decides who may use it.
 
 - **Boarding:** once the ship is near its stop and has stopped moving, walk
   straight to a point on deck, found by a dynamic-collision height probe.
@@ -155,6 +166,11 @@ picks the first crossing on a shortest chain the bot's faction can use.
 - **Riding:** hold all movement (`MOVEMENT_FORCED`). The core carries
   passengers across maps.
 - **Getting off:** at the far stop, walk straight ashore.
+- **Docks and decks:** bots at a dock or aboard are stepped every sweep,
+  outside the rotation. A deck point is probed in rings around the ship.
+  Failing that, the bot is made a passenger alongside rather than miss the
+  crossing. A bot found standing on the ship but not yet attached is attached
+  at once.
 
 `MotionTransport::IsMoving` is private, so "docked" means the ship is near
 the stop and hasn't moved since the last look.

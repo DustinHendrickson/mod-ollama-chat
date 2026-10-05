@@ -369,6 +369,29 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 return u;
             }
             AutopilotQuest_TalkTo(ai, npc);
+
+            // Playerbots picks a reward itself for random bots; an alt asks
+            // its master to choose, and an autopilot bot's master is the LLM,
+            // which cannot answer a whisper. Take the best usable choice.
+            Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
+            if (quest && !bot->GetQuestRewardStatus(errand.questId) && bot->CanRewardQuest(quest, false))
+            {
+                uint32_t choice = 0, bestLevel = 0;
+                for (uint32_t i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
+                {
+                    ItemTemplate const* item = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[i]);
+                    if (!item || bot->CanUseItem(item) != EQUIP_ERR_OK)
+                        continue;
+                    if (item->ItemLevel > bestLevel)
+                    {
+                        bestLevel = item->ItemLevel;
+                        choice    = i;
+                    }
+                }
+                if (bot->CanRewardQuest(quest, choice, false))
+                    bot->RewardQuest(quest, choice, npc, true);
+            }
+
             u.note = bot->GetQuestRewardStatus(errand.questId)
                 ? "turned in the quest with " + npc->GetName()
                 : "talked to " + npc->GetName() + " but the quest was not turned in (it may need choosing a reward)";

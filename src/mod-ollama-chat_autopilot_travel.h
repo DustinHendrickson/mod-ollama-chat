@@ -18,10 +18,13 @@ class PlayerbotAI;
 // planned again after every flight or crossing (so each plan only has to see
 // as far as the next change of vehicle):
 //
-//   other continent   walk to the dock -> board -> ride -> step off; replan.
-//                     The boat or zeppelin is chosen by a breadth-first search
-//                     over continents, using only docks with NPCs friendly to
-//                     the bot's faction (no Alliance bot at a Horde tower).
+//   other continent   the first crossing on a shortest chain (breadth-first
+//                     over continents) the bot's faction may use:
+//                       boat or zeppelin: walk to the dock -> board -> ride ->
+//                       step off (no Alliance bot at a Horde tower)
+//                       the Dark Portal: walk into it
+//                       a city portal: walk up to it and use it
+//                     then replan.
 //   same continent,   walk to the nearest flight master -> fly to the taxi
 //   far away          node nearest the destination; replan. Only when it
 //                     saves real distance; if the flight cannot be bought,
@@ -49,7 +52,9 @@ enum class AutopilotLegType : uint8_t
     Fly,        // at the flight master `entry`, take `taxiPath`
     Board,      // wait at the dock for transport `entry` docked at `to`, get on
     Ride,       // stay on until it docks at `arrive` on `arriveMap`, step off at `land`
-    Approach    // step up to the nearest creature `entry`
+    Approach,   // step up to the nearest creature `entry`
+    Trigger,    // walk into area trigger `entry` (the Dark Portal) to reach `arrive`
+    Portal      // use portal gameobject `entry` to reach `arrive`
 };
 
 struct AutopilotLeg
@@ -93,6 +98,8 @@ struct AutopilotTrip
     // Where the transport was at the last look, to tell when it has stopped.
     float                tx = 0.0f, ty = 0.0f;
     uint32_t             tSampleAt = 0;
+
+    uint32_t             lastUpdateAt = 0;       // to notice a gap (combat, death)
 };
 
 void AutopilotTravel_LoadConfig();
@@ -118,6 +125,10 @@ void AutopilotTravel_Stop(PlayerbotAI* ai, AutopilotTrip& trip);
 
 // For the prompt and status: "flying to Booty Bay", "waiting for The Bravery".
 std::string AutopilotTravel_Describe(Player* bot, const AutopilotTrip& trip);
+
+// True while the trip is at a dock or aboard: these need a look every sweep,
+// or a busy realm's rotation can miss the minute a ship is docked.
+bool AutopilotTravel_IsTimeCritical(const AutopilotTrip& trip);
 
 // Whether the bot can get to this map at all (same map, or a boat/zeppelin
 // chain usable by its faction).

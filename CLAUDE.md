@@ -226,12 +226,21 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
 - **Travel** (`mod-ollama-chat_autopilot_travel.cpp`) plans legs and replans
   after every flight or crossing. Flights call `ActivateTaxiPathTo` directly
   with a path from TravelMgr's flight-master cache and `FindTaxiPath`; this
-  core needs no known nodes, only money. Boats and zeppelins come from
-  `TransportMgr` templates (stop key frames) at startup, with docks judged
-  friendly by nearby creature factions. Boarding relies on
+  core needs no known nodes, only money. Crossings between continents are
+  indexed at startup: boats and zeppelins from `TransportMgr` templates (stop
+  key frames), the Dark Portal from `GetAllAreaTriggerTeleports`, and city
+  portals from spellcaster/goober gameobjects whose spell has a
+  `SPELL_EFFECT_TELEPORT_UNITS` target position. A bot never sends the
+  area-trigger packet, so walking into the Dark Portal copies the core's
+  `HandleAreaTriggerOpcode` (`PlayerCannotEnter`, then `TeleportTo`). A
+  faction owns a dock or portal when its NPCs are hostile to the other side
+  only (`IsFriendlyTo` misses neutral ports such as Booty Bay; monsters are
+  hostile to both and count for nobody). Boarding relies on
   `PlayerbotAI::UpdateAI` attaching a bot to the transport under it every
   second. `MotionTransport::IsMoving` is private, so "docked" means near the
   stop and not moving since the last look.
+- **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
+  the rotation: a ship docks for well under a minute.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`

@@ -8,6 +8,9 @@
 #include "GameObject.h"
 #include "Log.h"
 #include "Map.h"
+#include "MapMgr.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "SharedDefines.h"
@@ -42,7 +45,14 @@ namespace
     constexpr float kDocked      = 40.0f;   // transport this close to its stop, and still
     constexpr float kTouch       = 4.0f;    // close enough to talk to an NPC
 
-    // --- boats and zeppelins ----------------------------------------------
+    // --- crossings between continents ------------------------------------
+    //
+    // Three kinds, all the game's own mechanics:
+    //   Transport  a boat or zeppelin between two docks
+    //   Trigger    an area trigger that teleports whoever walks into it (the
+    //              Dark Portal both ways); the core's own handling is copied
+    //   Portal     a gameobject that casts a teleport on whoever uses it
+    //              (city portals in Shattrath and Dalaran, the Silvermoon orb)
 
     struct Dock
     {
@@ -50,24 +60,50 @@ namespace
         float    x = 0.0f, y = 0.0f, z = 0.0f;   // where the transport stops
         float    lx = 0.0f, ly = 0.0f, lz = 0.0f; // somewhere to stand ashore
         bool     hasLand = false;
-        bool     alliance = false, horde = false; // friendly NPCs nearby
+        uint32_t allianceOnly = 0;   // nearby NPCs hostile to the Horde only
+        uint32_t hordeOnly    = 0;   // nearby NPCs hostile to the Alliance only
     };
+
+    enum class CrossKind : uint8_t { Transport, Trigger, Portal };
 
     struct Crossing
     {
-        uint32_t    entry = 0;
-        std::string name;
-        size_t      from = 0, to = 0;   // indices into g_docks
+        CrossKind            kind  = CrossKind::Transport;
+        uint32_t             entry = 0;     // transport / trigger / gameobject
+        std::string          name;
+        size_t               from = 0, to = 0;   // Transport: indices into g_docks
+        AutopilotTravelPoint enter;         // Trigger / Portal: where to go in
+        AutopilotTravelPoint exit;          // Trigger / Portal: where it leads
+        bool                 alliance = true, horde = true;
+
+        uint32_t FromMap() const;
+        uint32_t ToMap() const;
     };
 
     std::vector<Dock>     g_docks;
     std::vector<Crossing> g_crossings;
 
+    uint32_t Crossing::FromMap() const { return kind == CrossKind::Transport ? g_docks[from].map : enter.map; }
+    uint32_t Crossing::ToMap() const   { return kind == CrossKind::Transport ? g_docks[to].map : exit.map; }
+
+    bool IsContinent(uint32_t map) { return map == 0 || map == 1 || map == 530 || map == 571; }
+
     float Dist2D(float ax, float ay, float bx, float by) { return std::hypot(ax - bx, ay - by); }
 
+    // A faction's own dock (its guards, its dock master) is off limits to the
+    // other faction; neutral ports and shared ones are open to both.
     bool DockOk(const Dock& d, TeamId team)
     {
-        return d.hasLand && (team == TEAM_ALLIANCE ? d.alliance : d.horde);
+        if (!d.hasLand)
+            return false;
+        return team == TEAM_ALLIANCE ? !(d.hordeOnly && !d.allianceOnly) : !(d.allianceOnly && !d.hordeOnly);
+    }
+
+    bool Usable(const Crossing& c, TeamId team)
+    {
+        if (c.kind == CrossKind::Transport)
+            return DockOk(g_docks[c.from], team) && DockOk(g_docks[c.to], team);
+        return team == TEAM_ALLIANCE ? c.alliance : c.horde;
     }
 
     size_t AddDock(uint32_t map, float x, float y, float z)
@@ -84,7 +120,18 @@ namespace
         return g_docks.size() - 1;
     }
 
-    // Maps away from `target`, by crossings usable by `team`. -1 = unreachable.
+    // Where the bot walks to for a crossing.
+    AutopilotTravelPoint Start(const Crossing& c)
+    {
+        if (c.kind == CrossKind::Transport)
+        {
+            const Dock& d = g_docks[c.from];
+            return { d.map, d.lx, d.ly, d.lz };
+        }
+        return c.enter;
+    }
+
+    // Maps away from `target`, by crossings usable by `team`.
     std::unordered_map<uint32_t, int> HopsTo(uint32_t target, TeamId team)
     {
         std::unordered_map<uint32_t, int> dist;
@@ -96,19 +143,17 @@ namespace
             queue.pop_front();
             for (const Crossing& c : g_crossings)
             {
-                const Dock& from = g_docks[c.from];
-                const Dock& to   = g_docks[c.to];
-                if (to.map != map || !DockOk(from, team) || !DockOk(to, team) || dist.count(from.map))
+                if (c.ToMap() != map || dist.count(c.FromMap()) || !Usable(c, team))
                     continue;
-                dist[from.map] = dist[map] + 1;
-                queue.push_back(from.map);
+                dist[c.FromMap()] = dist[map] + 1;
+                queue.push_back(c.FromMap());
             }
         }
         return dist;
     }
 
-    // The first crossing toward `target`: on a shortest chain, from the dock
-    // nearest the bot.
+    // The first crossing toward `target`: on a shortest chain, the one whose
+    // start is nearest the bot.
     const Crossing* FirstHop(Player* bot, uint32_t target)
     {
         const TeamId team = bot->GetTeamId();
@@ -121,14 +166,13 @@ namespace
         float bestDist = 0.0f;
         for (const Crossing& c : g_crossings)
         {
-            const Dock& from = g_docks[c.from];
-            const Dock& to   = g_docks[c.to];
-            if (from.map != bot->GetMapId() || !DockOk(from, team) || !DockOk(to, team))
+            if (c.FromMap() != bot->GetMapId() || !Usable(c, team))
                 continue;
-            auto next = dist.find(to.map);
+            auto next = dist.find(c.ToMap());
             if (next == dist.end() || next->second != here->second - 1)
                 continue;
-            const float d = bot->GetDistance(from.lx, from.ly, from.lz);
+            const AutopilotTravelPoint s = Start(c);
+            const float d = bot->GetDistance(s.x, s.y, s.z);
             if (!best || d < bestDist)
             {
                 best     = &c;
@@ -147,6 +191,17 @@ namespace
                 if (MotionTransport* m = t->ToMotionTransport())
                     return m;
         return nullptr;
+    }
+
+    // The transport of this entry the bot is standing on, attached or not.
+    MotionTransport* StandingOn(Player* bot, uint32_t entry)
+    {
+        Map* map = bot->GetMap();
+        if (!map)
+            return nullptr;
+        Transport* t = map->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(),
+                                               bot->GetPositionZ(), bot);
+        return t && t->GetEntry() == entry ? t->ToMotionTransport() : nullptr;
     }
 
     // Docked: near its stop and not moving since the last look a second or
@@ -171,18 +226,38 @@ namespace
         return still;
     }
 
-    // A point on the deck: the transport's model is in the map's dynamic
-    // collision, so a height probe from above finds the deck.
-    AutopilotTravelPoint Deck(Player* bot, MotionTransport* t)
+    // A point on the deck, nearest the bot. The transport's model is in the
+    // map's dynamic collision: probe heights in rings around its centre and
+    // keep points that the core itself counts as on this transport. Decks
+    // differ (a zeppelin's gondola is not under its centre), hence the rings.
+    bool Deck(Player* bot, MotionTransport* t, AutopilotTravelPoint& out)
     {
-        AutopilotTravelPoint p{ t->GetMapId(), t->GetPositionX(), t->GetPositionY(), t->GetPositionZ() };
-        if (Map* map = t->GetMap())
+        Map* map = t->GetMap();
+        if (!map)
+            return false;
+
+        bool found = false;
+        float bestDist = 0.0f;
+        for (float r : { 0.0f, 4.0f, 8.0f, 12.0f, 16.0f })
         {
-            const float h = map->GetHeight(bot->GetPhaseMask(), p.x, p.y, p.z + 30.0f, true, 60.0f);
-            if (h > INVALID_HEIGHT && map->GetTransportForPos(bot->GetPhaseMask(), p.x, p.y, h + 0.5f, bot) == t)
-                p.z = h + 0.5f;
+            for (int k = 0; k < (r == 0.0f ? 1 : 8); ++k)
+            {
+                const float a = float(k) * float(M_PI) / 4.0f;
+                const float x = t->GetPositionX() + r * std::cos(a);
+                const float y = t->GetPositionY() + r * std::sin(a);
+                const float h = map->GetHeight(bot->GetPhaseMask(), x, y, t->GetPositionZ() + 30.0f, true, 60.0f);
+                if (h <= INVALID_HEIGHT || map->GetTransportForPos(bot->GetPhaseMask(), x, y, h + 0.5f, bot) != t)
+                    continue;
+                const float d = bot->GetExactDist2d(x, y);
+                if (!found || d < bestDist)
+                {
+                    out      = { t->GetMapId(), x, y, h + 0.5f };
+                    bestDist = d;
+                    found    = true;
+                }
+            }
         }
-        return p;
+        return found;
     }
 
     std::string MapName(uint32_t map)
@@ -279,9 +354,28 @@ namespace
         {
             const Crossing* c = FirstHop(bot, trip.dest.map);
             if (!c)
-                return SafeFormat("no boat or zeppelin {} can take goes from {} toward {}",
+                return SafeFormat("no boat, zeppelin or portal {} can take leads from {} toward {}",
                                   bot->GetTeamId() == TEAM_ALLIANCE ? "the Alliance" : "the Horde",
                                   MapName(bot->GetMapId()), MapName(trip.dest.map));
+
+            if (c->kind != CrossKind::Transport)
+            {
+                AutopilotLeg walk;
+                walk.type   = AutopilotLegType::Walk;
+                walk.to     = c->enter;
+                walk.radius = c->kind == CrossKind::Trigger ? 3.0f : kTouch;
+                walk.label  = c->name;
+
+                AutopilotLeg go;
+                go.type   = c->kind == CrossKind::Trigger ? AutopilotLegType::Trigger : AutopilotLegType::Portal;
+                go.entry  = c->entry;
+                go.to     = c->enter;
+                go.arrive = c->exit;
+                go.label  = c->name;
+
+                trip.legs = { walk, go };
+                return "";
+            }
 
             const Dock& from = g_docks[c->from];
             const Dock& to   = g_docks[c->to];
@@ -486,6 +580,17 @@ namespace
             note = "boarded " + leg.label;
             return LegResult::Done;
         }
+
+        // On the deck but not attached yet (playerbots checks once a second):
+        // attach now, before the ship sails off without the bot.
+        if (MotionTransport* under = StandingOn(bot, leg.entry))
+        {
+            under->AddPassenger(bot, true);
+            bot->StopMovingOnCurrentPos();
+            note = "boarded " + leg.label;
+            return LegResult::Done;
+        }
+
         if (now - trip.legStartedAt > g_tc.boatWaitMin * 60)
         {
             note = leg.label + " never came";
@@ -495,6 +600,7 @@ namespace
         MotionTransport* t = FindTransport(bot->GetMap(), leg.entry);
         if (!DockedAt(trip, t, leg.to, now))
         {
+            trip.boarded = false;   // walking on starts over at the next docking
             // Wait ashore; keep playerbots from wandering off meanwhile.
             if (bot->GetExactDist2d(leg.land.x, leg.land.y) > 15.0f && !AutopilotMove_IsMoving(ai))
                 AutopilotMove_To(ai, leg.land.x, leg.land.y, leg.land.z, true);
@@ -503,23 +609,31 @@ namespace
             return LegResult::Going;
         }
 
-        // Docked: walk straight onto the deck. Playerbots makes the bot a
-        // passenger once it stands on it; do it here too in case its probe
-        // misses an odd deck.
-        const AutopilotTravelPoint deck = Deck(bot, t);
-        if (bot->GetExactDist2d(deck.x, deck.y) > 2.0f)
+        // Docked: walk straight onto the deck (it is not on the navmesh).
+        AutopilotTravelPoint deck;
+        if (Deck(bot, t, deck))
         {
-            if (!AutopilotMove_IsMoving(ai))
+            if (!AutopilotMove_IsMoving(ai) || !trip.boarded)
+            {
                 AutopilotMove_To(ai, deck.x, deck.y, deck.z, false);
+                trip.boarded = true;   // here: "on the way up the gangway"
+            }
             return LegResult::Going;
         }
-        if (bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(),
-                                               bot->GetPositionZ(), bot) == t)
+
+        // No deck point found by probing: an odd model. Walk to the ship and,
+        // once alongside, make the bot a passenger where it stands -- it rides
+        // along beside the deck rather than miss the crossing.
+        if (bot->GetExactDist2d(t->GetPositionX(), t->GetPositionY()) > 20.0f)
         {
-            t->AddPassenger(bot, true);
-            bot->StopMovingOnCurrentPos();
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, t->GetPositionX(), t->GetPositionY(), t->GetPositionZ(), false);
+            return LegResult::Going;
         }
-        return LegResult::Going;
+        t->AddPassenger(bot, true);
+        bot->StopMovingOnCurrentPos();
+        note = "boarded " + leg.label;
+        return LegResult::Done;
     }
 
     LegResult Ride(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
@@ -529,6 +643,16 @@ namespace
             return LegResult::Going;
 
         Transport* on = bot->GetTransport();
+
+        // Detached for a moment (crossing to another map, or playerbots' own
+        // check ran between two steps): still standing on it means still aboard.
+        if ((!on || on->GetEntry() != leg.entry) && !trip.stepping)
+            if (MotionTransport* under = StandingOn(bot, leg.entry))
+            {
+                under->AddPassenger(bot, true);
+                on = under;
+            }
+
         if (trip.stepping)
         {
             if (!on)
@@ -537,6 +661,13 @@ namespace
                 trip.flown = false;
                 return LegResult::Replan;
             }
+            // The ship sailed before the bot got off: ride on and wait for the
+            // next time it docks here.
+            if (!DockedAt(trip, on->ToMotionTransport(), leg.arrive, now) && trip.tSampleAt == 0)
+            {
+                trip.stepping = false;
+                return LegResult::Going;
+            }
             if (!AutopilotMove_IsMoving(ai))
                 AutopilotMove_To(ai, leg.land.x, leg.land.y, leg.land.z, false);
             return LegResult::Going;
@@ -544,6 +675,14 @@ namespace
 
         if (!on || on->GetEntry() != leg.entry)
         {
+            // Off the ship. Near the far dock that is arriving; anywhere else
+            // it is falling off, and the trip is planned again from there.
+            if (bot->GetMapId() == leg.arrive.map && DistTo(bot, leg.arrive) < 80.0f)
+            {
+                note       = "arrived in " + MapName(bot->GetMapId()) + " by " + leg.label;
+                trip.flown = false;
+                return LegResult::Replan;
+            }
             note = "got off " + leg.label + " early";
             return LegResult::Replan;
         }
@@ -564,6 +703,99 @@ namespace
         }
         return LegResult::Going;
     }
+
+    // The Dark Portal and its like: an area trigger that teleports whoever
+    // walks into it. A bot's client never reports entering one, so do what
+    // the core does when a client does (WorldSession::HandleAreaTriggerOpcode).
+    LegResult EnterTrigger(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
+                      std::string& note)
+    {
+        if (bot->GetMapId() == leg.arrive.map)
+        {
+            note = "went through " + leg.label;
+            return LegResult::Replan;
+        }
+        if (trip.tookOff)
+        {
+            if (now - trip.legStartedAt > 30)
+            {
+                note = "could not go through " + leg.label;
+                return LegResult::Fail;
+            }
+            return LegResult::Going;   // being teleported
+        }
+
+        AreaTrigger const* at = sObjectMgr->GetAreaTrigger(leg.entry);
+        AreaTriggerTeleport const* tp = sObjectMgr->GetAreaTriggerTeleport(leg.entry);
+        if (!at || !tp)
+        {
+            note = leg.label + " no longer exists";
+            return LegResult::Fail;
+        }
+
+        if (!bot->IsInAreaTriggerRadius(at, 1.0f))
+        {
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, at->x, at->y, at->z, true);
+            if (now - trip.legStartedAt > g_tc.stuckSeconds * 2)
+            {
+                note = "could not step into " + leg.label;
+                return LegResult::Fail;
+            }
+            return LegResult::Going;
+        }
+
+        if (sMapMgr->PlayerCannotEnter(tp->target_mapId, bot, false) != Map::CAN_ENTER)
+        {
+            note = "is not allowed through " + leg.label;
+            return LegResult::Fail;
+        }
+
+        trip.tookOff      = true;
+        trip.legStartedAt = now;
+        bot->TeleportTo(tp->target_mapId, tp->target_X, tp->target_Y, tp->target_Z, tp->target_Orientation,
+                        TELE_TO_NOT_LEAVE_TRANSPORT);
+        return LegResult::Going;
+    }
+
+    // A city portal: use the gameobject; it casts the teleport on the bot.
+    LegResult UsePortal(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
+                     std::string& note)
+    {
+        if (bot->GetMapId() == leg.arrive.map && DistTo(bot, leg.arrive) < 200.0f)
+        {
+            note = "took " + leg.label;
+            return LegResult::Replan;
+        }
+        if (trip.tookOff && now - trip.legStartedAt < 15)
+            return LegResult::Going;   // casting / being teleported
+
+        GameObject* go = bot->FindNearestGameObject(leg.entry, 30.0f);
+        if (!go)
+        {
+            note = leg.label + " was not there";
+            return LegResult::Fail;
+        }
+        if (bot->GetDistance(go) > kTouch)
+        {
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true);
+            return LegResult::Going;
+        }
+        if (trip.tookOff)
+        {
+            note = "used " + leg.label + " but nothing happened";
+            return LegResult::Fail;
+        }
+
+        if (bot->IsMounted())
+            bot->Dismount();
+        AutopilotMove_Stop(ai);
+        go->Use(bot);
+        trip.tookOff      = true;
+        trip.legStartedAt = now;
+        return LegResult::Going;
+    }
 }
 
 void AutopilotTravel_LoadConfig()
@@ -581,6 +813,25 @@ void AutopilotTravel_Build()
     g_docks.clear();
     g_crossings.clear();
 
+    FactionTemplateEntry const* alliance = sFactionTemplateStore.LookupEntry(1);   // Human
+    FactionTemplateEntry const* horde    = sFactionTemplateStore.LookupEntry(2);   // Orc
+
+    // Who a faction template belongs to: hostile to exactly one side means it
+    // is the other side's. Monsters hostile to both, and neutrals, are nobody's.
+    auto sides = [&](uint32_t factionTemplate, bool& allianceOnly, bool& hordeOnly)
+    {
+        allianceOnly = hordeOnly = false;
+        FactionTemplateEntry const* f = sFactionTemplateStore.LookupEntry(factionTemplate);
+        if (!f || !alliance || !horde)
+            return;
+        const bool hostileA = f->IsHostileTo(*alliance);
+        const bool hostileH = f->IsHostileTo(*horde);
+        allianceOnly = hostileH && !hostileA;
+        hordeOnly    = hostileA && !hostileH;
+    };
+
+    // --- boats and zeppelins ---------------------------------------------------
+    size_t transports = 0;
     if (GameObjectTemplateContainer const* templates = sObjectMgr->GetGameObjectTemplates())
     {
         for (auto const& [entry, tmpl] : *templates)
@@ -593,7 +844,7 @@ void AutopilotTravel_Build()
 
             std::vector<size_t> stops;
             for (KeyFrame const& kf : tt->keyFrames)
-                if (kf.IsStopFrame())
+                if (kf.IsStopFrame() && IsContinent(kf.Node->mapid))
                 {
                     const size_t dock = AddDock(kf.Node->mapid, kf.Node->x, kf.Node->y, kf.Node->z);
                     if (stops.empty() || stops.back() != dock)
@@ -607,16 +858,20 @@ void AutopilotTravel_Build()
                 const size_t from = stops[i], to = stops[(i + 1) % stops.size()];
                 if (g_docks[from].map == g_docks[to].map)
                     continue;   // same continent: walking and flights cover it
-                g_crossings.push_back(Crossing{ entry, tmpl.name, from, to });
+                Crossing c;
+                c.kind  = CrossKind::Transport;
+                c.entry = entry;
+                c.name  = tmpl.name;
+                c.from  = from;
+                c.to    = to;
+                g_crossings.push_back(std::move(c));
+                ++transports;
             }
         }
     }
 
     // Where to stand ashore, and whose dock it is: the nearest creature spawn
-    // to each stop, and whether any creature near it is friendly to each
-    // faction (dock masters, guards, goblins at neutral ports).
-    FactionTemplateEntry const* alliance = sFactionTemplateStore.LookupEntry(1);   // Human
-    FactionTemplateEntry const* horde    = sFactionTemplateStore.LookupEntry(2);   // Orc
+    // to each stop, and which side's NPCs are around it.
     std::vector<float> nearest(g_docks.size(), FLT_MAX);
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
     {
@@ -630,13 +885,12 @@ void AutopilotTravel_Build()
                 continue;
 
             if (CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(data.id))
-                if (FactionTemplateEntry const* f = sFactionTemplateStore.LookupEntry(t->faction))
-                {
-                    if (alliance && f->IsFriendlyTo(*alliance))
-                        d.alliance = true;
-                    if (horde && f->IsFriendlyTo(*horde))
-                        d.horde = true;
-                }
+            {
+                bool a = false, h = false;
+                sides(t->faction, a, h);
+                d.allianceOnly += a ? 1 : 0;
+                d.hordeOnly    += h ? 1 : 0;
+            }
 
             if (std::fabs(data.posZ - d.z) < 40.0f && dist < nearest[i])
             {
@@ -649,8 +903,69 @@ void AutopilotTravel_Build()
         }
     }
 
-    LOG_INFO("server.loading", "[Ollama Chat] Autopilot: indexed {} boat and zeppelin crossings between {} docks.",
-             g_crossings.size(), g_docks.size());
+    // --- area-trigger portals (the Dark Portal) --------------------------------
+    size_t triggers = 0;
+    for (auto const& [triggerId, tp] : sObjectMgr->GetAllAreaTriggerTeleports())
+    {
+        AreaTrigger const* at = sObjectMgr->GetAreaTrigger(triggerId);
+        if (!at || !IsContinent(at->map) || !IsContinent(tp.target_mapId) || at->map == tp.target_mapId)
+            continue;
+        Crossing c;
+        c.kind  = CrossKind::Trigger;
+        c.entry = triggerId;
+        c.name  = "the portal to " + MapName(tp.target_mapId);
+        c.enter = { at->map, at->x, at->y, at->z };
+        c.exit  = { tp.target_mapId, tp.target_X, tp.target_Y, tp.target_Z };
+        g_crossings.push_back(std::move(c));
+        ++triggers;
+    }
+
+    // --- city portals (gameobjects that cast a teleport) -----------------------
+    size_t portals = 0;
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+    {
+        if (!IsContinent(data.mapid))
+            continue;
+        GameObjectTemplate const* tmpl = sObjectMgr->GetGameObjectTemplate(data.id);
+        if (!tmpl)
+            continue;
+        uint32_t spellId = 0;
+        if (tmpl->type == GAMEOBJECT_TYPE_SPELLCASTER)
+            spellId = tmpl->spellcaster.spellId;
+        else if (tmpl->type == GAMEOBJECT_TYPE_GOOBER)
+            spellId = tmpl->goober.spellId;
+        SpellInfo const* spell = spellId ? sSpellMgr->GetSpellInfo(spellId) : nullptr;
+        if (!spell)
+            continue;
+
+        SpellTargetPosition const* dest = nullptr;
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS && !dest; ++i)
+            if (spell->Effects[i].Effect == SPELL_EFFECT_TELEPORT_UNITS)
+                dest = sSpellMgr->GetSpellTargetPosition(spellId, SpellEffIndex(i));
+        if (!dest || !IsContinent(dest->target_mapId) || dest->target_mapId == data.mapid)
+            continue;
+
+        Crossing c;
+        c.kind  = CrossKind::Portal;
+        c.entry = data.id;
+        c.name  = tmpl->name.empty() ? "the portal to " + MapName(dest->target_mapId) : tmpl->name;
+        c.enter = { data.mapid, data.posX, data.posY, data.posZ };
+        c.exit  = { dest->target_mapId, dest->target_X, dest->target_Y, dest->target_Z };
+        if (GameObjectTemplateAddon const* addon = sObjectMgr->GetGameObjectTemplateAddon(data.id))
+        {
+            bool a = false, h = false;
+            sides(addon->faction, a, h);
+            c.alliance = !h;   // a Horde portal is not for the Alliance
+            c.horde    = !a;
+        }
+        g_crossings.push_back(std::move(c));
+        ++portals;
+    }
+
+    LOG_INFO("server.loading",
+             "[Ollama Chat] Autopilot: indexed {} boat/zeppelin crossings ({} docks), {} portal triggers and "
+             "{} city portals between continents.",
+             transports, g_docks.size(), triggers, portals);
 }
 
 std::string AutopilotTravel_Start(Player* bot, const AutopilotTravelPoint& dest, float arriveRadius,
@@ -672,6 +987,23 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
         return AutopilotTripState::Failed;
     if (bot->IsBeingTeleported())
         return AutopilotTripState::Going;
+
+    // Not updated for a while (a fight, death, a reload): progress so far
+    // says nothing about being stuck, and a route walked from somewhere else
+    // may now lie behind the bot.
+    if (trip.lastUpdateAt && now - trip.lastUpdateAt > 10)
+    {
+        trip.best   = FLT_MAX;
+        trip.bestAt = now;
+        if (trip.routed)
+        {
+            const uint32_t rebuilds = trip.route.rebuilds;
+            AutopilotRoute_Rebuild(bot, trip.route);
+            trip.route.rebuilds = rebuilds;   // not a "stuck" rebuild
+            trip.issued = SIZE_MAX;
+        }
+    }
+    trip.lastUpdateAt = now;
 
     for (int step = 0; step < 4; ++step)   // a leg may finish and the next start in one visit
     {
@@ -700,6 +1032,8 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
             case AutopilotLegType::Fly:      r = Fly(bot, ai, trip, leg, legNote);        break;
             case AutopilotLegType::Board:    r = Board(bot, ai, trip, leg, now, legNote); break;
             case AutopilotLegType::Ride:     r = Ride(bot, ai, trip, leg, now, legNote);  break;
+            case AutopilotLegType::Trigger:  r = EnterTrigger(bot, ai, trip, leg, now, legNote); break;
+            case AutopilotLegType::Portal:   r = UsePortal(bot, ai, trip, leg, now, legNote);  break;
         }
         if (!legNote.empty())
             note = legNote;
@@ -754,6 +1088,8 @@ std::string AutopilotTravel_Describe(Player* bot, const AutopilotTrip& trip)
         case AutopilotLegType::Fly:      return trip.tookOff ? "flying to " + leg.label : "taking a flight to " + leg.label;
         case AutopilotLegType::Board:    return "waiting at the dock for " + leg.label;
         case AutopilotLegType::Ride:     return "aboard " + leg.label;
+        case AutopilotLegType::Trigger:  return "going through " + leg.label;
+        case AutopilotLegType::Portal:   return "taking " + leg.label;
     }
     return "";
 }
@@ -763,4 +1099,12 @@ bool AutopilotTravel_CanReach(Player* bot, uint32_t map)
     if (map == bot->GetMapId())
         return true;
     return HopsTo(map, bot->GetTeamId()).count(bot->GetMapId()) != 0;
+}
+
+bool AutopilotTravel_IsTimeCritical(const AutopilotTrip& trip)
+{
+    if (!trip.active || trip.leg >= trip.legs.size())
+        return false;
+    const AutopilotLegType t = trip.legs[trip.leg].type;
+    return t == AutopilotLegType::Board || t == AutopilotLegType::Ride;
 }
