@@ -90,21 +90,175 @@ New files (they are globbed, so no CMake change):
 - `mod-ollama-chat_playstyle.{h,cpp}`: playstyle and awareness profiles,
   assignment, and prompt fragments.
 
-## Enrollment: how a bot comes under autopilot
+## Selection: which bots the server owner puts under autopilot
 
-The `autopilot` strategy is the visible handle, but the DB row is the source of
-truth, because resets wipe strategies.
+There are two separate questions, and they are kept apart on purpose:
 
-- **`nc +autopilot`** (whispered by the bot's master, through playerbots' normal
-  chat path) adds the marker. On its next sweep the planner sees a marker with
-  no row and enrolls the bot.
-- **`.ollama autopilot on|off <bot>`** (GM) enrolls or unenrolls directly.
-- **`OllamaChat.Autopilot.RandomBotPercent`** enrolls that share of random bots,
-  chosen deterministically by guid hash so the selection stays stable.
-- An unenrolled bot that has the marker gets the marker removed on the next
-  sweep. **`nc -autopilot` alone cannot unenroll**, because we can't tell it
-  apart from a reset. Unenroll goes through the command. This is a deliberate
-  trade-off, and it is documented in the conf file.
+- **Enrolled**: this bot *is* an autopilot character. It has a playstyle, a
+  goal and a diary. Enrollment is persistent and cheap: a DB row plus a small
+  in-memory struct.
+- **Planning tier**: how much *thinking* this bot gets right now. Tiers are
+  re-evaluated every sweep, and they are what actually costs anything (see
+  Scaling).
+
+### Enrollment sources
+
+These can all be combined. A bot is enrolled if any *include* source matches
+and no *exclude* rule does.
+
+| source | setting / command | notes |
+|---|---|---|
+| explicit, per bot | `.ollama autopilot on`/`off <bot>` | always wins over rules, both ways (`off` writes an opt-out row) |
+| master opt-in | `nc +autopilot` from the bot's master | only when `Autopilot.AllowMasterEnroll = 1` |
+| random bots | `Autopilot.Select.RandomBotPercent` | stable: chosen by guid hash, so the same bots stay in as the percent changes |
+| alt / addclass bots | `Autopilot.Select.AltBots` | default `0`, because these already have a human master |
+| guilds | `Autopilot.Select.Guilds = "id,id"` | e.g. an all-bot RP guild |
+| accounts | `Autopilot.Select.Accounts = "id,id"` | lets the operator dedicate bot accounts |
+| names | `Autopilot.Select.Include = "Name,Name"` / `.Exclude` | small hand-picked casts |
+| level band | `Autopilot.Select.MinLevel` / `.MaxLevel` | filters the rule sources only, not explicit `on` |
+| hard cap | `Autopilot.MaxEnrolled` | stable cap: the lowest guid hash wins, so the set doesn't churn |
+
+Rules are evaluated **once per bot at login**, and again on `.ollama reload`,
+never per tick. The result is cached in the bot's in-memory struct. Explicit
+`on`/`off` rows are loaded with the rest of the autopilot table at startup.
+
+The `autopilot` strategy is a visible marker that mirrors enrollment. It is
+not the switch, because playerbots resets wipe it constantly; the sweep adds
+it back wherever it is missing. `nc -autopilot` therefore can't unenroll a
+bot, since it looks the same as a reset. The conf file says so.
+
+Playstyle distribution can be shaped per source. For example,
+`Autopilot.Select.Guild.<id>.Playstyle = roleplayer` pins a guild's
+playstyle. Otherwise `Autopilot.Playstyle.Weights` applies.
+
+**`.ollama autopilot preview`** dry-runs the current rules against online bots
+and prints:
+
+- matched counts per source
+- the tier split
+- the estimated LLM calls per hour at current settings
+
+This lets the operator size the feature before turning it on.
+
+### Automatic pause
+
+An enrolled bot is skipped for planning, but keeps recording, while any of
+these is true:
+
+- it is grouped with a real player (the master drives)
+- it is in a battleground, arena or instance
+- it is dead or in combat
+- it is on a flight path
+- the global `Autopilot.Enable` is `0`
+
+Nothing is torn down, so resuming is free.
+
+## Scaling: making hundreds of bots affordable
+
+The expensive part is LLM calls. World-thread work is cheap as long as it is
+spread out. The design keeps **LLM cost bounded by a budget, not by bot
+count**: adding bots means the average bot thinks less often, not that the
+server does more.
+
+### 1. Split the thinking: LLM sets goals, C++ picks activities
+
+The LLM only gets the *strategic* question: "what is this character working
+toward, and why?" It is asked when a goal completes or fails, when boredom is
+high, or about every `GoalRefreshMinutes` (default 90).
+
+The *tactical* question, "which activity serves that goal right now?", is
+answered by a deterministic **policy** in C++. It runs every few minutes and
+costs almost nothing. Each goal kind has a set of candidate activities:
+
+- `reach_skill mining 150` → `gather`, then `town` to train
+- `explore_zone Feralas` → `travel`, then `explore`
+- `reach_level 30` → `quest` / `grind` / `dungeon`
+
+The policy scores those candidates by playstyle weights, boredom, recent
+reward rates and the guards.
+
+So a bot costs roughly **one LLM call an hour instead of four or more**, and it
+still acts on its goal in between.
+
+### 2. Tiers
+
+| tier | who | what it gets |
+|---|---|---|
+| **foreground** | a real player is within `Autopilot.ForegroundRange` (default: same zone), or the bot's guild has a real player online | LLM goals, plus LLM activity choice every `DecisionIntervalMinutes`; may `say` its reasoning |
+| **background** | enrolled, nobody watching | LLM goals only; activities from the policy; no `say` |
+| **dormant** | no real player on the continent for `Autopilot.DormantAfterMinutes`, or the budget is exhausted | policy only. The current goal is kept, or one is drawn from a playstyle template list in conf. Zero LLM calls |
+
+Tiers are computed from the existing `OllamaWorldSnapshot`, in one pass over
+real players per sweep rather than one per bot. This is the same reasoning the
+chat module already uses: thinking nobody sees is the first thing to cut.
+
+### 3. One global budget
+
+- `Autopilot.LlmCallsPerHour` is a token bucket shared by every bot.
+- Calls waiting for budget sit in a priority queue, in this order:
+  1. foreground before background
+  2. goal completed or failed
+  3. boredom over the threshold
+  4. periodic refresh
+- When the bucket is empty, bots carry on under the policy until there is room
+  again.
+- `Autopilot.MaxConcurrentPlans` caps how many requests are in flight.
+- Planning pauses whenever the shared dispatch queue is more than half full,
+  so chat replies always come first.
+- `Autopilot.Model` can point planning at a separate, cheaper model.
+
+### 4. Make each call cheap
+
+- **Prompt order for caching.** The prompt goes static-first, dynamic-last:
+  instructions, schema and activity menu, then the playstyle/awareness block,
+  then bot state and history. Ollama reuses the KV cache for an identical
+  prefix, and OpenAI and Anthropic prompt caching key on the prefix too, so
+  most of each prompt costs nothing to re-read.
+- **Compact state.** Only foreground bots get the expensive visible-objects
+  scan in `GenerateBotGameStateSnapshot`. Background goal-setting gets macro
+  state and progress deltas, which is what a strategic decision needs anyway.
+- **Optional batching (later phase).** With `Autopilot.BatchSize` > 1, one
+  request plans several background bots and returns a JSON array. Bots are
+  grouped by playstyle so the shared prefix stays large. This is off by
+  default because small models lose track.
+
+### 5. Keep the world thread flat
+
+- **Throttled, round-robin sweep.** `Autopilot_Update` runs every
+  `SweepIntervalMs` (default 1000). Each run advances a cursor over the
+  enrolled bots that are online and handles at most `Autopilot.BotsPerSweep`
+  of them. The cost per tick stays constant however many bots are enrolled.
+- **Staggered snapshots.** Each bot's snapshot is due at
+  `(guid hash mod interval)`. At a 30-minute interval, 1000 bots means about
+  one snapshot every 2 s, not 1000 at once. A recorder snapshot reads only
+  `Player` fields (level, money, durability, bags, skills) and does no grid
+  scans.
+- **Events are counters.** The `events.cpp` hooks bump counters in the bot's
+  struct, which is O(1). Only notable events (level, death, rare loot, quest,
+  goal) become DB rows.
+- **Batched DB writes.** Snapshot and event rows queue in memory and are
+  flushed in one async transaction every `FlushIntervalSeconds`.
+- **Downsampled history** instead of plain trimming. A trim pass at flush time
+  keeps:
+  - every snapshot for the last 24 hours
+  - one per hour for the week before that
+  - one per day after that
+
+  A long-lived bot's history stays at a few hundred rows.
+- **Lazy loading.** Per-bot history is read from the DB only when a prompt
+  needs it, and cached until the next snapshot. Nothing is read at login.
+
+### Rough numbers to validate in Phase 2
+
+Take 500 enrolled bots with 1–2 real players online:
+
+- ~20 foreground bots at ~4 calls/h ≈ 80/h
+- ~480 background/dormant bots at ≤ 1/h, capped by the budget
+- the default `LlmCallsPerHour = 300` works out to about 5 calls a minute
+
+The world-thread sweep handles `BotsPerSweep = 25` bots per second, so it
+cycles all 500 every 20 s. Measure the sweep with the existing
+`.ollama status` timing before raising any defaults.
 
 Prerequisite: `OllamaChat.EnableChatBotSnapshotTemplate = 1`. If autopilot is
 enabled without it, startup logs a warning and autopilot stays off.
@@ -192,9 +346,15 @@ output:
 
 ## The planner
 
-**When it runs.** A bot is due for a decision when any of these is true:
+This is the LLM side of the goal/policy split described under Scaling.
+Foreground bots also get LLM activity choice; every other bot gets its
+activities from the policy.
 
-- `DecisionInterval` has passed (default 15 min)
+**When it runs.** A bot is due for an LLM decision, subject to the budget,
+when any of these is true:
+
+- `GoalRefreshMinutes` has passed (default 90). For foreground bots,
+  `DecisionIntervalMinutes` (default 15) applies instead.
 - its goal was completed or became impossible
 - boredom crossed `BoredomThreshold`
 - a major event happened (level-up into a new bracket, death streak, bags full,
@@ -290,16 +450,18 @@ as a normal request, so the governor still gates it.
 
 ## Config surface (`conf/mod_ollama_chat.conf.dist`, new section)
 
-`Autopilot.Enable`, `.RandomBotPercent`, `.MaxBots`, `.Model` (optional
-override, published via the endpoint snapshot), `.DecisionIntervalMinutes`,
-`.MaxConcurrentPlans`, `.SnapshotIntervalMinutes`, `.SnapshotRetention`,
+`Autopilot.Enable`, `.AllowMasterEnroll`, `.Select.*`, `.MaxEnrolled`,
+`.Model` (optional override, published via the endpoint snapshot),
+`.LlmCallsPerHour`, `.GoalRefreshMinutes`, `.DecisionIntervalMinutes`,
+`.ForegroundRange`, `.DormantAfterMinutes`, `.SweepIntervalMs`,
+`.BotsPerSweep`, `.FlushIntervalSeconds`, `.BatchSize`, `.MaxConcurrentPlans`, `.SnapshotIntervalMinutes`, `.SnapshotRetention`,
 `.EventRetention`, `.BoredomThreshold`, `.Guard.*`, `.Activity.*`,
 `.Playstyle.*`, `.Awareness.*`, `.PromptTemplate`, `.Debug`. Each one gets a
 full comment block with its default.
 
 ## Commands
 
-`.ollama autopilot on|off <bot>`, `status <bot>` (playstyle, goal, activity,
+`.ollama autopilot on|off <bot>`, `preview`, `status <bot>` (playstyle, goal, activity,
 boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
 `playstyle <bot> <name>`, `awareness <bot> <level>`, `replan <bot>`, `stats`
 (global counts, decisions/h, validation failures).
@@ -310,15 +472,18 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
    - SQL, config and playstyle profiles.
    - The `autopilot` strategy registration spike: verify that it shows up in
      `nc ?` for every class and survives `ResetStrategies`.
-   - Enrollment.
+   - Selection rules, explicit on/off, `preview`.
    - Snapshot recorder and event log fed from `events.cpp`.
    - `status` and `history` commands.
    - Ships as "bots keep a diary".
-2. **Planner MVP.**
-   - `TaskType::Plan` plus an `OllamaRequestKind::Autopilot` entry with no
+2. **Policy first, then the planner MVP.**
+   - The deterministic activity policy and preset applier come first, along
+     with re-assert after reset and the guards. With just these, bots already
+     act on their playstyle at zero LLM calls; that is the dormant tier.
+   - Then `TaskType::Plan` plus an `OllamaRequestKind::Autopilot` entry with no
      think policy.
    - Prompt builder, JSON schema, parser and validator.
-   - Activity preset applier, re-assert after reset, guards.
+   - Tiers and the budget queue.
 3. **Goals and feelings.**
    - Goal kinds with measurable progress against snapshots: reach level, reach
      skill, gold, explore zone, complete quest or chain, run dungeon.
@@ -344,9 +509,9 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
   re-asserting fights it. If that thrashes, the fallback is to set
   `rpgInfo` with long durations, or to drop `new rpg` for activities that
   have their own strategy.
-- **Cost.** Even at a 15-minute cadence, 200 enrolled bots is ~800 plans/h. The
-  `MaxBots`/`RandomBotPercent` defaults stay small, and the `.Model` override
-  lets operators point planning at a cheaper model.
+- **Cost.** Cost is bounded by `LlmCallsPerHour`, not by bot count (see
+  Scaling). The failure mode becomes "bots think too rarely" rather than
+  "server overloaded", and `preview` and `stats` make that visible.
 - **Small models and JSON.** Use Ollama `format: json` where the provider
   supports it. Otherwise fall back to the brace-extraction parser, made aware
   of strings, unlike bot-buddy's.
