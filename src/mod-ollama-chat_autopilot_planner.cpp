@@ -473,7 +473,6 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
 
     d.doing  = Clip(str(json, "doing"), 64);
     d.reason = Clip(str(json, "reason"), 200);
-    d.say    = Clip(str(json, "say"), 200);
 
     if (auto it = json.find("minutes"); it != json.end())
     {
@@ -546,8 +545,8 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
         }
     }
 
-    if (d.strategies.empty() && !d.rpgGiven && d.goalKind.empty() && d.profile.empty() && d.style.empty() &&
-        d.doing.empty())
+    if (d.strategies.empty() && !d.rpgGiven && !d.playbookGiven && d.goalKind.empty() && d.profile.empty() &&
+        d.style.empty() && d.doing.empty() && d.minutes == 0)
     {
         d.error = "reply decides nothing";
         return d;

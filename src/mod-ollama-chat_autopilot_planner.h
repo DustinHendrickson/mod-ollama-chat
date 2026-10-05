@@ -74,7 +74,6 @@ struct AutopilotDecision
 
     std::string doing;
     std::string reason;
-    std::string say;
     uint32_t    minutes = 0;
 
     std::vector<std::pair<std::string, bool>> strategies;   // name -> on, unvalidated

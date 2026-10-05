@@ -121,6 +121,10 @@ void OllamaDispatch_SubmitRelationship(uint64_t botGuid, uint64_t otherGuid,
 // when the queue is past half depth, so it never crowds out chat.
 bool OllamaDispatch_SubmitJob(std::function<void()> job);
 
+// Would SubmitJob accept a job right now? Lets a caller skip building an
+// expensive request that would only be refused.
+bool OllamaDispatch_BackgroundHasRoom();
+
 // A player emoted at a bot and the bot decided to answer in words.
 // World thread only.
 void OllamaChat_DispatchEmoteReaction(Player* bot, Player* player, uint32_t textEmote);

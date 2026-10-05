@@ -186,10 +186,13 @@ wrong:
   rotation. Snapshots are staggered by guid hash, and DB writes are batched
   per flush. Do not add a walk over every online player to the tick.
 - **Steering NewRpg goes through `AutopilotRpg_Steer`**, a
-  `NewRpgBaseAction` subclass that reaches the protected
-  `RandomChangeStatus`. Do not set `rpgInfo.ChangeTo*` directly; the
-  positioned variants need grind/camp/quest/flight targets that only those
-  helpers compute.
+  `NewRpgBaseAction` subclass that reaches the protected target helpers
+  (`SelectRandomGrindPos`, `SelectRandomCampPos`, `SelectRandomFlightTaxiNode`,
+  `GetQuestPOIPosAndObjectiveIdx`, `CheckRpgStatusAvailable`) and then calls
+  `rpgInfo.ChangeTo*` with their targets. It deliberately does not use
+  `RandomChangeStatus`, which sits the bot down when nothing fits. Outside
+  that class, never call the positioned `ChangeTo*` variants without a target
+  from those helpers.
 - **The marker strategy is the reset detector.** If it is missing,
   playerbots reset the bot: restore everything. If it is present but a
   managed strategy drifted while a human is in the group, the human changed

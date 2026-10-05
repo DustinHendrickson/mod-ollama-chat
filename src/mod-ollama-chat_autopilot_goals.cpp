@@ -233,7 +233,9 @@ GoalProgress Goal_Progress(Player* bot, const AutopilotGoal& goal, const GoalCou
         case GoalKind::EarnGold:
             p.current = bot->GetMoney();
             p.done    = p.current >= goal.value;
-            p.text    = SafeFormat("{} of {} gold on hand", p.current / 10000, goal.value / 10000);
+            // Lead with the target as set ("50 more gold"): a model that echoes
+            // it back keeps the same goal instead of starting a new one.
+            p.text    = SafeFormat("{}: {} of {} gold on hand", goal.target, p.current / 10000, goal.value / 10000);
             break;
         case GoalKind::ExploreZone:
             p.current = bot->GetZoneId() == goal.targetId ? 1 : 0;

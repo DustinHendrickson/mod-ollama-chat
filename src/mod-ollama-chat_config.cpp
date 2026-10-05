@@ -629,9 +629,9 @@ void LoadOllamaChatConfig()
     g_AutopilotSystemPrompt           = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.SystemPrompt", "");
     if (g_AutopilotSystemPrompt.empty())
         g_AutopilotSystemPrompt =
-            "You decide what a World of Warcraft character does next at the level of a whole play "
-            "session: which activity to pursue and why. You never control movement or combat. "
-            "Answer with a single JSON object and nothing else.";
+            "You are the mind of a World of Warcraft character who plays on their own: you decide who "
+            "they are, what they want and which of their behaviours are switched on. You never control "
+            "movement or combat directly. Answer with a single JSON object and nothing else.";
 
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
 

@@ -628,8 +628,10 @@ decisions:
   it to NPCs. These hold for a few minutes, and the LLM is told why.
 - **Diary:** snapshots and an event log in the database, thinned
   automatically as they age.
-- **Exact undo:** whenever a strategy stops being managed, or a bot is turned
-  off, it goes back to exactly what playerbots had.
+- **Undo:** each strategy autopilot touches is recorded as it was before
+  autopilot first changed it, and kept in the database. When a strategy stops
+  being managed, or a bot is turned off, it goes back to that, even if
+  playerbots saved autopilot's choices into its own store in between.
 
 ### Quick start
 

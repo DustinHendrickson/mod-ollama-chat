@@ -56,17 +56,22 @@ const std::vector<std::pair<std::string, std::string>>& AutopilotStrategies_RpgS
 bool AutopilotStrategies_RpgAllowed(const std::string& status);
 
 // Bring the bot's strategies to `wanted`. Keys that were managed before
-// (`applied`) but are no longer wanted go back to their baseline; wanted keys
-// are set. Names in `locked` are left alone. Updates `applied` and `baseline`.
-void AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, AutopilotDesired& applied,
+// (`applied`) but are no longer wanted go back to their baseline, along with
+// any sibling strategy playerbots dropped when we added them; wanted keys are
+// set. Names in `locked` are left alone. Updates `applied`, and records the
+// first-touch state of new keys (and their siblings) in `baseline`. Returns
+// true when the baseline learned something, so the caller can persist it.
+bool AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, AutopilotDesired& applied,
                                const std::set<std::string>& locked, AutopilotBaseline& baseline);
 
 // Keys in `wanted` whose live state differs, skipping `locked`.
 std::vector<std::string> AutopilotStrategies_Drift(PlayerbotAI* ai, const AutopilotDesired& wanted,
                                                    const std::set<std::string>& locked);
 
-// Put every key in `applied` back to its baseline, then forget them.
-void AutopilotStrategies_RestoreAll(PlayerbotAI* ai, AutopilotDesired& applied, const AutopilotBaseline& baseline);
+// Set every baseline key to its baseline state. Used after handing a bot back,
+// to undo anything playerbots' own strategy store captured from us (it saves
+// every strategy when a grouped alt logs out, or on any nc/co command).
+void AutopilotStrategies_RestoreBaseline(PlayerbotAI* ai, const AutopilotBaseline& baseline);
 
 // The bot's allowed strategies as they are now: "on: quest, grind, loot;
 // off: explore, travel" -- for the prompt.

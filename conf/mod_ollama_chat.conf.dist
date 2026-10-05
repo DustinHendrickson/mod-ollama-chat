@@ -2146,7 +2146,11 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 # with a one-line description. Anything not listed here is off-limits: class,
 # spec and role strategies, chat, follow, food and the like are never on the
 # default lists, so the LLM cannot break a bot's rotation or its command
-# handling. Names must be unique across the two lists.
+# handling. Names must be unique across the two lists, and each must go on the
+# list for the engine playerbots actually reads it from (`attack tagged` is
+# checked out of combat; `save mana` lives on both engines, so it is left off).
+# Narrowing a list takes effect at once: strategies the LLM chose earlier
+# that are no longer allowed stop being enforced.
 #
 # Where they apply:
 #   out-of-combat strategies and the rpg focus apply while the bot is its own:
@@ -2155,16 +2159,18 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 #     the bot had; leaving restores the LLM's choices.
 #   combat strategies apply everywhere, plus a per-situation playbook the LLM
 #     writes (dungeon, battleground, with_player).
-# Whenever a strategy stops being managed it goes back to exactly what the
-# bot had before autopilot touched it.
+# Whenever a strategy stops being managed it goes back to what the bot had
+# before autopilot first touched it (recorded once and kept in the database),
+# along with any sibling strategy playerbots dropped when it was added (e.g.
+# `accept all quests` when `quest` goes on).
 
 #    OllamaChat.Autopilot.Strategies.NonCombat
-#        Default: "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group"
-OllamaChat.Autopilot.Strategies.NonCombat = "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group"
+#        Default: "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group,attack tagged"
+OllamaChat.Autopilot.Strategies.NonCombat = "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group,attack tagged"
 
 #    OllamaChat.Autopilot.Strategies.Combat
-#        Default: "flee,potions,avoid aoe,aggressive,threat,save mana,kite,attack tagged"
-OllamaChat.Autopilot.Strategies.Combat = "flee,potions,avoid aoe,aggressive,threat,save mana,kite,attack tagged"
+#        Default: "flee,potions,avoid aoe,aggressive,threat,kite"
+OllamaChat.Autopilot.Strategies.Combat = "flee,potions,avoid aoe,aggressive,threat,kite"
 
 #    OllamaChat.Autopilot.RpgStatuses
 #        NewRpg statuses the LLM may focus a bot on. Steering uses playerbots'
@@ -2180,7 +2186,8 @@ OllamaChat.Autopilot.RpgStatuses = "do quest,wander npc,go camp,go grind,wander 
 
 #    OllamaChat.Autopilot.Control
 #        Apply the LLM's choices at all. 0 = diary only: bots are selected and
-#        recorded and the LLM is not asked.
+#        recorded, the LLM is not asked, and anything applied earlier is
+#        handed back to playerbots.
 #        Default: 1
 OllamaChat.Autopilot.Control = 1
 

@@ -645,6 +645,12 @@ namespace
     }
 }
 
+bool OllamaDispatch_BackgroundHasRoom()
+{
+    std::lock_guard<std::mutex> lock(g_queueMutex);
+    return g_running && (g_MaxQueueDepth == 0 || g_queue.size() < g_MaxQueueDepth / 2);
+}
+
 bool OllamaDispatch_SubmitJob(std::function<void()> job)
 {
     if (!job)

@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "Log.h"
 
+#include "AiObjectContext.h"
 #include "PlayerbotAI.h"
 
 #include <algorithm>
@@ -35,20 +36,20 @@ namespace
         { "emote",       false, "use emotes" },
         { "guild",       false, "guild business: tabards, petitions, recruiting" },
         { "group",       false, "invite nearby people into a group, leave groups that wander off" },
+        { "attack tagged", false, "join in on monsters others are already fighting" },
         // combat
         { "flee",        true,  "run away when a fight goes badly" },
         { "potions",     true,  "drink healing and mana potions when low" },
         { "avoid aoe",   true,  "move out of area damage" },
         { "aggressive",  true,  "attack anything nearby during a fight" },
         { "threat",      true,  "watch threat and avoid pulling aggro off the tank" },
-        { "save mana",   true,  "conserve mana" },
         { "kite",        true,  "keep distance while fighting" },
-        { "attack tagged", true, "join in on monsters others are already fighting" },
     };
 
     const char* const kDefaultNonCombat =
-        "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group";
-    const char* const kDefaultCombat = "flee,potions,avoid aoe,aggressive,threat,save mana,kite,attack tagged";
+        "new rpg,quest,grind,rpg,travel,explore,move random,gather,loot,lfg,bg,pvp,duel,start duel,emote,guild,group,"
+        "attack tagged";
+    const char* const kDefaultCombat = "flee,potions,avoid aoe,aggressive,threat,kite";
 
     struct KnownRpg { const char* name; const char* description; };
     const KnownRpg kRpg[] = {
@@ -162,9 +163,36 @@ bool AutopilotStrategies_RpgAllowed(const std::string& status)
     return std::any_of(g_rpg.begin(), g_rpg.end(), [&](const auto& r) { return r.first == key; });
 }
 
-void AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, AutopilotDesired& applied,
+namespace
+{
+    // Strategies playerbots removes when `key` is added (Engine::addStrategy
+    // drops siblings: `quest` and `accept all quests` are one such pair).
+    std::vector<std::string> SiblingKeys(PlayerbotAI* ai, const std::string& key)
+    {
+        std::vector<std::string> out;
+        const std::string prefix = key.substr(0, 3);
+        for (const std::string& name : ai->GetAiObjectContext()->GetSiblingStrategy(NameOf(key)))
+            if (name != NameOf(key))
+                out.push_back(prefix + name);
+        return out;
+    }
+
+    // Back to the baseline -- including any sibling our add knocked off.
+    void Restore(PlayerbotAI* ai, const std::string& key, const AutopilotBaseline& baseline)
+    {
+        if (auto base = baseline.find(key); base != baseline.end())
+            Set(ai, key, base->second);
+        for (const std::string& sibling : SiblingKeys(ai, key))
+            if (auto base = baseline.find(sibling); base != baseline.end() && base->second)
+                Set(ai, sibling, true);
+    }
+}
+
+bool AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, AutopilotDesired& applied,
                                const std::set<std::string>& locked, AutopilotBaseline& baseline)
 {
+    bool learned = false;
+
     // No longer managed: back to what the bot had before we touched it.
     for (auto it = applied.begin(); it != applied.end();)
     {
@@ -173,9 +201,7 @@ void AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, 
             ++it;
             continue;
         }
-        auto base = baseline.find(it->first);
-        if (base != baseline.end())
-            Set(ai, it->first, base->second);
+        Restore(ai, it->first, baseline);
         it = applied.erase(it);
     }
 
@@ -183,10 +209,24 @@ void AutopilotStrategies_Apply(PlayerbotAI* ai, const AutopilotDesired& wanted, 
     {
         if (locked.count(NameOf(key)))
             continue;
-        baseline.emplace(key, ai->HasStrategy(NameOf(key), StateOf(key)));
+
+        // First touch: remember the strategy and its siblings as they are.
+        if (baseline.emplace(key, ai->HasStrategy(NameOf(key), StateOf(key))).second)
+        {
+            learned = true;
+            for (const std::string& sibling : SiblingKeys(ai, key))
+                baseline.emplace(sibling, ai->HasStrategy(NameOf(sibling), StateOf(sibling)));
+        }
         Set(ai, key, on);
         applied[key] = on;
     }
+    return learned;
+}
+
+void AutopilotStrategies_RestoreBaseline(PlayerbotAI* ai, const AutopilotBaseline& baseline)
+{
+    for (const auto& [key, on] : baseline)
+        Set(ai, key, on);
 }
 
 std::vector<std::string> AutopilotStrategies_Drift(PlayerbotAI* ai, const AutopilotDesired& wanted,
@@ -197,17 +237,6 @@ std::vector<std::string> AutopilotStrategies_Drift(PlayerbotAI* ai, const Autopi
         if (!locked.count(NameOf(key)) && ai->HasStrategy(NameOf(key), StateOf(key)) != on)
             out.push_back(NameOf(key));
     return out;
-}
-
-void AutopilotStrategies_RestoreAll(PlayerbotAI* ai, AutopilotDesired& applied, const AutopilotBaseline& baseline)
-{
-    for (const auto& [key, on] : applied)
-    {
-        auto base = baseline.find(key);
-        if (base != baseline.end())
-            Set(ai, key, base->second);
-    }
-    applied.clear();
 }
 
 std::string AutopilotStrategies_DescribeLive(PlayerbotAI* ai)

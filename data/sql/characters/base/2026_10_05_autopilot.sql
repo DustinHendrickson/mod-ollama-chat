@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     goal_set_at INT UNSIGNED NOT NULL DEFAULT 0,
     goal_text VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'The goal in the character''s own words',
     last_reason VARCHAR(255) NOT NULL DEFAULT '',
+    baseline VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Each touched strategy as it was before autopilot: +nc:loot,-co:flee',
+    plan_until INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'When the LLM asked to be consulted again',
+    last_plan_at INT UNSIGNED NOT NULL DEFAULT 0,
     enrolled_at INT UNSIGNED NOT NULL DEFAULT 0,
     updated_at INT UNSIGNED NOT NULL DEFAULT 0,
     INDEX idx_enrolled (enrolled)
