@@ -1177,7 +1177,9 @@ namespace
                 boundary(ob.prevInstance == 2 ? "the battleground is over" : "left the dungeon");
             if (!grouped && ob.prevGrouped)
                 boundary("left the group");
-            if (!sit.inFlight && ob.prevInFlight)
+            // A flight that is part of the model's own trip is not a moment to
+            // ask it anything; the trip carries on.
+            if (!sit.inFlight && ob.prevInFlight && !ob.errand.active)
                 boundary("landed after a flight");
         }
 

@@ -404,6 +404,17 @@ namespace
             return "";
         }
 
+        // A destination taken from a quest's map marker has no height. On its
+        // own continent now, look one up (it works once the grid is loaded;
+        // until then the route re-seats each step on the ground anyway).
+        if (trip.dest.z == 0.0f)
+        {
+            const float h = bot->GetMap()->GetHeight(trip.dest.x, trip.dest.y, bot->GetPositionZ() + 200.0f, true,
+                                                     1000.0f);
+            if (h > INVALID_HEIGHT)
+                trip.dest.z = h;
+        }
+
         AutopilotLeg walk, fly;
         if (g_tc.flights && !trip.noFlight && !trip.flown && DistTo(bot, trip.dest) > g_tc.flightMinYards &&
             PlanFlight(bot, trip, walk, fly))
@@ -525,11 +536,14 @@ namespace
         return LegResult::Going;
     }
 
-    LegResult Fly(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, std::string& note)
+    LegResult Fly(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
+                  std::string& note)
     {
         if (trip.tookOff)
         {
-            if (bot->IsInFlight() || bot->IsBeingTeleported())
+            // The flight state is set on the bot's next update, not by
+            // ActivateTaxiPathTo itself: give it a moment before calling it landed.
+            if (bot->IsInFlight() || bot->IsBeingTeleported() || now - trip.legStartedAt < 5)
                 return LegResult::Going;
             note      = "landed at " + leg.label;
             trip.flown = true;
@@ -567,7 +581,8 @@ namespace
             trip.noFlight = true;
             return LegResult::Replan;
         }
-        trip.tookOff = true;
+        trip.tookOff      = true;
+        trip.legStartedAt = now;
         note = "took a flight to " + leg.label;
         return LegResult::Going;
     }
@@ -1029,7 +1044,7 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
         {
             case AutopilotLegType::Walk:     r = Walk(bot, ai, trip, leg, now, legNote);  break;
             case AutopilotLegType::Approach: r = Approach(bot, ai, trip, leg, now);       break;
-            case AutopilotLegType::Fly:      r = Fly(bot, ai, trip, leg, legNote);        break;
+            case AutopilotLegType::Fly:      r = Fly(bot, ai, trip, leg, now, legNote);   break;
             case AutopilotLegType::Board:    r = Board(bot, ai, trip, leg, now, legNote); break;
             case AutopilotLegType::Ride:     r = Ride(bot, ai, trip, leg, now, legNote);  break;
             case AutopilotLegType::Trigger:  r = EnterTrigger(bot, ai, trip, leg, now, legNote); break;

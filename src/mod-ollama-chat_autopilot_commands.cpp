@@ -232,6 +232,15 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 
     // --- autopilot orders ----------------------------------------------------
 
+    // A new trip from the deck of a ship at sea, or from the sky, would start
+    // walking from there. Finish the crossing first.
+    if ((StartsWithWord(lower, "goto") || StartsWithWord(lower, "quest")) &&
+        (bot->IsInFlight() || bot->GetTransport() ||
+         (errand.active && AutopilotTravel_IsTimeCritical(errand.trip))))
+        return "not now: " + (errand.active ? AutopilotTravel_Describe(bot, errand.trip)
+                                            : std::string("in the middle of a crossing")) +
+               "; give the order once they arrive";
+
     if (StartsWithWord(lower, "goto"))
     {
         const std::string what = Trim(lower.substr(4));
