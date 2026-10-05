@@ -156,6 +156,15 @@ This does not link, so it will not catch a declared-but-undefined function.
 
 ## Autopilot (playerbots strategy control)
 
+**The LLM makes the decisions; code never does.** The model writes each bot's
+identity, sets its goals and chooses which playerbots strategies are on and
+what it focuses on. Code reports facts, enforces the strategy allow-list,
+applies the safety guards and carries out the choice. Do not add preset
+playstyles, weight tables, dice-roll policies or formula-driven moods: an
+earlier version did and it was the opposite of what the feature is for. When
+the model cannot be asked, a bot keeps its last plan rather than code making
+one up.
+
 Design and phase status: `docs/autopilot-plan.md`. Facts that are easy to get
 wrong:
 
@@ -188,11 +197,11 @@ wrong:
 - **The planner's prompt template is filled by literal `{name}`
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
-- **Never revert a preset by inverting it.** Playerbots defaults include
+- **Never undo a strategy change by inverting it.** Playerbots defaults include
   `potions`, `chat`, `loot`, `gather` and `emote`, so "-x on revert" strips
-  them. Presets record each strategy's state on first touch
-  (`AutopilotBaseline`) and restore exactly that; clear the baseline whenever
-  playerbots resets the bot.
+  them. `AutopilotStrategies_Apply` records each strategy's state on first
+  touch (`AutopilotBaseline`) and restores exactly that when it stops being
+  managed; clear the baseline whenever playerbots resets the bot.
 - **Playerbots persists the marker.** `PlayerbotRepository::Save` writes every
   strategy, `autopilot` included, when a grouped bot logs out or on any
   `nc`/`co` command, and `Load` restores them at login. A marker present at

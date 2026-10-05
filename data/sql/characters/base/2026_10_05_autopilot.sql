@@ -1,39 +1,46 @@
 -- LLM autopilot for mod-ollama-chat. See docs/autopilot-plan.md.
 --
---   autopilot            One row per bot that has ever been considered. The row
---                        survives unenrollment so a bot that comes back keeps
---                        its playstyle and its history. `mode` records an
---                        explicit GM decision, which always beats the
---                        selection rules.
+--   autopilot            One row per bot that has ever been considered: how it
+--                        was enrolled, the identity the LLM wrote for it, and
+--                        the LLM's current plan (strategies it wants on/off, rpg
+--                        focus, playbook, goal). The row survives unenrollment
+--                        so a bot that comes back keeps who it is. `mode`
+--                        records an explicit GM decision, which always beats
+--                        the selection rules.
 --
 --   autopilot_snapshots  Periodic progress samples. Counters are running
 --                        totals, so thinning old rows (hourly after a day,
 --                        daily after a week) loses resolution but never
 --                        loses counts.
 --
---   autopilot_events     Notable moments: levels, deaths, quests, rare loot,
---                        zone changes, enrollment. Trimmed to the newest N per
+--   autopilot_events     Notable moments: plans, levels, deaths, quests, rare
+--                        loot, zone changes, goals. Trimmed to the newest N per
 --                        bot.
 --
 -- Times are unix seconds so the downsampling buckets are plain integer
 -- division and do not depend on the server time zone.
+--
+-- If you created mod_ollama_chat_autopilot from an earlier draft of this
+-- file, drop it and apply this file again (the worldserver log says so).
 
 CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     bot_guid BIGINT UNSIGNED NOT NULL PRIMARY KEY,
     mode TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = selection rules decide, 1 = forced on, 2 = forced off',
     enrolled TINYINT UNSIGNED NOT NULL DEFAULT 0,
     source VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Which rule or command enrolled it',
-    playstyle VARCHAR(32) NOT NULL DEFAULT '',
-    awareness VARCHAR(32) NOT NULL DEFAULT '',
+    style VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Playstyle in a few words, written by the LLM',
+    outlook VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'in-character, player or metagamer, chosen by the LLM',
+    profile TEXT NOT NULL COMMENT 'Who the character is, written by the LLM',
     kills_total INT UNSIGNED NOT NULL DEFAULT 0,
     deaths_total INT UNSIGNED NOT NULL DEFAULT 0,
     quests_total INT UNSIGNED NOT NULL DEFAULT 0,
-    activity VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Current activity preset',
-    activity_since INT UNSIGNED NOT NULL DEFAULT 0,
-    decided_by VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'llm, policy, guard or gm',
-    dispositions VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'axis:option,...',
-    playbook VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'situation:option,...',
     dungeons_total INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Dungeon entries since enrollment',
+    doing VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'The LLM''s label for what the bot is doing',
+    doing_since INT UNSIGNED NOT NULL DEFAULT 0,
+    decided_by VARCHAR(16) NOT NULL DEFAULT '',
+    strategies VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Strategies the LLM wants: +nc:quest,-nc:grind,+co:flee',
+    rpg VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'RPG focus the LLM wants: do quest,wander npc',
+    playbook VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'situation=+co:flee|-co:aggressive;...',
     goal_kind VARCHAR(24) NOT NULL DEFAULT '' COMMENT 'reach_level, reach_skill, earn_gold, explore_zone, complete_quests, run_dungeon, free; empty = none',
     goal_target VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Display form of the target',
     goal_target_id INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Zone or skill id',

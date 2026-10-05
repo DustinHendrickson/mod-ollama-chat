@@ -81,16 +81,6 @@ namespace
                 return skill;
         return 0;
     }
-
-    bool IsGatheringSkill(uint32_t skill)
-    {
-        return skill == SKILL_HERBALISM || skill == SKILL_MINING || skill == SKILL_SKINNING;
-    }
-
-    bool IsSecondarySkill(uint32_t skill)
-    {
-        return skill == SKILL_COOKING || skill == SKILL_FIRST_AID || skill == SKILL_FISHING;
-    }
 }
 
 const char* Goal_KindName(GoalKind kind)
@@ -266,33 +256,6 @@ GoalProgress Goal_Progress(Player* bot, const AutopilotGoal& goal, const GoalCou
             break;
     }
     return p;
-}
-
-std::vector<std::pair<std::string, uint32_t>> Goal_ActivityBias(Player* bot, const AutopilotGoal& goal)
-{
-    switch (goal.kind)
-    {
-        case GoalKind::ReachLevel:
-            return { { "quest", 3 }, { "grind", 2 }, { "dungeon", 2 } };
-        case GoalKind::ReachSkill:
-            if (IsGatheringSkill(goal.targetId))
-                return { { "gather", 4 } };
-            if (IsSecondarySkill(goal.targetId))
-                return { { "town", 2 }, { "grind", 2 } };
-            return { { "town", 3 }, { "gather", 2 } };
-        case GoalKind::EarnGold:
-            return { { "gather", 3 }, { "grind", 2 }, { "town", 1 } };
-        case GoalKind::ExploreZone:
-            if (bot->GetZoneId() != goal.targetId)
-                return { { "travel", 4 }, { "explore", 2 } };
-            return { { "explore", 4 } };
-        case GoalKind::CompleteQuests:
-            return { { "quest", 4 } };
-        case GoalKind::RunDungeon:
-            return { { "dungeon", 5 } };
-        default:
-            return {};
-    }
 }
 
 std::string Goal_Describe(Player* bot, const AutopilotGoal& goal, const GoalCounters& counters)

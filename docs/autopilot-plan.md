@@ -2,6 +2,39 @@
 
 Branch: `feature/llm-autopilot`
 
+> **Current design. Read this first; it supersedes the sections below
+> wherever they differ.**
+>
+> **The LLM makes every behavioural decision. Code never does.**
+>
+> - **Identity:** on a bot's first plan the LLM writes its identity: style,
+>   outlook (in-character / player / metagamer), and a profile of what it
+>   loves, what bores it and what tempts it. It may revise it later.
+>   *Removed:* the preset playstyles, awareness weights and profile tables.
+> - **Strategies:** the LLM switches playerbots strategies on and off
+>   directly (`+quest`, `-grind`, `+flee`), from an allow-list with
+>   descriptions (`autopilot_strategies.cpp`). It also picks an rpg focus
+>   (`do quest`, `wander npc`, …), a measurable goal, a per-situation combat
+>   playbook, and how long the plan holds.
+>   *Removed:* the activity and disposition presets.
+> - **Facts, not judgements:** code reports facts. Progress, last-hour
+>   rewards (plain counts), events, temptations, its own past decisions and
+>   the live strategy state. The LLM judges boredom and satisfaction.
+>   *Removed:* the boredom formula, reward weights and the dice-roll policy.
+> - **Situations:** out-of-combat strategies and the focus apply only while
+>   the bot is its own. Combat strategies and the playbook apply everywhere.
+>   Anything no longer managed is restored to its exact pre-autopilot state
+>   (`AutopilotBaseline`).
+> - **When the LLM cannot be asked** (budget, tier, provider down), the bot
+>   keeps its last plan. A dormant bot with no identity yet keeps its
+>   playerbots defaults until a player comes near.
+> - **Code still decides only:** the selection rules, tiers and budget, the
+>   safety guards (they override the rpg focus for a while and say why in the
+>   next prompt), the diary, and the human-in-group locks.
+> - **Commands:** `status`, `preview`, `on|off|rules`, `history`,
+>   `identity [clear]`, `goal`, `replan`. The `playstyle`, `awareness` and
+>   `activity` commands are gone.
+
 ## What this is
 
 A playerbots strategy, `autopilot`, that hands a bot's **macro** decisions to

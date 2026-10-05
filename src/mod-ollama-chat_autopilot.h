@@ -9,15 +9,24 @@
 class Player;
 
 // --------------------------------------------------------------------------
-// LLM autopilot: macro-level control of playerbots. See docs/autopilot-plan.md.
+// LLM autopilot: the LLM runs selected playerbots. See docs/autopilot-plan.md.
 //
-// Phase 1 (this file today) is the foundation, with no LLM control yet:
+// The model decides who each bot is (an identity it writes itself), what it
+// is working toward, and which playerbots strategies to switch on and off to
+// get there. This file carries that out and reports facts back:
 //
 //   selection   which bots are autopilot characters, from conf rules plus
 //               explicit GM on/off. Rules are evaluated once per login (and on
 //               reload), never per tick.
-//   marker      the `autopilot` playerbots strategy mirrors enrollment and is
-//               re-added after playerbots resets wipe it.
+//   control     applies the model's desired strategies and rpg focus, filtered
+//               by situation, restoring exactly what the bot had when a
+//               strategy stops being managed. Safety guards may override the
+//               rpg focus for a while.
+//   planning    asks the model when it wanted to be asked again, or when
+//               something happened; within a shared hourly budget. When it
+//               cannot be asked, the bot keeps doing what it last chose.
+//   marker      the `autopilot` playerbots strategy mirrors enrollment and
+//               doubles as the reset detector.
 //   diary       staggered progress snapshots and notable events, written in
 //               batches (see mod-ollama-chat_progress.h).
 //

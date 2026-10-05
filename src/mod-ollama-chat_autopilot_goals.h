@@ -77,10 +77,6 @@ std::string Goal_Resolve(Player* bot, const std::string& kind, const std::string
 // World thread.
 GoalProgress Goal_Progress(Player* bot, const AutopilotGoal& goal, const GoalCounters& counters);
 
-// Activities that serve this goal right now, with a multiplier for the
-// policy's weights. Empty for free goals.
-std::vector<std::pair<std::string, uint32_t>> Goal_ActivityBias(Player* bot, const AutopilotGoal& goal);
-
 // One line for prompts and `.ollama autopilot status`.
 std::string Goal_Describe(Player* bot, const AutopilotGoal& goal, const GoalCounters& counters);
 

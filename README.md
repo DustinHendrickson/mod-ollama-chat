@@ -66,7 +66,7 @@
   Bots can leverage LLM models that have reasoning/think modes. Enable internal reasoning for models that support it by setting `OllamaChat.ThinkModeEnableForModule = 1` in **mod-ollama-chat.conf**. When enabled, the API request includes the `think` flag and the bot omits all `thinking` responses from its final reply.
 
 - **Autopilot (experimental):**  
-  Hands selected bots' big decisions to the LLM, the way a player runs a character. Each bot has a playstyle (explorer, speedrunner, crafter, roleplayer…), an outlook (in-character, casual player, metagamer), measurable goals, moods and a diary of its progress. Bots quest, explore, gather, run dungeons or rest because they *want* to, while playerbots still does the fighting and walking. See [Autopilot](#autopilot-llm-driven-bots).
+  The LLM runs selected bots the way a player runs a character. It writes each bot's identity (playstyle, outlook, what it loves and what bores it), sets its goals, and switches playerbots strategies on and off to pursue them, based on everything that has happened to the bot. Playerbots still does the fighting and walking. See [Autopilot](#autopilot-llm-driven-bots).
 
 - **Live Reload for Personalities and Settings:**  
   Instantly reload all mod-ollama-chat configuration and personality packs in-game using the `.ollama reload` command with a GM level account or use `ollama reload` from the server console. No server restart required—updates to `.conf` or personality packs (`.sql` files) are applied immediately.
@@ -366,7 +366,7 @@ Lists all available personalities and their descriptions.
 - **Console Equivalent:** `ollama personality list`
 
 ### `.ollama autopilot ...`
-Controls the autopilot feature: `status`, `preview`, `on`, `off`, `rules`, `history`, `goal`, `activity`, `replan`, `playstyle`, `awareness`. See [Autopilot commands](#commands).
+Controls the autopilot feature: `status`, `preview`, `on`, `off`, `rules`, `history`, `identity`, `goal`, `replan`. See [Autopilot commands](#commands).
 
 > [!NOTE]
 > All commands can also be executed from the server console by replacing the leading dot (.) with the command prefix used in your console (typically none or a custom prefix).
@@ -581,42 +581,55 @@ off for the session if the provider rejects it.
 > [!WARNING]
 > Experimental and off by default. Try it on a few bots first.
 
-Autopilot lets the LLM decide what a bot is doing with its evening: questing,
-exploring, grinding, gathering, hanging around town, queueing for a dungeon,
-PvP or resting. It also decides in what spirit (cautious or bold, greedy or
-content, social or reserved) and toward what goal. It never steers, targets
-or casts. It switches playerbots' existing strategies, and playerbots does the
-moment-to-moment work, combat included.
+Autopilot hands selected bots to the LLM. **The LLM decides who each
+character is and what it does with its time.** It does this by switching
+playerbots' existing strategies on and off and choosing what the bot focuses
+on. Playerbots' own AI still does the walking and fighting.
 
-### What you get
+### What the LLM decides
 
-- **Playstyles:** explorer, speedrunner, quester, grinder, crafter,
-  roleplayer, dungeon runner, casual and PvPer. Each has its own favourite
-  activities, attention span, rewards it cares about, and default temperament.
-- **Outlook:** each bot is *immersed* (doesn't know it's a game), a casual
-  *player*, or a *metagamer*. This shapes how it thinks and how its goals are
-  worded.
-- **Measurable goals:** reach a level, raise a profession, earn gold, visit a
-  zone, finish quests, run dungeons. Progress is read from the bot, not taken
-  on the model's word. When a goal is done or stalls, the bot rethinks.
-- **Moods:** boredom builds while a bot sticks with something unrewarding, and
-  when it gets bored it moves on. Temptations (a dungeon just unlocked, an epic
-  drop, a capped profession) go into its thinking.
-- **Temperament that holds in combat:** risk / greed / social settings switch
-  combat and non-combat modifier strategies (flee, potions, loot, emotes…).
-  A per-situation *playbook* allows "bold in battlegrounds, cautious in
-  dungeons".
-- **Self-preservation:** repeated deaths send it to rest; broken gear or full
-  bags send it to town. These checks run before the LLM is asked.
-- **Diary:** periodic progress snapshots and an event log (levels, deaths,
-  quests, loot, zones, goals, decisions) in the database, thinned
+- **Identity:** on a bot's first plan, the LLM writes who it is:
+  - its playstyle, in a few words
+  - its outlook: *in-character* (doesn't know it's a game), casual *player*,
+    or *metagamer*
+  - what it loves, what bores it and what tempts it
+
+  It can revise this as the character grows.
+- **Strategies:** which playerbots behaviours are on, from an allow-list with
+  plain descriptions. For example `+quest +new rpg -grind`, or `+gather` for
+  a herbalist, `+lfg` to queue for a dungeon, `+flee +potions` for a careful
+  fighter.
+- **Focus:** what the bot concentrates on, such as `do quest`, `wander npc`,
+  `go grind` or `travel flight`. Playerbots picks the actual quest, camp,
+  spot or flight path.
+- **Goals:** reach a level, raise a profession, earn gold, visit a zone,
+  finish quests, run dungeons, or anything else in its own words. Progress is
+  measured from the bot, not taken on the LLM's word.
+- **Playbook:** combat behaviour per situation, e.g. careful in dungeons,
+  reckless in battlegrounds.
+- **When to rethink:** each plan says how long it holds.
+
+### What the code does
+
+It gives the LLM the facts, carries out its choices, and stays out of the
+decisions:
+- **Facts:** progress over time, rewards in the last hour, deaths, recent
+  events, temptations (a dungeon just unlocked, an epic drop, a capped
+  profession) and its own past decisions.
+- **Allow-list:** class, spec and role strategies and chat commands are never
+  on it, so a bot can't be broken.
+- **Situations:**
+  - In a human's group, an instance or a battleground, the bot's out-of-combat
+    behaviour goes back to normal and only its combat choices apply.
+  - Leaving one of those restores the LLM's choices and asks it what next.
+- **Humans win:** if a player in the group toggles a strategy by hand,
+  autopilot leaves it alone.
+- **Safety:** a death streak makes the bot rest; broken gear or full bags send
+  it to NPCs. These hold for a few minutes, and the LLM is told why.
+- **Diary:** snapshots and an event log in the database, thinned
   automatically as they age.
-- **Humans win:** in a real player's group the player leads. If they toggle a
-  strategy by hand, autopilot leaves it alone.
-- **Cheap at scale:** LLM use is capped by an hourly budget, not by bot count.
-  Bots near players think more often, distant bots less, and bots with nobody
-  around use a built-in playstyle policy at zero cost. Chat replies always come
-  first.
+- **Exact undo:** whenever a strategy stops being managed, or a bot is turned
+  off, it goes back to exactly what playerbots had.
 
 ### Quick start
 
@@ -627,15 +640,13 @@ moment-to-moment work, combat included.
    OllamaChat.EnableChatBotSnapshotTemplate = 1   # required
    OllamaChat.Autopilot.Enable = 1
    OllamaChat.Autopilot.Select.RandomBotPercent = 5
+   OllamaChat.Autopilot.Debug = 1                 # log every plan while you watch
    ```
-3. Restart, or run `.ollama reload`.
-4. Run `.ollama autopilot preview` to see who would be selected and the
-   expected LLM calls per hour. Then watch a bot with
-   `.ollama autopilot status <bot>` and `.ollama autopilot history <bot>`.
-
-To try it without spending anything on the LLM, set
-`OllamaChat.Autopilot.Llm.Enable = 0`. Bots then run on the playstyle policy
-alone.
+3. Restart, or run `.ollama reload`. Stand near some bots: bots near real
+   players are planned first.
+4. Run `.ollama autopilot status <bot>`. It shows the identity the LLM wrote,
+   what it's doing and why, which strategies it wants, its focus, goal and
+   playbook. `.ollama autopilot history <bot>` shows the diary.
 
 ### Choosing which bots
 
@@ -643,30 +654,31 @@ alone.
 |---|---|
 | `Select.RandomBotPercent` | That share of random bots. The selection is stable: raising it only adds bots |
 | `Select.RealPlayerGuilds` | Every bot in a guild that has a human member, online or not |
-| `Select.Guilds` / `Select.Accounts` | Bots in the listed guild ids or account ids |
+| `Select.Guilds` / `Select.Accounts` | Bots in the listed guild or account ids |
 | `Select.Include` / `Select.Exclude` | Bots by name. Exclude always wins |
 | `Select.AltBots` | Alt and addclass bots (off by default) |
 | `Select.MinLevel` / `MaxLevel` | Level band for the rules above |
-| `MaxEnrolled` | Cap on rule-selected bots |
+| `MaxEnrolled` | Cap on rule-selected bots; deleted characters free their place |
 | `AllowMasterEnroll` | Lets a bot's master whisper `nc +autopilot` |
 
-`.ollama autopilot on|off <bot>` always overrides the rules. Enrolled bots
-show the `autopilot` strategy in `nc ?`. That is only a marker; use the
-command, not `nc -autopilot`, to turn a bot off.
+`.ollama autopilot on|off <bot>` always overrides the rules. Use it rather
+than `nc -autopilot` to turn a bot off.
 
 ### Controlling cost
 
-Every bot gets a *tier* each time it decides:
+A bot asks for a new plan when its last one runs out, or when something
+happens: a level, a goal finished or stalled, leaving a dungeon,
+battleground or group. How often it may ask depends on its tier:
 
-| Tier | When (defaults) | LLM |
+| Tier | When (defaults) | Asks at most every |
 |---|---|---|
-| foreground | a real player in the same zone, or a guildmate online | every `DecisionIntervalMinutes` (15) |
-| background | a real player on the same map | every `GoalRefreshMinutes` (90) |
-| dormant | nobody around | never: playstyle policy only |
+| foreground | a real player in the same zone, or a guildmate online | `DecisionIntervalMinutes` (15) |
+| background | a real player on the same map | `GoalRefreshMinutes` (90) |
+| dormant | nobody around | not asked; keeps its last plan |
 
-All plans share `LlmCallsPerHour` (300). When it runs out, bots keep playing
-on the policy. To give the LLM to more bots, if you have the hardware or API
-budget:
+All plans share `LlmCallsPerHour` (300). A bot that can't be asked keeps
+doing what the LLM last chose. To give the LLM to more bots, if you have the
+hardware or API budget:
 
 | Profile | `ForegroundScope` | `BackgroundScope` | `MinimumTier` |
 |---|---|---|---|
@@ -675,49 +687,40 @@ budget:
 | Everyone thinks | `world` | `always` | `background` |
 
 Raise `LlmCallsPerHour` and `MaxConcurrentPlans` to match.
-`RealPlayerGuildTier` sets a floor just for bots in a human's guild.
-`Autopilot.Model` can send planning to a smaller or cheaper model than chat.
+`RealPlayerGuildTier` sets a floor for bots in a human's guild.
+`Autopilot.Model` can send planning to a different model than chat.
 
 ### Commands
 
 | Command | Does |
 |---|---|
-| `.ollama autopilot status [bot]` | Overview, or one bot's activity, goal, mood, playbook and recent progress |
+| `.ollama autopilot status [bot]` | Overview, or one bot's identity, plan, strategies, goal and progress |
 | `.ollama autopilot preview` | Dry-runs the selection rules: matches, tiers, LLM demand vs budget |
 | `.ollama autopilot on\|off\|rules <bot>` | Force on, force off, or hand back to the rules |
-| `.ollama autopilot history <bot> [n]` | The bot's diary |
+| `.ollama autopilot history <bot> [n]` | The bot's diary, including every plan and its reason |
+| `.ollama autopilot identity <bot> [clear]` | Show the identity, or have the LLM write a new one |
 | `.ollama autopilot goal <bot> [kind target\|clear]` | Show or set a goal, e.g. `goal Bob reach_skill mining 150` |
-| `.ollama autopilot activity <bot> [name] [minutes]` | Show or force an activity |
-| `.ollama autopilot replan <bot>` | Ask the LLM what to do now |
-| `.ollama autopilot playstyle\|awareness <bot> [value]` | Show or change who the bot is |
+| `.ollama autopilot replan <bot>` | Ask the LLM now |
 
 ### Making it yours
 
-Everything the planner can choose is defined in the conf file, so you can
-reshape it without a rebuild:
+- `Autopilot.Strategies.NonCombat` / `.Combat` set which strategies the LLM
+  may touch. `Autopilot.RpgStatuses` sets which focuses it may choose.
+- `Autopilot.StrategyDescription.<name>` sets what the LLM is told a
+  strategy does.
+- `Autopilot.PromptTemplate` replaces the planning prompt.
 
-- **Activities** are short specs:
-  `nc:+new rpg,+quest,-grind;rpg:do quest,wander npc;level:15-80`.
-  This means "turn these playerbots strategies on or off, and keep the bot in
-  these rpg states". Add your own by naming it in `Autopilot.Activities`.
-- **Dispositions** use the same spec on combat (`co:`) or non-combat (`nc:`)
-  strategies, grouped into axes you can extend.
-- **Playstyles** each have a description, activity weights, attention span,
-  reward weights, boredom rate and default temperament. Add new ones to
-  `Autopilot.Playstyle.Weights`.
-- The planning prompt is a template (`Autopilot.PromptTemplate`).
-
-Every option is documented in `mod_ollama_chat.conf.dist`, under *AUTOPILOT*.
-The design notes live in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
+Every option is documented in `mod_ollama_chat.conf.dist` under *AUTOPILOT*.
+Design notes are in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
 
 ### Good to know
 
-- Activities steer playerbots' **NewRpg** system. A status whose weight is 0 in
-  `playerbots.conf` (`AiPlayerbot.RpgStatusProbWeight.*`) can't be steered to.
-- In a human's group, in instances and in battlegrounds, a bot's activity is
-  paused. Its temperament and playbook still apply. Leaving one of those
-  makes it pick something new.
-- Turning a bot off returns it to its playerbots defaults.
+- Focus steering uses playerbots' **NewRpg** system. A status whose weight is
+  0 in `playerbots.conf` (`AiPlayerbot.RpgStatusProbWeight.*`) can't be
+  steered to.
+- The quality of the decisions is the quality of your model. A small model
+  may give thin identities or ignore the allow-list. Refused strategy names
+  are counted in `.ollama autopilot status`.
 
 ## Threading Model
 

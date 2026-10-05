@@ -1,13 +1,12 @@
 #include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_autopilot_goals.h"
 #include "mod-ollama-chat_autopilot_planner.h"
-#include "mod-ollama-chat_autopilot_presets.h"
+#include "mod-ollama-chat_autopilot_strategies.h"
 #include "mod-ollama-chat_autopilot_strategy.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_memory.h"
 #include "mod-ollama-chat_personality.h"
-#include "mod-ollama-chat_playstyle.h"
 #include "mod-ollama-chat_progress.h"
 #include "mod-ollama-chat_world.h"
 #include "mod-ollama-chat-utilities.h"
@@ -24,7 +23,6 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "QuestDef.h"
-#include "Random.h"
 #include "WorldSession.h"
 
 #include "ChatHelper.h"
@@ -36,6 +34,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <set>
 #include <unordered_map>
@@ -79,16 +78,17 @@ namespace
         uint32_t eventRetention          = 300;
 
         // Control.
-        bool     control                 = true;    // apply activities and dispositions at all
-        uint32_t withRealPlayer          = 1;       // 0 hands off, 1 dispositions only
+        bool     control                 = true;    // apply the model's strategies at all
+        uint32_t withRealPlayer          = 1;       // 0 hands off, 1 combat strategies only
         bool     llmEnable               = true;
         uint32_t llmCallsPerHour         = 300;
         uint32_t maxConcurrentPlans      = 2;
         uint32_t decisionIntervalMinutes = 15;      // foreground
         uint32_t goalRefreshMinutes      = 90;      // background
+        uint32_t defaultPlanMinutes      = 45;
         float    foregroundRange         = 100.0f;  // yards, for Scope::Range
 
-        // Reach: who gets LLM time. Defaults keep it to bots near people.
+        // Reach: who gets LLM time.
         Scope    foregroundScope         = Scope::Zone;
         Scope    backgroundScope         = Scope::Map;
         Tier     minimumTier             = Tier::Dormant;
@@ -107,11 +107,7 @@ namespace
         uint32_t guardFreeBagSlots       = 2;
         uint32_t guardHoldMinutes        = 10;
 
-        // Feelings and goals.
-        float    boredomThreshold        = 70.0f;
-        float    satisfiedScore          = 10.0f;   // reward score per hour that feels "enough"
         uint32_t goalStaleMinutes        = 120;
-        bool     policyGoals             = true;    // the policy sets goals when the model has not
     };
 
     Config g_cfg;
@@ -136,28 +132,41 @@ namespace
     // One per bot that has ever been enrolled or had a GM decision. Bots the
     // rules never matched get no row at all, so a realm of thousands of random
     // bots does not grow a table of thousands of "no" rows.
+    //
+    // Everything about who the bot is and what it does comes from the model:
+    // the identity, the strategies it wants on and off, its rpg focus, goal
+    // and playbook. Nothing here is chosen by code.
     struct Row
     {
         uint8_t     mode        = MODE_RULES;
         bool        enrolled    = false;
         std::string source;
-        std::string playstyle;
-        std::string awareness;
-        uint32_t    killsTotal  = 0;
-        uint32_t    deathsTotal = 0;
-        uint32_t    questsTotal = 0;
         uint32_t    enrolledAt  = 0;
 
-        std::string activity;
-        uint32_t    activitySince = 0;
-        std::string decidedBy;
-        std::vector<std::pair<std::string, std::string>> dispositions;   // axis -> option
-        std::vector<std::pair<std::string, std::string>> playbook;       // situation -> option
-        AutopilotGoal goal;
-        std::string lastReason;
+        // Identity, written by the model.
+        std::string style;
+        std::string outlook;
+        std::string profile;
+
+        // The model's current plan.
+        std::string      doing;
+        uint32_t         doingSince = 0;
+        std::string      decidedBy;
+        AutopilotDesired desired;                         // strategies it wants on/off
+        std::vector<std::string> rpg;                     // rpg focus; empty = roam freely
+        std::map<std::string, AutopilotDesired> playbook; // situation -> combat strategies
+        AutopilotGoal    goal;
+        std::string      lastReason;
+
+        // Facts.
+        uint32_t    killsTotal    = 0;
+        uint32_t    deathsTotal   = 0;
+        uint32_t    questsTotal   = 0;
         uint32_t    dungeonsTotal = 0;
 
         bool        dirty       = false;
+
+        bool HasIdentity() const { return !profile.empty() || !style.empty(); }
     };
 
     GoalCounters Counters(const Row& row)
@@ -168,12 +177,10 @@ namespace
         return c;
     }
 
-    // Reward channels for the mood model. Amounts are normalised by `unit`
-    // so a kill and a quest are not weighed one for one.
-    struct RewardChannel { const char* name; float unit; };
-    constexpr RewardChannel kRewardChannels[] = {
-        { "level", 1.0f }, { "quest", 1.0f }, { "kills", 10.0f }, { "pvp", 1.0f },
-        { "loot", 1.0f },  { "gold", 5.0f },  { "skill", 5.0f },  { "discovery", 1.0f },
+    // Reward facts for the prompt. Plain counts; the model judges what they
+    // mean to this character.
+    constexpr const char* kRewardChannels[] = {
+        "level", "quest", "kills", "pvp", "loot", "gold", "skill", "discovery",
     };
 
     struct Reward
@@ -197,26 +204,32 @@ namespace
         uint32_t lastSnapshotAt = 0;
         uint32_t lastZone       = 0;
 
-        // Control.
-        uint32_t activityUntil   = 0;
+        // Planning.
+        uint32_t planUntil       = 0;     // the model asked to be consulted again after this
         bool     planPending     = false;
         uint32_t planSubmittedAt = 0;
         uint32_t lastPlanAt      = 0;
         bool     urgentPlan      = false;
         Tier     tier            = Tier::Dormant;
-        bool     controlled      = false;   // we have applied presets this session
-        std::string       appliedActivity;   // activity whose strategies are live on the bot
-        AutopilotBaseline baseline;          // strategy states before autopilot touched them
+
+        // What autopilot is enforcing right now, and what each of those
+        // strategies looked like before it first touched them.
+        AutopilotDesired  applied;
+        AutopilotBaseline baseline;
+        bool              controlled = false;
 
         // Strategies a human changed by hand while grouped with the bot, and
         // the group that lock belongs to.
         std::set<std::string> locked;
         uint64_t              lockGroup = 0;
 
-        std::deque<uint32_t> deathTimes;
-        std::unordered_map<std::string, uint32_t> guardCooldown;   // guard kind -> may fire again at
-        std::string          lastGuard;
-        uint32_t             lastGuardAt = 0;
+        // Safety overrides of the rpg focus.
+        std::deque<uint32_t>     deathTimes;
+        std::unordered_map<std::string, uint32_t> guardCooldown;   // kind -> may fire again at
+        std::vector<std::string> guardRpg;
+        uint32_t                 guardUntil  = 0;
+        std::string              lastGuard;
+        uint32_t                 lastGuardAt = 0;
 
         // Recent history, for prompts without a DB round trip.
         bool                          historyRequested = false;
@@ -224,20 +237,12 @@ namespace
         std::deque<ProgressEvent>     events;      // oldest first
         std::deque<std::string>       decisions;   // oldest first
 
-        // Dispositions as last applied, after the playbook for the situation
-        // the bot was in. Diffed against what is wanted now, so moving from
-        // the open world into a dungeon reverts one option and applies another.
-        std::vector<std::pair<std::string, std::string>> effective;
-
-        // Mood.
-        float                  boredom     = 0.0f;   // 0..100
-        uint32_t               moodAt      = 0;
-        bool                   boredNoted  = false;
-        std::deque<Reward>     rewards;              // last hour
-        uint32_t               lastMoney   = 0;
+        // Facts the model reads.
+        std::deque<Reward>     rewards;            // last hour
+        uint32_t               lastMoney    = 0;
         uint32_t               lastSkillSum = 0;
-        uint32_t               killsPending = 0;     // kills since the last reward entry
-        std::unordered_set<uint32_t> zonesSeen;      // this session
+        uint32_t               killsPending = 0;
+        std::unordered_set<uint32_t> zonesSeen;    // this session
         std::unordered_set<uint32_t> skillCapsNoted;
         std::deque<std::pair<uint32_t, std::string>> temptations;
 
@@ -279,15 +284,17 @@ namespace
     constexpr uint32_t kOrphanCheckMs = 60 * 60 * 1000;
 
     // Counters for `.ollama autopilot status`.
-    uint64_t g_statPolicy  = 0;
-    uint64_t g_statLlm     = 0;
-    uint64_t g_statInvalid = 0;
-    uint64_t g_statGuard   = 0;
-    uint64_t g_statSteer   = 0;
-    uint64_t g_statLocks   = 0;
+    uint64_t g_statPlans    = 0;
+    uint64_t g_statInvalid  = 0;
+    uint64_t g_statRejected = 0;   // strategy names off the allow-list
+    uint64_t g_statGuard    = 0;
+    uint64_t g_statSteer    = 0;
+    uint64_t g_statLocks    = 0;
 
     constexpr uint32_t kLogoutSnapshotMinGap = 300;
-    constexpr uint32_t kPlanGraceSeconds     = 180;
+    constexpr uint32_t kHour                 = 3600;
+    constexpr size_t   kRewardCap            = 256;
+    constexpr size_t   kTemptationCap        = 4;
 
     // ----------------------------------------------------------------------
     // Helpers
@@ -298,6 +305,16 @@ namespace
         std::transform(s.begin(), s.end(), s.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return s;
+    }
+
+    // splitmix64: a stable, well-mixed per-bot hash for selection and
+    // staggering, so the same bots are picked across restarts.
+    uint64_t StableHash(uint64_t x)
+    {
+        x += 0x9E3779B97F4A7C15ull;
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+        x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+        return x ^ (x >> 31);
     }
 
     std::unordered_set<uint32_t> ParseIds(const std::string& text)
@@ -343,7 +360,7 @@ namespace
     }
 
     // Sources the MaxEnrolled cap applies to. Hand-picked bots (a GM command,
-    // a name list, a master's request) are deliberate and never capped.
+    // a name list, a master's request, a human's guild) are never capped.
     bool IsCappedSource(const std::string& source)
     {
         return source == "random" || source == "guild" || source == "account" || source == "alt";
@@ -417,60 +434,50 @@ namespace
         PushCapped(it->second.events, std::move(e), kEventRing);
     }
 
-    std::string SerializeDispositions(const std::vector<std::pair<std::string, std::string>>& d)
+    // "+quest -grind +flee" -- the model's own words for a change list.
+    std::string ChangesText(const AutopilotDesired& d)
     {
         std::string out;
-        for (const auto& [axis, option] : d)
-            out += (out.empty() ? "" : ",") + axis + ":" + option;
+        for (const auto& [key, on] : d)
+            out += SafeFormat("{}{}{}", out.empty() ? "" : " ", on ? "+" : "-",
+                              key.size() > 3 ? key.substr(3) : key);
         return out;
     }
 
-    std::vector<std::pair<std::string, std::string>> ParseDispositions(const std::string& text)
+    std::string JoinList(const std::vector<std::string>& items)
     {
-        std::vector<std::pair<std::string, std::string>> out;
-        for (const std::string& entry : SplitString(text, ','))
+        std::string out;
+        for (const std::string& s : items)
+            out += (out.empty() ? "" : ", ") + s;
+        return out;
+    }
+
+    // Playbook <-> DB: "dungeon=+co:flee|+co:potions;battleground=+co:aggressive"
+    std::string SerializePlaybook(const std::map<std::string, AutopilotDesired>& playbook)
+    {
+        std::string out;
+        for (const auto& [situation, changes] : playbook)
         {
-            size_t colon = entry.find(':');
-            if (colon != std::string::npos)
-                out.emplace_back(Lower(entry.substr(0, colon)), Lower(entry.substr(colon + 1)));
+            std::string list = AutopilotStrategies_Format(changes);
+            std::replace(list.begin(), list.end(), ',', '|');
+            out += (out.empty() ? "" : ";") + situation + "=" + list;
         }
         return out;
     }
 
-    std::string DispositionOf(const Row& row, const AutopilotDispositionAxis& axis)
+    std::map<std::string, AutopilotDesired> ParsePlaybook(const std::string& text)
     {
-        for (const auto& [a, option] : row.dispositions)
-            if (a == axis.name && AutopilotPresets_Disposition(a, option))
-                return option;
-        return axis.neutral;
-    }
-
-    // Fill every configured axis: the row's choice if still valid, else the
-    // playstyle's default, else the axis neutral. Drops axes that no longer
-    // exist. Returns true when anything changed.
-    bool NormalizeDispositions(Row& row)
-    {
-        const PlaystyleProfile* profile = Playstyle_Profile(row.playstyle);
-
-        std::vector<std::pair<std::string, std::string>> out;
-        for (const AutopilotDispositionAxis& axis : AutopilotPresets_Axes())
+        std::map<std::string, AutopilotDesired> out;
+        for (const std::string& entry : SplitString(text, ';'))
         {
-            std::string option;
-            for (const auto& [a, o] : row.dispositions)
-                if (a == axis.name && AutopilotPresets_Disposition(a, o))
-                    option = o;
-
-            if (option.empty() && profile)
-                for (const auto& [a, o] : profile->dispositions)
-                    if (a == axis.name && AutopilotPresets_Disposition(a, o))
-                        option = o;
-
-            out.emplace_back(axis.name, option.empty() ? axis.neutral : option);
+            const size_t eq = entry.find('=');
+            if (eq == std::string::npos)
+                continue;
+            std::string list = entry.substr(eq + 1);
+            std::replace(list.begin(), list.end(), '|', ',');
+            out[entry.substr(0, eq)] = AutopilotStrategies_Parse(list);
         }
-
-        const bool changed = out != row.dispositions;
-        row.dispositions = std::move(out);
-        return changed;
+        return out;
     }
 
     // ----------------------------------------------------------------------
@@ -497,16 +504,16 @@ namespace
             return "";
         }
 
-        // Dispositions hold everywhere -- combat, dungeons, a human's group --
-        // except where the operator asked us to keep hands off entirely.
-        bool CanDispose() const
+        // Combat strategies and the playbook hold everywhere -- dungeons, a
+        // human's group -- except where the operator asked for hands off.
+        bool CanUseCombat() const
         {
             return !dead && !(withRealPlayer && g_cfg.withRealPlayer == 0);
         }
 
-        // The activity layer stands down wherever something else already
-        // owns the bot's movement.
-        bool CanSteerActivity() const
+        // Out-of-combat strategies and the rpg focus only while the bot is
+        // its own: something else owns its movement in a group or instance.
+        bool CanUseNonCombat() const
         {
             return !dead && !withRealPlayer && !inInstance && !follower;
         }
@@ -552,10 +559,6 @@ namespace
     // Who is watching, and how much LLM time that earns. O(real players),
     // from our own login roster rather than a walk over every online
     // character. World thread, g_mutex held.
-    //
-    // The defaults keep the LLM for bots near people. The scopes and floors
-    // let an operator with the hardware or the API budget widen that, up to
-    // every enrolled bot planning in the foreground.
     Tier ComputeTier(Player* bot)
     {
         Tier tier = Tier::Dormant;
@@ -640,212 +643,115 @@ namespace
     }
 
     // ----------------------------------------------------------------------
-    // Applying presets. World thread, g_mutex held.
+    // Carrying out the model's plan. World thread, g_mutex held.
     // ----------------------------------------------------------------------
 
-    // The axis a disposition option belongs to, or null.
-    const AutopilotDispositionAxis* AxisOfOption(const std::string& option)
+    // The strategies to enforce right now: the model's choices, filtered by
+    // what the situation allows, plus the playbook entry for the situation.
+    // A non-empty rpg focus needs `new rpg` on and the legacy `rpg` off, so
+    // those two follow it.
+    AutopilotDesired Wanted(const Row& row, const Online& ob, const Situation& sit)
     {
-        for (const AutopilotDispositionAxis& axis : AutopilotPresets_Axes())
-            for (const AutopilotPreset& p : axis.options)
-                if (p.name == option)
-                    return &axis;
-        return nullptr;
-    }
+        AutopilotDesired wanted;
+        if (!sit.CanUseCombat())
+            return wanted;
 
-    // Dispositions wanted right now: the bot's own, with the playbook entry
-    // for the current situation laid over the axis it belongs to.
-    std::vector<std::pair<std::string, std::string>> WantedDispositions(const Row& row, const Situation& sit)
-    {
-        const std::string key = sit.PlaybookKey();
-        std::vector<std::pair<std::string, std::string>> out;
-        for (const AutopilotDispositionAxis& axis : AutopilotPresets_Axes())
+        for (const auto& [key, on] : row.desired)
+            if (key.rfind("co:", 0) == 0 || sit.CanUseNonCombat())
+                wanted[key] = on;
+
+        const bool focus = !row.rpg.empty() || !ob.guardRpg.empty();
+        if (focus && sit.CanUseNonCombat())
         {
-            std::string option = DispositionOf(row, axis);
-            if (!key.empty())
-                for (const auto& [situation, o] : row.playbook)
-                    if (situation == key && AxisOfOption(o) == &axis)
-                        option = o;
-            out.emplace_back(axis.name, option);
+            wanted["nc:new rpg"] = true;
+            wanted["nc:rpg"]     = false;
         }
-        return out;
+
+        if (const std::string key = sit.PlaybookKey(); !key.empty())
+            if (auto it = row.playbook.find(key); it != row.playbook.end())
+                for (const auto& [k, on] : it->second)
+                    if (k.rfind("co:", 0) == 0)
+                        wanted[k] = on;
+
+        return wanted;
     }
 
-    void ReapplyDispositions(PlayerbotAI* ai, Online& ob)
-    {
-        for (const auto& [axis, option] : ob.effective)
-            if (const AutopilotPreset* p = AutopilotPresets_Disposition(axis, option))
-                AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
-    }
-
-    void ReapplyActivity(PlayerbotAI* ai, Online& ob)
-    {
-        if (!ob.appliedActivity.empty())
-            if (const AutopilotPreset* p = AutopilotPresets_Activity(ob.appliedActivity))
-                AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
-    }
-
-    // Move the bot from the dispositions it has (ob.effective) to `wanted`.
-    // Each replaced option is reverted to what the bot had before autopilot
-    // touched it, then the live activity is re-applied in case the two share a
-    // strategy (greedy and gather both want `gather`).
-    void ApplyEffective(PlayerbotAI* ai, Online& ob,
-                        const std::vector<std::pair<std::string, std::string>>& wanted)
-    {
-        for (const auto& [axis, option] : wanted)
-        {
-            const AutopilotPreset* now = AutopilotPresets_Disposition(axis, option);
-            if (!now)
-                continue;
-
-            for (const auto& [a, o] : ob.effective)
-                if (a == axis && o != option)
-                    if (const AutopilotPreset* old = AutopilotPresets_Disposition(a, o))
-                        AutopilotPresets_Revert(ai, *old, now, ob.locked, ob.baseline);
-
-            AutopilotPresets_Apply(ai, *now, ob.locked, ob.baseline);
-        }
-        ob.effective  = wanted;
-        ob.controlled = true;
-        ReapplyActivity(ai, ob);
-    }
-
-    // Make `preset` the live activity: put back whatever the previous one
-    // changed (unless the new one manages it too), apply the new one, then
-    // re-apply dispositions for any strategy the two share. Without the
-    // revert, one dungeon activity would leave `lfg` on for good.
-    void ApplyActivity(PlayerbotAI* ai, Online& ob, const AutopilotPreset& preset)
-    {
-        if (!ob.appliedActivity.empty() && ob.appliedActivity != preset.name)
-            if (const AutopilotPreset* old = AutopilotPresets_Activity(ob.appliedActivity))
-                AutopilotPresets_Revert(ai, *old, &preset, ob.locked, ob.baseline);
-
-        AutopilotPresets_Apply(ai, preset, ob.locked, ob.baseline);
-        ob.appliedActivity = preset.name;
-        ob.controlled      = true;
-        ReapplyDispositions(ai, ob);
-    }
-
-    void SteerRpg(PlayerbotAI* ai, const AutopilotPreset& preset, const Situation& sit)
-    {
-        if (preset.rpg.empty() || sit.inCombat || sit.travelling)
-            return;
-        if (!ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
-            return;
-
-        const int status = AutopilotRpg_CurrentStatus(ai);
-        if (status != AutopilotRpg_StatusFromName("idle") &&
-            std::find(preset.rpg.begin(), preset.rpg.end(), status) != preset.rpg.end())
-            return;
-
-        if (AutopilotRpg_Steer(ai, preset.rpg))
-            ++g_statSteer;
-    }
-
-    // Restore whatever a playerbots reset wiped, and recognise a human's hand
-    // on the controls. The marker is the reset detector: a reset clears it
-    // together with everything else, a human toggling `co -flee` does not.
-    void Reassert(PlayerbotAI* ai, Row& row, Online& ob, const Situation& sit)
+    // Restore whatever a playerbots reset wiped, recognise a human's hand on
+    // the controls, and bring the bot to what the model wants for this
+    // situation. The marker is the reset detector: a reset clears it together
+    // with everything else, a human toggling `co -flee` does not.
+    void Reassert(PlayerbotAI* ai, uint64_t guid, const Row& row, Online& ob, const Situation& sit)
     {
         const bool reset = !HasMarker(ai);
         if (reset)
         {
             AddMarker(ai);
             ob.markerOurs = true;
+            // Playerbots put the bot back to its defaults: nothing of ours is
+            // left, and the baseline must be re-learned from them.
+            ob.applied.clear();
+            ob.baseline.clear();
         }
 
         if (!g_cfg.control)
             return;
 
-        if (reset)
+        const AutopilotDesired wanted = Wanted(row, ob, sit);
+
+        // Someone in the group switched something we had set, by hand.
+        // Theirs now, until the group breaks up.
+        if (!reset && sit.withRealPlayer && ob.controlled)
         {
-            // Playerbots put the bot back to its defaults: everything we had
-            // applied is gone, and the baseline must be re-learned from them.
-            ob.baseline.clear();
-            ob.effective.clear();
-            ob.appliedActivity.clear();
-        }
+            AutopilotDesired held;
+            for (const auto& [key, on] : wanted)
+                if (auto it = ob.applied.find(key); it != ob.applied.end() && it->second == on)
+                    held[key] = on;
 
-        if (sit.CanDispose())
-        {
-            const auto wanted = WantedDispositions(row, sit);
-
-            if (reset)
+            for (const std::string& name : AutopilotStrategies_Drift(ai, held, ob.locked))
             {
-                ApplyEffective(ai, ob, wanted);
-            }
-            else if (wanted != ob.effective)
-            {
-                // New situation (playbook) or new choice: move across.
-                ApplyEffective(ai, ob, wanted);
-            }
-            else
-            {
-                for (const auto& [axis, option] : wanted)
-                {
-                    const AutopilotPreset* p = AutopilotPresets_Disposition(axis, option);
-                    if (!p)
-                        continue;
-
-                    std::vector<std::string> drift = AutopilotPresets_Drift(ai, *p, ob.locked);
-                    if (drift.empty())
-                        continue;
-
-                    if (sit.withRealPlayer && ob.controlled)
-                    {
-                        // Someone in the group changed it by hand. Theirs now,
-                        // until the group breaks up.
-                        for (const std::string& name : drift)
-                        {
-                            ob.locked.insert(name);
-                            ++g_statLocks;
-                            RecordEvent(ai->GetBot()->GetGUID().GetRawValue(), "locked",
-                                        name + " (changed by a player in the group)");
-                        }
-                        continue;
-                    }
-                    AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
-                }
+                ob.locked.insert(name);
+                ++g_statLocks;
+                RecordEvent(guid, "locked", name + " (changed by a player in the group)");
             }
         }
 
-        if (sit.CanSteerActivity() && !row.activity.empty())
-        {
-            if (const AutopilotPreset* preset = AutopilotPresets_Activity(row.activity))
-            {
-                // Chosen while the bot could not act on it (a group, an
-                // instance), or drifted: catch up now.
-                if (ob.appliedActivity != preset->name)
-                    ApplyActivity(ai, ob, *preset);
-                else if (!AutopilotPresets_Drift(ai, *preset, ob.locked).empty())
-                    AutopilotPresets_Apply(ai, *preset, ob.locked, ob.baseline);
-            }
-        }
+        AutopilotStrategies_Apply(ai, wanted, ob.applied, ob.locked, ob.baseline);
+        if (!ob.applied.empty())
+            ob.controlled = true;
     }
 
-    uint32_t PickMinutes(const Row& row)
+    std::vector<int> StatusIds(const std::vector<std::string>& names)
     {
-        const PlaystyleProfile* p = Playstyle_Profile(row.playstyle);
-        if (!p)
-            return 30;
-        return urand(p->spanMinMinutes, p->spanMaxMinutes);
+        std::vector<int> out;
+        for (const std::string& n : names)
+            if (int s = AutopilotRpg_StatusFromName(n); s >= 0)
+                out.push_back(s);
+        return out;
+    }
+
+    // Keep the bot in the rpg focus the model chose (or a guard's override).
+    void SteerRpg(PlayerbotAI* ai, const Row& row, const Online& ob, const Situation& sit)
+    {
+        if (!sit.CanUseNonCombat() || sit.inCombat || sit.travelling)
+            return;
+
+        const std::vector<std::string>& focus = ob.guardRpg.empty() ? row.rpg : ob.guardRpg;
+        if (focus.empty() || !ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+            return;
+
+        const std::vector<int> allowed = StatusIds(focus);
+        const int status = AutopilotRpg_CurrentStatus(ai);
+        if (status != AutopilotRpg_StatusFromName("idle") &&
+            std::find(allowed.begin(), allowed.end(), status) != allowed.end())
+            return;
+
+        if (AutopilotRpg_Steer(ai, allowed))
+            ++g_statSteer;
     }
 
     // ----------------------------------------------------------------------
-    // Feelings: rewards, boredom, temptations. g_mutex held.
-    //
-    // Deliberately simple and visible. Each playstyle weighs reward channels
-    // differently (an explorer lives for new zones, a crafter for skill-ups).
-    // The weighted rewards of the last hour give a satisfaction score.
-    // Boredom climbs at the playstyle's rate while the bot stays in one
-    // activity, faster the less rewarding it is, and drops when the activity
-    // changes or a goal is met. Crossing the threshold ends the activity
-    // early and asks for a fresh plan.
+    // Facts: rewards, temptations, goals, boundaries. g_mutex held.
     // ----------------------------------------------------------------------
-
-    constexpr uint32_t kHour           = 3600;
-    constexpr size_t   kRewardCap      = 256;
-    constexpr size_t   kTemptationCap  = 4;
 
     void NoteReward(Online& ob, const char* channel, uint32_t amount, uint32_t now)
     {
@@ -856,40 +762,17 @@ namespace
         PushCapped(ob.rewards, Reward{ now, channel, amount }, kRewardCap);
     }
 
-    float RewardScore(const Row& row, const Online& ob, uint32_t now)
-    {
-        const PlaystyleProfile* profile = Playstyle_Profile(row.playstyle);
-        if (!profile)
-            return 0.0f;
-
-        float score = 0.0f;
-        for (const Reward& r : ob.rewards)
-        {
-            if (now - r.at > kHour)
-                continue;
-            for (const RewardChannel& c : kRewardChannels)
-            {
-                if (std::string_view(c.name) != r.channel)
-                    continue;
-                for (const auto& [name, weight] : profile->rewards)
-                    if (name == c.name)
-                        score += static_cast<float>(r.amount) / c.unit * static_cast<float>(weight);
-            }
-        }
-        return score;
-    }
-
     std::string RewardSummary(const Online& ob, uint32_t now)
     {
         std::string out;
-        for (const RewardChannel& c : kRewardChannels)
+        for (const char* channel : kRewardChannels)
         {
             uint32_t total = 0;
             for (const Reward& r : ob.rewards)
-                if (now - r.at <= kHour && std::string_view(c.name) == r.channel)
+                if (now - r.at <= kHour && std::string_view(channel) == r.channel)
                     total += r.amount;
             if (total)
-                out += SafeFormat("{}{} {}", out.empty() ? "" : ", ", total, c.name);
+                out += SafeFormat("{}{} {}", out.empty() ? "" : ", ", total, channel);
         }
         return out;
     }
@@ -901,26 +784,13 @@ namespace
         PushCapped(ob.temptations, std::make_pair(now, std::move(text)), kTemptationCap);
     }
 
-    std::string MoodText(const Row& row, const Online& ob, uint32_t now)
+    // Gold and profession progress since the last visit, as reward facts,
+    // and a nudge when a profession hits its cap.
+    void UpdateFacts(Player* bot, Online& ob, uint32_t now)
     {
-        const float b = ob.boredom;
-        const char* label = b < 25.0f ? "engaged" : b < 50.0f ? "content" : b < g_cfg.boredomThreshold ? "restless" : "bored";
-        const float score = RewardScore(row, ob, now);
-        const char* feeling = score >= g_cfg.satisfiedScore        ? "it has felt worthwhile"
-                            : score >= g_cfg.satisfiedScore / 2.0f ? "it has been slow going"
-                                                                   : "it has felt unrewarding";
-        const std::string summary = RewardSummary(ob, now);
-        const uint32_t minutes = row.activitySince && now > row.activitySince ? (now - row.activitySince) / 60 : 0;
-        return SafeFormat("{} (boredom {}/100) after {} minutes of {}; in the last hour {}, and {}.",
-                          label, static_cast<uint32_t>(b), minutes, row.activity.empty() ? "nothing" : row.activity,
-                          summary.empty() ? "nothing rewarding happened" : "they got " + summary, feeling);
-    }
-
-    void UpdateMood(Player* bot, uint64_t guid, Row& row, Online& ob, const Situation& sit, uint32_t now)
-    {
-        // Gold earned. Income arrives in coppers and silvers between visits a
-        // few seconds apart, so the baseline only moves when a whole gold is
-        // booked (by exactly that much) or when the bot spends.
+        // Income arrives in coppers and silvers between visits a few seconds
+        // apart, so the baseline only moves when a whole gold is booked (by
+        // exactly that much) or when the bot spends.
         const uint32_t money = bot->GetMoney();
         if (ob.lastMoney == 0 || money < ob.lastMoney)
             ob.lastMoney = money;
@@ -931,7 +801,6 @@ namespace
             ob.lastMoney += gold * 10000;
         }
 
-        // Profession skill-ups, and a nudge when a skill hits its cap.
         uint32_t skillSum = 0;
         for (uint32_t skill : Progress_ProfessionSkills())
         {
@@ -947,42 +816,7 @@ namespace
         if (ob.lastSkillSum && skillSum > ob.lastSkillSum)
             NoteReward(ob, "skill", skillSum - ob.lastSkillSum, now);
         ob.lastSkillSum = skillSum;
-
-        if (ob.moodAt == 0)
-        {
-            ob.moodAt = now;
-            return;
-        }
-
-        const float minutes = std::min(30.0f, static_cast<float>(now - ob.moodAt) / 60.0f);
-        ob.moodAt = now;
-
-        if (!sit.CanSteerActivity())
-        {
-            // In a group, a dungeon or a battleground something else is
-            // driving the evening; the bot is not bored of its own choice.
-            ob.boredom = std::max(0.0f, ob.boredom - minutes);
-            return;
-        }
-
-        const PlaystyleProfile* profile = Playstyle_Profile(row.playstyle);
-        const float rate = profile ? profile->boredomRate : 1.5f;
-        const float satisfaction = std::min(1.0f, RewardScore(row, ob, now) / std::max(0.1f, g_cfg.satisfiedScore));
-        ob.boredom = std::clamp(ob.boredom + minutes * rate * (1.2f - satisfaction), 0.0f, 100.0f);
-
-        if (ob.boredom >= g_cfg.boredomThreshold && !ob.boredNoted && !row.activity.empty())
-        {
-            ob.boredNoted    = true;
-            ob.urgentPlan    = true;
-            ob.activityUntil = now;
-            RecordEvent(guid, "bored", SafeFormat("of {} after {} minutes", row.activity,
-                                                  row.activitySince ? (now - row.activitySince) / 60 : 0));
-        }
     }
-
-    // ----------------------------------------------------------------------
-    // Goals. g_mutex held.
-    // ----------------------------------------------------------------------
 
     void SetGoal(uint64_t guid, Row& row, Online* ob, AutopilotGoal goal, const char* by)
     {
@@ -997,6 +831,7 @@ namespace
                                              row.goal.target, by));
     }
 
+    // Done or stalled goals are moments to ask the model again.
     void CheckGoal(Player* bot, uint64_t guid, Row& row, Online& ob, uint32_t now)
     {
         if (!row.goal.Active())
@@ -1010,11 +845,9 @@ namespace
         {
             RecordEvent(guid, "goal_done", row.goal.text);
             AddTemptation(ob, "just achieved: " + row.goal.text, now);
-            row.goal         = AutopilotGoal();
-            row.dirty        = true;
-            ob.boredom       = std::max(0.0f, ob.boredom - 30.0f);
-            ob.urgentPlan    = true;
-            ob.activityUntil = now;
+            row.goal      = AutopilotGoal();
+            row.dirty     = true;
+            ob.urgentPlan = true;
             return;
         }
 
@@ -1030,83 +863,6 @@ namespace
             ob.goalProgressAt = now;   // once per stale window, not every visit
             ob.urgentPlan     = true;
         }
-    }
-
-    // A goal for a bot the model has not given one, from its playstyle. Keeps
-    // dormant bots pointed somewhere. Phrased for the bot's awareness.
-    void PolicyGoal(Player* bot, uint64_t guid, Row& row, Online& ob)
-    {
-        if (!g_cfg.policyGoals || row.goal.Active())
-            return;
-
-        const bool immersed = row.awareness == "immersed";
-        const uint32_t level = bot->GetLevel();
-        const std::string& style = row.playstyle;
-
-        std::string kind, target, text;
-        auto levelGoal = [&](uint32_t to)
-        {
-            kind = "reach_level"; target = std::to_string(to);
-            text = immersed ? "Grow stronger and more capable." : SafeFormat("Hit level {}.", to);
-        };
-
-        if (style == "quester" || style == "casual")
-        {
-            kind = "complete_quests"; target = style == "quester" ? "5" : "3";
-            text = immersed ? "Help the people who need it." : SafeFormat("Finish {} quests.", target);
-        }
-        else if (style == "crafter")
-        {
-            uint32_t best = 0;
-            for (uint32_t skill : { uint32_t(SKILL_HERBALISM), uint32_t(SKILL_MINING), uint32_t(SKILL_SKINNING) })
-                if (bot->HasSkill(skill) && (!best || bot->GetSkillValue(skill) < bot->GetSkillValue(best)))
-                    best = skill;
-            if (best && bot->GetSkillValue(best) < bot->GetPureMaxSkillValue(best))
-            {
-                const uint32_t to = std::min<uint32_t>(bot->GetSkillValue(best) + 25, bot->GetPureMaxSkillValue(best));
-                kind = "reach_skill"; target = SafeFormat("{} {}", Progress_SkillName(best), to);
-                text = immersed ? SafeFormat("Get better at {}.", Progress_SkillName(best))
-                                : SafeFormat("Raise {} to {}.", Progress_SkillName(best), to);
-            }
-            else
-            {
-                kind = "earn_gold"; target = "20";
-                text = immersed ? "Put some coin aside." : "Save up 20 more gold.";
-            }
-        }
-        else if (style == "dungeonrunner")
-        {
-            if (level >= 15)
-            {
-                kind = "run_dungeon"; target = "1";
-                text = immersed ? "Find companions brave enough for the depths." : "Run a dungeon.";
-            }
-            else
-                levelGoal(level + 1);
-        }
-        else if (style == "explorer")
-        {
-            kind = "free";
-            text = immersed ? "See lands I have never walked." : "See somewhere new.";
-        }
-        else if (style == "roleplayer")
-        {
-            kind = "free";
-            text = "Live up to who I am and where I come from.";
-        }
-        else if (style == "pvper")
-        {
-            kind = "free";
-            text = immersed ? "Prove myself against the enemy." : "Get some PvP kills.";
-        }
-        else
-        {
-            levelGoal(level + 1);
-        }
-
-        AutopilotGoal goal;
-        if (Goal_Resolve(bot, kind, target, text, Counters(row), goal).empty())
-            SetGoal(guid, row, &ob, std::move(goal), "policy");
     }
 
     // Situation changes are the natural moments to reconsider: leaving a
@@ -1136,16 +892,15 @@ namespace
             auto boundary = [&](const char* what)
             {
                 RecordEvent(guid, "boundary", what);
-                ob.urgentPlan    = true;
-                ob.activityUntil = now;
+                ob.urgentPlan = true;
             };
 
             if (instance == 0 && ob.prevInstance != 0)
                 boundary(ob.prevInstance == 2 ? "the battleground is over" : "left the dungeon");
             if (!grouped && ob.prevGrouped)
                 boundary("left the group");
-            if (!sit.travelling && ob.prevTravelling && row.activity == "travel")
-                ob.activityUntil = now;   // landed: the trip was the whole activity
+            if (!sit.travelling && ob.prevTravelling)
+                boundary("landed after a flight");
         }
 
         ob.situationKnown = true;
@@ -1154,153 +909,76 @@ namespace
         ob.prevTravelling = sit.travelling;
     }
 
-    void SetActivity(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob,
-                     const Situation& sit, const AutopilotPreset& preset, const std::string& by,
-                     const std::string& reason, uint32_t minutes, uint32_t now)
-    {
-        const bool changed = row.activity != preset.name;
-        if (changed)
-        {
-            // Something new takes the edge off.
-            ob.boredom    *= 0.4f;
-            ob.boredNoted  = false;
-        }
-        row.activity   = preset.name;
-        row.decidedBy  = by;
-        row.lastReason = reason;
-        if (changed || row.activitySince == 0)
-            row.activitySince = now;
-        row.dirty = true;
-
-        ob.activityUntil = now + std::max<uint32_t>(1, minutes) * 60;
-
-        PushCapped(ob.decisions,
-                   SafeFormat("{} ({}, {}m): {}", preset.name, by, minutes, reason.empty() ? "-" : reason),
-                   kDecisionRing);
-        RecordEvent(guid, "activity", SafeFormat("{} for {}m ({}): {}", preset.name, minutes, by, reason));
-
-        if (g_cfg.debug)
-            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} -> {} for {}m ({}): {}",
-                     bot->GetName(), preset.name, minutes, by, reason);
-
-        if (g_cfg.control && sit.CanSteerActivity())
-        {
-            ApplyActivity(ai, ob, preset);
-            SteerRpg(ai, preset, sit);
-        }
-    }
-
-    // Deterministic self-preservation, checked before anyone is asked.
-    // Returns the activity to switch to, or null.
-    const AutopilotPreset* CheckGuards(Player* bot, const Row& row, Online& ob, uint32_t now,
-                                       std::string& reason)
+    // Deterministic self-preservation, checked before anyone is asked. It
+    // only overrides the rpg focus, for a while; the reason goes into the
+    // next prompt. Returns true when a guard fired.
+    bool CheckGuards(Player* bot, uint64_t guid, Online& ob, uint32_t now)
     {
         const uint32_t window = g_cfg.guardDeathWindowMinutes * 60;
         while (!ob.deathTimes.empty() && now - ob.deathTimes.front() > window)
             ob.deathTimes.pop_front();
 
-        const AutopilotPreset* rest = AutopilotPresets_Activity("rest");
-        const AutopilotPreset* town = AutopilotPresets_Activity("town");
+        if (ob.guardUntil && now >= ob.guardUntil)
+        {
+            ob.guardRpg.clear();
+            ob.guardUntil = 0;
+        }
+        if (!ob.guardRpg.empty())
+            return false;
 
         // A guard that fired keeps quiet for a while. Some conditions cannot
-        // be fixed by the activity it picks (a broke bot cannot repair, bags
-        // can be full of unsellable items), and re-firing after every hold
-        // would churn activities and fill the diary forever.
+        // be fixed by what it does (a broke bot cannot repair, bags can be
+        // full of unsellable items); re-firing after every hold would only
+        // churn and fill the diary.
         auto ready = [&](const char* kind)
         {
             auto it = ob.guardCooldown.find(kind);
             return it == ob.guardCooldown.end() || now >= it->second;
         };
-        auto fire = [&](const char* kind, const AutopilotPreset* preset)
-        {
-            ob.guardCooldown[kind] = now + g_cfg.guardHoldMinutes * 60 * 4;
-            return preset;
-        };
 
-        if (g_cfg.guardDeaths > 0 && ob.deathTimes.size() >= g_cfg.guardDeaths && rest &&
-            row.activity != "rest" && ready("deaths"))
+        std::string reason;
+        const char* kind = nullptr;
+        std::vector<std::string> focus;
+
+        if (g_cfg.guardDeaths > 0 && ob.deathTimes.size() >= g_cfg.guardDeaths && ready("deaths"))
         {
             reason = SafeFormat("died {} times in {} minutes in {}", ob.deathTimes.size(),
                                 g_cfg.guardDeathWindowMinutes, Progress_ZoneName(bot->GetZoneId()));
+            kind  = "deaths";
+            focus = { "rest" };
             ob.deathTimes.clear();
-            return fire("deaths", rest);
+        }
+        else if (g_cfg.guardDurabilityPct > 0 && Progress_DurabilityPct(bot) < g_cfg.guardDurabilityPct &&
+                 ready("durability"))
+        {
+            reason = SafeFormat("gear is badly damaged ({}% durability)", uint32_t(Progress_DurabilityPct(bot)));
+            kind   = "durability";
+            focus  = { "wander npc", "go camp" };
+        }
+        else if (g_cfg.guardFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.guardFreeBagSlots &&
+                 ready("bags"))
+        {
+            reason = "bags are full";
+            kind   = "bags";
+            focus  = { "wander npc", "go camp" };
         }
 
-        if (town && row.activity != "town")
-        {
-            const uint8_t durability = Progress_DurabilityPct(bot);
-            if (g_cfg.guardDurabilityPct > 0 && durability < g_cfg.guardDurabilityPct && ready("durability"))
-            {
-                reason = SafeFormat("gear is badly damaged ({}% durability)", uint32_t(durability));
-                return fire("durability", town);
-            }
-            if (g_cfg.guardFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.guardFreeBagSlots &&
-                ready("bags"))
-            {
-                reason = "bags are full";
-                return fire("bags", town);
-            }
-        }
-        return nullptr;
+        if (!kind)
+            return false;
+
+        ob.guardCooldown[kind] = now + g_cfg.guardHoldMinutes * 60 * 4;
+        ob.guardRpg    = std::move(focus);
+        ob.guardUntil  = now + g_cfg.guardHoldMinutes * 60;
+        ob.lastGuard   = reason;
+        ob.lastGuardAt = now;
+        ++g_statGuard;
+        RecordEvent(guid, "guard", reason);
+        return true;
     }
 
-    // The deterministic policy: playstyle weights, a damper on whatever the
-    // bot is already doing (people get bored), and availability.
-    const AutopilotPreset* PolicyPick(Player* bot, const Row& row)
-    {
-        const PlaystyleProfile* profile = Playstyle_Profile(row.playstyle);
-
-        std::vector<std::pair<const AutopilotPreset*, uint32_t>> candidates;
-        uint32_t total = 0;
-
-        auto consider = [&](const std::string& name, uint32_t weight)
-        {
-            const AutopilotPreset* preset = AutopilotPresets_Activity(name);
-            if (!preset || weight == 0 || !AutopilotPresets_Unavailable(*preset, bot).empty())
-                return;
-            if (preset->name == row.activity)
-                weight = std::max<uint32_t>(1, weight / 4);
-            candidates.emplace_back(preset, weight);
-            total += weight;
-        };
-
-        // A goal pulls toward the activities that serve it, on top of taste.
-        const auto bias = Goal_ActivityBias(bot, row.goal);
-        auto boost = [&](const std::string& name, uint32_t weight)
-        {
-            for (const auto& [activity, factor] : bias)
-                if (activity == name)
-                    return weight * factor;
-            return weight;
-        };
-
-        if (profile)
-            for (const auto& [name, weight] : profile->activityWeights)
-                consider(name, boost(name, weight * 4));
-
-        // Activities the goal needs but the playstyle never lists still get a
-        // look in: an explorer with a dungeon goal has to queue sometime.
-        for (const auto& [name, factor] : bias)
-            if (std::none_of(candidates.begin(), candidates.end(),
-                             [&](const auto& c) { return c.first->name == name; }))
-                consider(name, 2 * factor);
-
-        if (candidates.empty())
-            for (const AutopilotPreset& p : AutopilotPresets_Activities())
-                consider(p.name, 4);
-
-        if (total == 0)
-            return nullptr;
-
-        uint32_t roll = urand(1, total);
-        for (const auto& [preset, weight] : candidates)
-        {
-            if (roll <= weight)
-                return preset;
-            roll -= weight;
-        }
-        return candidates.back().first;
-    }
+    // ----------------------------------------------------------------------
+    // Asking the model. World thread, g_mutex held.
+    // ----------------------------------------------------------------------
 
     AutopilotPromptContext BuildPromptContext(Player* bot, PlayerbotAI* ai, const Row& row,
                                               const Online& ob, Tier tier, uint32_t now)
@@ -1310,12 +988,9 @@ namespace
         ctx.level   = bot->GetLevel();
         ctx.race    = ai->GetChatHelper()->FormatRace(bot->getRace());
         ctx.cls     = ai->GetChatHelper()->FormatClass(bot->getClass());
-
-        ctx.playstyle = row.playstyle;
-        if (const PlaystyleProfile* p = Playstyle_Profile(row.playstyle))
-            ctx.playstyleDescription = p->description;
-        ctx.awareness            = row.awareness;
-        ctx.awarenessDescription = Awareness_Description(row.awareness);
+        if (Guild* guild = bot->GetGuild())
+            ctx.guild = guild->GetName();
+        ctx.mustBeInCharacter = g_RoleplayEnable && g_RoleplayStrictness >= 2;
 
         if (g_EnableRPPersonalities)
         {
@@ -1324,32 +999,29 @@ namespace
                 ctx.personality = key + " - " + GetPersonalityPromptAddition(key);
         }
 
-        ctx.activity        = row.activity;
-        ctx.activityMinutes = row.activitySince && now > row.activitySince ? (now - row.activitySince) / 60 : 0;
-        ctx.goal            = Goal_Describe(bot, row.goal, Counters(row));
+        ctx.style   = row.style;
+        ctx.outlook = row.outlook;
+        ctx.profile = row.profile;
+
+        ctx.doing        = row.doing;
+        ctx.doingMinutes = row.doingSince && now > row.doingSince ? (now - row.doingSince) / 60 : 0;
+        ctx.goal         = Goal_Describe(bot, row.goal, Counters(row));
         if (row.goal.Active() && ob.goalProgressAt && now - ob.goalProgressAt > 1800)
             ctx.goal += SafeFormat(" (no progress for {})", Span(now - ob.goalProgressAt));
-        ctx.mood            = MoodText(row, ob, now);
 
-        for (const auto& [situation, option] : row.playbook)
-            ctx.playbook += (ctx.playbook.empty() ? "" : ", ") + situation + ": " + option;
-
-        for (const auto& [at, text] : ob.temptations)
-            if (now - at <= kHour)
-                ctx.temptations.push_back(text);
-
-        std::string unavailable;
-        for (const AutopilotPreset& p : AutopilotPresets_Activities())
-        {
-            std::string why = AutopilotPresets_Unavailable(p, bot);
-            if (!why.empty())
-                unavailable += (unavailable.empty() ? "" : ", ") + p.name + " (" + why + ")";
-        }
-        ctx.unavailable = unavailable;
+        ctx.liveStrategies = AutopilotStrategies_DescribeLive(ai);
+        ctx.rpgStatus      = AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai));
+        ctx.rpgFocus       = JoinList(row.rpg);
+        for (const auto& [situation, changes] : row.playbook)
+            ctx.playbook += (ctx.playbook.empty() ? "" : "; ") + situation + ": " + ChangesText(changes);
 
         ctx.decisions.assign(ob.decisions.begin(), ob.decisions.end());
         for (const ProgressEvent& e : ob.events)
             ctx.events.push_back(SafeFormat("[{}] {}: {}", Ago(e.at, now), e.type, e.detail));
+        for (const auto& [at, text] : ob.temptations)
+            if (now - at <= kHour)
+                ctx.temptations.push_back(text);
+        ctx.rewards = RewardSummary(ob, now);
 
         std::vector<ProgressSnapshot> window(ob.snapshots.begin(), ob.snapshots.end());
         window.push_back(Progress_Capture(bot));
@@ -1358,11 +1030,12 @@ namespace
         window.back().questsTotal = row.questsTotal;
         ctx.progress = Progress_Summarize(window);
 
-        if (!ob.lastGuard.empty() && now - ob.lastGuardAt < 3600)
-            ctx.guards = SafeFormat("Recently ({}): had to stop because {}.", Ago(ob.lastGuardAt, now), ob.lastGuard);
+        if (!ob.lastGuard.empty() && now - ob.lastGuardAt < kHour)
+            ctx.guards = SafeFormat("Recently ({}): their instincts made them stop because {}.",
+                                    Ago(ob.lastGuardAt, now), ob.lastGuard);
 
-        // The full surroundings scan is for bots someone can see. A strategic
-        // choice for an unwatched bot needs only the macro state.
+        // The full surroundings scan is for bots someone can see. A choice for
+        // an unwatched bot needs only the macro state.
         const ProgressSnapshot& cur = window.back();
         ctx.state = SafeFormat(
             "Now: in {}, {} gold, gear at {}% durability, {} free bag slots, {} quests in the log.",
@@ -1379,22 +1052,29 @@ namespace
         return ctx;
     }
 
-    // Ask the LLM, within the budget. Returns true when a plan was submitted.
+    // Ask the model, within the budget. Returns true when a plan was submitted.
     bool TrySubmitPlan(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob,
-                       Tier tier, uint32_t now, bool force)
+                       uint32_t now, bool force)
     {
         if (!g_cfg.llmEnable || ob.planPending)
             return false;
-        if (tier == Tier::Dormant && !force)
+
+        ob.tier = ComputeTier(bot);
+        if (ob.tier == Tier::Dormant && !force)
             return false;
 
-        const uint32_t cadence = (tier == Tier::Foreground ? g_cfg.decisionIntervalMinutes
-                                                           : g_cfg.goalRefreshMinutes) * 60;
-        const bool due = force || ob.urgentPlan || ob.lastPlanAt == 0 || now - ob.lastPlanAt >= cadence;
-        if (!due || !AutopilotPlanner_CanSubmit(force || tier == Tier::Foreground))
+        // The tier's interval is a minimum gap between plans for one bot; the
+        // model's own `minutes` says when it wants to be asked again.
+        const uint32_t gap = (ob.tier == Tier::Foreground ? g_cfg.decisionIntervalMinutes
+                                                          : g_cfg.goalRefreshMinutes) * 60;
+        const bool spaced = ob.lastPlanAt == 0 || now - ob.lastPlanAt >= gap;
+        if (!force && !ob.urgentPlan && !spaced)
             return false;
 
-        std::string prompt = AutopilotPlanner_BuildPrompt(BuildPromptContext(bot, ai, row, ob, tier, now),
+        if (!AutopilotPlanner_CanSubmit(force || ob.tier == Tier::Foreground))
+            return false;
+
+        std::string prompt = AutopilotPlanner_BuildPrompt(BuildPromptContext(bot, ai, row, ob, ob.tier, now),
                                                           g_cfg.promptTemplate);
         if (!AutopilotPlanner_Submit(guid, std::move(prompt)))
             return false;
@@ -1403,47 +1083,30 @@ namespace
         ob.planSubmittedAt = now;
         ob.urgentPlan      = false;
 
-        // Keep doing what we were doing while the model thinks.
-        ob.activityUntil = std::max(ob.activityUntil, now + kPlanGraceSeconds);
-
         if (g_cfg.debug)
-            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: asked the model about {} ({}).",
-                     bot->GetName(), TierName(tier));
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: asked the model about {} ({}{}).",
+                     bot->GetName(), TierName(ob.tier), row.HasIdentity() ? "" : ", first plan");
         return true;
     }
 
-    void Decide(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob,
-                const Situation& sit, uint32_t now, bool forceLlm)
+    std::string NormaliseOutlook(const std::string& raw)
     {
-        ob.tier = ComputeTier(bot);
-
-        if (TrySubmitPlan(bot, ai, guid, row, ob, ob.tier, now, forceLlm))
-            return;
-        if (ob.planPending)
-            return;   // an answer is on its way; the grace period covers it
-
-        // No model this time. Give the bot a direction if it has none, so
-        // the policy's pick serves something.
-        PolicyGoal(bot, guid, row, ob);
-
-        const AutopilotPreset* pick = PolicyPick(bot, row);
-        if (!pick)
-            return;
-
-        ++g_statPolicy;
-        SetActivity(bot, ai, guid, row, ob, sit, *pick, "policy",
-                    Playstyle_Profile(row.playstyle) ? "fits their playstyle" : "something to do",
-                    PickMinutes(row), now);
+        const std::string o = Lower(raw);
+        if (o.find("meta") != std::string::npos)                                         return "metagamer";
+        if (o.find("player") != std::string::npos || o.find("casual") != std::string::npos) return "player";
+        if (o.find("character") != std::string::npos || o.find("immers") != std::string::npos) return "in-character";
+        return o;
     }
 
     void ApplyDecision(const AutopilotDecision& d, uint32_t now)
     {
         auto rowIt = g_rows.find(d.botGuid);
         auto onIt  = g_online.find(d.botGuid);
-        if (onIt != g_online.end())
+        Online* ob = onIt == g_online.end() ? nullptr : &onIt->second;
+        if (ob)
         {
-            onIt->second.planPending = false;
-            onIt->second.lastPlanAt  = now;
+            ob->planPending = false;
+            ob->lastPlanAt  = now;
         }
         if (rowIt == g_rows.end() || !rowIt->second.enrolled)
             return;
@@ -1451,68 +1114,87 @@ namespace
         Row& row = rowIt->second;
         Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(d.botGuid));
         PlayerbotAI* ai = BotAI(bot);
-
-        auto reject = [&](const std::string& why)
-        {
-            ++g_statInvalid;
-            if (g_cfg.debug)
-                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: plan for {} rejected: {}",
-                         bot ? bot->GetName() : std::to_string(d.botGuid), why);
-            // Let the policy decide on the next visit instead.
-            if (onIt != g_online.end())
-                onIt->second.activityUntil = now;
-        };
+        const std::string name = bot ? bot->GetName() : std::to_string(d.botGuid);
 
         if (!d.ok)
-            return reject(d.error);
-
-        const AutopilotPreset* preset = AutopilotPresets_Activity(d.activity);
-        if (!preset)
-            return reject("unknown activity '" + d.activity + "'");
-        if (bot)
         {
-            std::string why = AutopilotPresets_Unavailable(*preset, bot);
-            if (!why.empty())
-                return reject(d.activity + " is not available: " + why);
+            // Keep doing what the model last chose; it is asked again at the
+            // next opportunity.
+            ++g_statInvalid;
+            if (g_cfg.debug)
+                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: no usable plan for {}: {}", name, d.error);
+            return;
         }
 
-        ++g_statLlm;
+        ++g_statPlans;
+        row.dirty     = true;
+        row.decidedBy = "llm";
 
-        // Dispositions: take each axis the model named validly; keep the rest.
-        const auto previous = row.dispositions;
-        for (const auto& [axis, option] : d.disposition)
+        // Identity.
+        const bool mustBeInCharacter = g_RoleplayEnable && g_RoleplayStrictness >= 2;
+        if (!d.style.empty() || !d.outlook.empty() || !d.profile.empty())
         {
-            if (!AutopilotPresets_Disposition(axis, option))
-                continue;
-            for (auto& [a, o] : row.dispositions)
-                if (a == axis)
-                    o = option;
+            const bool first = !row.HasIdentity();
+            if (!d.style.empty())
+                row.style = d.style;
+            if (!d.outlook.empty())
+                row.outlook = NormaliseOutlook(d.outlook);
+            if (!d.profile.empty())
+                row.profile = d.profile;
+            if (mustBeInCharacter)
+                row.outlook = "in-character";
+            RecordEvent(d.botGuid, first ? "identity" : "identity_changed",
+                        SafeFormat("{} ({}): {}", row.style, row.outlook, row.profile));
         }
-        NormalizeDispositions(row);
-        if (row.dispositions != previous)
-            RecordEvent(d.botGuid, "disposition", SerializeDispositions(row.dispositions));
 
-        // Playbook: replace it when the model sent one; every entry must name
-        // a known situation and a real disposition option.
-        if (!d.playbook.empty())
+        // Strategies: only names on the allow-list are taken.
+        AutopilotDesired changes;
+        std::vector<std::string> rejected;
+        for (const auto& [strategy, on] : d.strategies)
         {
-            std::vector<std::pair<std::string, std::string>> playbook;
-            for (const auto& [situation, option] : d.playbook)
-                if ((situation == "dungeon" || situation == "battleground" || situation == "with_player") &&
-                    AxisOfOption(option))
-                    playbook.emplace_back(situation, option);
-            if (playbook != row.playbook)
+            if (const AutopilotStrategyInfo* info = AutopilotStrategies_Find(strategy))
             {
-                row.playbook = std::move(playbook);
-                std::string text;
-                for (const auto& [s, o] : row.playbook)
-                    text += (text.empty() ? "" : ", ") + s + ": " + o;
-                RecordEvent(d.botGuid, "playbook", text.empty() ? "cleared" : text);
+                row.desired[info->Key()] = on;
+                changes[info->Key()]     = on;
+            }
+            else
+            {
+                rejected.push_back(strategy);
+            }
+        }
+        if (!rejected.empty())
+        {
+            g_statRejected += rejected.size();
+            if (g_cfg.debug)
+                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} asked for strategies not on the "
+                         "allow-list: {}", name, JoinList(rejected));
+        }
+
+        if (d.rpgGiven)
+        {
+            row.rpg.clear();
+            for (const std::string& s : d.rpg)
+                if (AutopilotStrategies_RpgAllowed(s) && std::find(row.rpg.begin(), row.rpg.end(), s) == row.rpg.end())
+                    row.rpg.push_back(s);
+        }
+
+        if (d.playbookGiven)
+        {
+            row.playbook.clear();
+            for (const auto& [situation, list] : d.playbook)
+            {
+                if (situation != "dungeon" && situation != "battleground" && situation != "with_player")
+                    continue;
+                AutopilotDesired entry;
+                for (const auto& [strategy, on] : list)
+                    if (const AutopilotStrategyInfo* info = AutopilotStrategies_Find(strategy); info && info->combat)
+                        entry[info->Key()] = on;
+                if (!entry.empty())
+                    row.playbook[situation] = std::move(entry);
             }
         }
 
-        // Goal: resolved against the live bot so progress can be measured. A
-        // goal the game cannot resolve does not sink the rest of the plan.
+        // Goal: resolved against the live bot so progress can be measured.
         if (bot && !d.goalKind.empty())
         {
             AutopilotGoal goal;
@@ -1520,56 +1202,52 @@ namespace
             if (!why.empty())
             {
                 if (g_cfg.debug)
-                    LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: goal for {} not taken: {}",
-                             bot->GetName(), why);
+                    LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: goal for {} not taken: {}", name, why);
+            }
+            else if (goal.kind == row.goal.kind && Lower(goal.target) == Lower(row.goal.target))
+            {
+                // The prompt shows the current goal, so models echo it back.
+                // Same kind and target is the same aim: keep its baseline, or
+                // "earn 50 gold" (money now + 50) would never complete.
+                if (!goal.text.empty())
+                    row.goal.text = goal.text;
             }
             else
             {
-                // The prompt shows the current goal, so models echo it back.
-                // Same kind and same target is the same aim: keep its baseline
-                // and age. Otherwise "earn 50 gold" (target = money now + 50)
-                // would move its goalposts on every plan and never complete.
-                const bool same = goal.kind == row.goal.kind && Lower(goal.target) == Lower(row.goal.target);
-                if (same)
-                {
-                    if (!goal.text.empty())
-                        row.goal.text = goal.text;
-                }
-                else
-                {
-                    SetGoal(d.botGuid, row, onIt != g_online.end() ? &onIt->second : nullptr, std::move(goal), "llm");
-                }
+                SetGoal(d.botGuid, row, ob, std::move(goal), "llm");
             }
         }
 
-        uint32_t minutes = d.minutes;
-        if (const PlaystyleProfile* p = Playstyle_Profile(row.playstyle))
-            minutes = minutes ? std::clamp<uint32_t>(minutes, std::max<uint32_t>(1, p->spanMinMinutes / 2),
-                                                     p->spanMaxMinutes * 2)
-                              : urand(p->spanMinMinutes, p->spanMaxMinutes);
-        if (minutes == 0)
-            minutes = 30;
-        row.dirty = true;
-
-        if (!bot || !ai || onIt == g_online.end())
+        if (!d.doing.empty() && d.doing != row.doing)
         {
-            // Logged out while the model was thinking: keep the choice for later.
-            row.activity   = preset->name;
-            row.decidedBy  = "llm";
+            row.doing      = d.doing;
+            row.doingSince = now;
+        }
+        if (!d.reason.empty())
             row.lastReason = d.reason;
-            return;
-        }
 
-        Online& ob = onIt->second;
-        const Situation sit = Classify(bot, ai);
-        if (g_cfg.control && sit.CanDispose())
+        const uint32_t minutes = d.minutes ? std::clamp<uint32_t>(d.minutes, 10, 180) : g_cfg.defaultPlanMinutes;
+        const std::string summary = SafeFormat(
+            "{}{}{} for {}m: {}", row.doing.empty() ? "?" : row.doing,
+            changes.empty() ? "" : " [" + ChangesText(changes) + "]",
+            row.rpg.empty() ? "" : " focus " + JoinList(row.rpg), minutes, d.reason.empty() ? "-" : d.reason);
+        RecordEvent(d.botGuid, "plan", summary);
+
+        if (g_cfg.debug)
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: {} -> {}", name, summary);
+
+        if (!ob)
+            return;   // logged out while the model was thinking: applied at next login
+
+        PushCapped(ob->decisions, summary, kDecisionRing);
+        ob->planUntil = now + minutes * 60;
+
+        if (bot && ai)
         {
-            const auto wanted = WantedDispositions(row, sit);
-            if (wanted != ob.effective)
-                ApplyEffective(ai, ob, wanted);
+            const Situation sit = Classify(bot, ai);
+            Reassert(ai, d.botGuid, row, *ob, sit);
+            SteerRpg(ai, row, *ob, sit);
         }
-
-        SetActivity(bot, ai, d.botGuid, row, ob, sit, *preset, "llm", d.reason, minutes, now);
     }
 
     // ----------------------------------------------------------------------
@@ -1685,7 +1363,7 @@ namespace
         {
             // Monotonic in the percent: raising it only ever adds bots.
             if (g_cfg.randomBotPercent > 0 &&
-                OllamaStableHash(bot->GetGUID().GetRawValue()) % 100 < g_cfg.randomBotPercent)
+                StableHash(bot->GetGUID().GetRawValue()) % 100 < g_cfg.randomBotPercent)
                 return "random";
         }
         else if (g_cfg.altBots)
@@ -1741,18 +1419,17 @@ namespace
             {
                 row.enrolled = true;
                 row.source   = source;
-                if (row.playstyle.empty())
-                    row.playstyle = Playstyle_Assign(guid, bot->GetGuildId());
-                if (row.awareness.empty())
-                    row.awareness = Awareness_Assign(guid);
                 if (firstEver)
                     row.enrolledAt = now;
                 CountEnrolled(row, +1);
 
-                RecordEvent(guid, "enrolled", SafeFormat("{} ({} / {})", source, row.playstyle, row.awareness));
+                // A bot without an identity is the model's to define first.
+                if (!row.HasIdentity())
+                    ob.urgentPlan = true;
+
+                RecordEvent(guid, "enrolled", source);
                 if (g_cfg.debug)
-                    LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: enrolled {} via {} as {} / {}.",
-                             bot->GetName(), source, row.playstyle, row.awareness);
+                    LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: enrolled {} via {}.", bot->GetName(), source);
             }
             else if (row.source != source)
             {
@@ -1762,7 +1439,6 @@ namespace
                 row.source = source;
                 CountEnrolled(row, +1);
             }
-            NormalizeDispositions(row);
             row.dirty = true;
 
             if (!HasMarker(ai))
@@ -1776,7 +1452,7 @@ namespace
             if (firstEver)
                 TakeSnapshot(bot, row, ob, now);
             else if (ob.nextSnapshotAt == 0)
-                ob.nextSnapshotAt = now + static_cast<uint32_t>(OllamaStableHash(guid) % interval);
+                ob.nextSnapshotAt = now + static_cast<uint32_t>(StableHash(guid) % interval);
             return;
         }
 
@@ -1793,16 +1469,15 @@ namespace
         }
 
         // Hand the bot back to playerbots exactly as it would be without us.
-        if (ob.controlled || !ob.appliedActivity.empty())
+        if (ob.controlled || !ob.applied.empty())
         {
             HandBack(ai);
-            ob.controlled      = false;
-            ob.appliedActivity.clear();
+            ob.controlled = false;
+            ob.applied.clear();
             ob.baseline.clear();
-            ob.effective.clear();
         }
-        ob.planPending   = false;
-        ob.activityUntil = 0;
+        ob.planPending = false;
+        ob.guardRpg.clear();
 
         if (HasMarker(ai))
             ai->ChangeStrategy(std::string("-") + AUTOPILOT_STRATEGY_NAME, BOT_STATE_NON_COMBAT);
@@ -1818,7 +1493,7 @@ namespace
         // strategy, ours included, when a grouped bot logs out) and means nothing.
         Apply(bot, ai, guid, ob, EvaluateRules(bot, ai, row, ob.loginSettled && !ob.markerOurs));
         ob.loginSettled = true;
-        ob.evaluated = true;
+        ob.evaluated    = true;
     }
 
     // ----------------------------------------------------------------------
@@ -1838,64 +1513,36 @@ namespace
             ob.lockGroup = sit.withRealPlayer ? sit.groupGuid : 0;
         }
 
-        // Joined someone's group with an activity still live: `+new rpg` and
-        // `-grind` would fight `follow`. Random bots are usually reset by
-        // playerbots on regroup anyway; alts are not. Hand the bot back to its
-        // defaults -- Reassert below then restores the marker and the
-        // dispositions, which do hold in a group.
-        if ((sit.withRealPlayer || sit.follower) && !ob.appliedActivity.empty())
-        {
-            HandBack(ai);
-            ob.appliedActivity.clear();
-            ob.baseline.clear();
-            ob.controlled      = false;
-            ob.effective.clear();
-            RecordEvent(guid, "grouped", "activity paused while following the group");
-        }
-
-        Reassert(ai, row, ob, sit);
-
         if (!ob.historyRequested)
             RequestHistory(guid, ob);
 
         CheckBoundaries(bot, guid, row, ob, sit, now);
-        UpdateMood(bot, guid, row, ob, sit, now);
+        UpdateFacts(bot, ob, now);
         CheckGoal(bot, guid, row, ob, now);
+        if (g_cfg.control && sit.CanUseNonCombat())
+            CheckGuards(bot, guid, ob, now);
+
+        // Out-of-combat strategies follow the situation: joining a group puts
+        // them back to the bot's own, leaving it puts the model's back.
+        Reassert(ai, guid, row, ob, sit);
 
         // A plan that never came back (provider down, server restarted the
-        // dispatcher) must not freeze the bot forever.
+        // dispatcher) must not block the next one forever.
         if (ob.planPending && now - ob.planSubmittedAt > g_cfg.planTimeoutSeconds)
-        {
-            ob.planPending   = false;
-            ob.activityUntil = now;
-        }
+            ob.planPending = false;
 
-        if (!g_cfg.control || !sit.CanSteerActivity())
+        if (!g_cfg.control || !sit.CanUseNonCombat())
             return;
 
-        std::string guardReason;
-        if (const AutopilotPreset* guard = CheckGuards(bot, row, ob, now, guardReason))
-        {
-            ++g_statGuard;
-            // No urgent plan: the reason reaches the model through the prompt
-            // at its normal cadence, so a guard never spends budget by itself.
-            ob.lastGuard   = guardReason;
-            ob.lastGuardAt = now;
-            RecordEvent(guid, "guard", guardReason);
-            SetActivity(bot, ai, guid, row, ob, sit, *guard, "guard", guardReason, g_cfg.guardHoldMinutes, now);
-            return;
-        }
-
-        const AutopilotPreset* current = row.activity.empty() ? nullptr : AutopilotPresets_Activity(row.activity);
-        const bool due = !current || now >= ob.activityUntil ||
-                         !AutopilotPresets_Unavailable(*current, bot).empty();
+        // Ask the model when it wanted to be asked again, when something
+        // happened that warrants it, or when the bot has no identity yet.
+        // When it cannot be asked (no budget, nobody around), the bot keeps
+        // doing what it last chose.
+        const bool due = !row.HasIdentity() || ob.urgentPlan || now >= ob.planUntil;
         if (due)
-        {
-            Decide(bot, ai, guid, row, ob, sit, now, false);
-            return;
-        }
+            TrySubmitPlan(bot, ai, guid, row, ob, now, false);
 
-        SteerRpg(ai, *current, sit);
+        SteerRpg(ai, row, ob, sit);
     }
 
     // ----------------------------------------------------------------------
@@ -1981,19 +1628,18 @@ namespace
         {
             if (PlayerbotAI* ai = BotAI(ObjectAccessor::FindPlayer(ObjectGuid(guid))))
             {
-                if (ob.controlled || !ob.appliedActivity.empty())
+                if (ob.controlled || !ob.applied.empty())
                     HandBack(ai);
                 if (HasMarker(ai))
                     ai->ChangeStrategy(std::string("-") + AUTOPILOT_STRATEGY_NAME, BOT_STATE_NON_COMBAT);
             }
             ob.controlled = false;
-            ob.appliedActivity.clear();
+            ob.applied.clear();
             ob.baseline.clear();
-            ob.effective.clear();
-            ob.markerOurs    = false;
-            ob.evaluated     = false;
-            ob.planPending   = false;
-            ob.activityUntil = 0;
+            ob.guardRpg.clear();
+            ob.markerOurs  = false;
+            ob.evaluated   = false;
+            ob.planPending = false;
         }
         LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot is off; bots handed back to playerbots.");
     }
@@ -2070,21 +1716,20 @@ namespace
                 return;
             CharacterDatabase.Execute(
                 "INSERT INTO mod_ollama_chat_autopilot "
-                "(bot_guid, mode, enrolled, source, playstyle, awareness, kills_total, "
-                "deaths_total, quests_total, dungeons_total, activity, activity_since, decided_by, "
-                "dispositions, playbook, goal_kind, goal_target, goal_target_id, goal_value, "
-                "goal_baseline, goal_set_at, goal_text, last_reason, enrolled_at, updated_at) VALUES " + values +
+                "(bot_guid, mode, enrolled, source, style, outlook, profile, kills_total, deaths_total, "
+                "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, rpg, playbook, "
+                "goal_kind, goal_target, goal_target_id, goal_value, goal_baseline, goal_set_at, goal_text, "
+                "last_reason, enrolled_at, updated_at) VALUES " + values +
                 " ON DUPLICATE KEY UPDATE mode = VALUES(mode), enrolled = VALUES(enrolled), "
-                "source = VALUES(source), playstyle = VALUES(playstyle), "
-                "awareness = VALUES(awareness), kills_total = VALUES(kills_total), "
+                "source = VALUES(source), style = VALUES(style), outlook = VALUES(outlook), "
+                "profile = VALUES(profile), kills_total = VALUES(kills_total), "
                 "deaths_total = VALUES(deaths_total), quests_total = VALUES(quests_total), "
-                "dungeons_total = VALUES(dungeons_total), "
-                "activity = VALUES(activity), activity_since = VALUES(activity_since), "
-                "decided_by = VALUES(decided_by), dispositions = VALUES(dispositions), "
-                "playbook = VALUES(playbook), goal_kind = VALUES(goal_kind), "
-                "goal_target = VALUES(goal_target), goal_target_id = VALUES(goal_target_id), "
-                "goal_value = VALUES(goal_value), goal_baseline = VALUES(goal_baseline), "
-                "goal_set_at = VALUES(goal_set_at), "
+                "dungeons_total = VALUES(dungeons_total), doing = VALUES(doing), "
+                "doing_since = VALUES(doing_since), decided_by = VALUES(decided_by), "
+                "strategies = VALUES(strategies), rpg = VALUES(rpg), playbook = VALUES(playbook), "
+                "goal_kind = VALUES(goal_kind), goal_target = VALUES(goal_target), "
+                "goal_target_id = VALUES(goal_target_id), goal_value = VALUES(goal_value), "
+                "goal_baseline = VALUES(goal_baseline), goal_set_at = VALUES(goal_set_at), "
                 "goal_text = VALUES(goal_text), last_reason = VALUES(last_reason), "
                 "enrolled_at = VALUES(enrolled_at), updated_at = VALUES(updated_at)");
             values.clear();
@@ -2108,13 +1753,14 @@ namespace
                 values += ',';
             const AutopilotGoal& g = row.goal;
             values += SafeFormat(
-                "({}, {}, {}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', {}, '{}', '{}', '{}', "
+                "({}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {}, {}, '{}', {}, '{}', '{}', '{}', '{}', "
                 "'{}', '{}', {}, {}, {}, {}, '{}', '{}', {}, {})",
                 guid, uint32_t(row.mode), row.enrolled ? 1 : 0, esc(row.source, 32),
-                esc(row.playstyle, 32), esc(row.awareness, 32), row.killsTotal, row.deathsTotal,
-                row.questsTotal, row.dungeonsTotal, esc(row.activity, 32), row.activitySince,
-                esc(row.decidedBy, 16), esc(SerializeDispositions(row.dispositions), 255),
-                esc(SerializeDispositions(row.playbook), 255),
+                esc(row.style, 64), esc(row.outlook, 32), esc(row.profile, 1000),
+                row.killsTotal, row.deathsTotal, row.questsTotal, row.dungeonsTotal,
+                esc(row.doing, 64), row.doingSince, esc(row.decidedBy, 16),
+                esc(AutopilotStrategies_Format(row.desired), 1000), esc(JoinList(row.rpg), 255),
+                esc(SerializePlaybook(row.playbook), 1000),
                 g.Active() ? Goal_KindName(g.kind) : "", esc(g.target, 64), g.targetId, g.value,
                 g.baseline, g.setAt, esc(g.text, 255), esc(row.lastReason, 255), row.enrolledAt, now);
             row.dirty = false;
@@ -2138,6 +1784,12 @@ namespace
         if (it == g_rows.end() || !it->second.enrolled)
             return;
         fn(guid, it->second);
+    }
+
+    Online* OnlineOf(uint64_t guid)
+    {
+        auto it = g_online.find(guid);
+        return it == g_online.end() ? nullptr : &it->second;
     }
 
     // ----------------------------------------------------------------------
@@ -2188,9 +1840,7 @@ namespace
         handler->SendSysMessage(SafeFormat(
             "OllamaChat: {} is now {} (mode: {}{}).", bot->GetName(),
             after.enrolled ? "on autopilot" : "not on autopilot", ModeName(after.mode),
-            after.enrolled ? SafeFormat(", source: {}, {} / {}", after.source, after.playstyle,
-                                        after.awareness)
-                           : std::string()));
+            after.enrolled ? ", source: " + after.source : std::string()));
         if (!Autopilot_IsActive())
             handler->SendSysMessage("OllamaChat: note - autopilot is not active, see `.ollama autopilot status`.");
         return true;
@@ -2202,12 +1852,14 @@ namespace
 
     void SendInactiveReasons(ChatHandler* handler)
     {
+        if (!g_Enable)
+            handler->SendSysMessage("  - OllamaChat.Enable is 0");
         if (!g_cfg.enable)
             handler->SendSysMessage("  - OllamaChat.Autopilot.Enable is 0");
         if (!g_EnableChatBotSnapshotTemplate)
             handler->SendSysMessage("  - OllamaChat.EnableChatBotSnapshotTemplate is 0 (required)");
         if (!g_tablesOk)
-            handler->SendSysMessage("  - autopilot tables are missing (apply data/sql/characters/base/2026_10_05_autopilot.sql)");
+            handler->SendSysMessage("  - autopilot tables are missing or out of date (apply data/sql/characters/base/2026_10_05_autopilot.sql)");
         if (!AutopilotStrategy_IsRegistered())
             handler->SendSysMessage("  - the 'autopilot' playerbots strategy failed to register (see startup log)");
     }
@@ -2233,8 +1885,7 @@ namespace
         {
             std::lock_guard<std::mutex> lock(g_mutex);
 
-            uint32_t onlineEnrolled = 0;
-            std::unordered_map<std::string, uint32_t> byActivity;
+            uint32_t onlineEnrolled = 0, withIdentity = 0;
             uint32_t tiers[3] = { 0, 0, 0 };
             for (uint64_t guid : g_roster)
             {
@@ -2242,9 +1893,9 @@ namespace
                 if (it == g_rows.end() || !it->second.enrolled)
                     continue;
                 ++onlineEnrolled;
-                ++byActivity[it->second.activity.empty() ? "-" : it->second.activity];
-                auto on = g_online.find(guid);
-                if (on != g_online.end())
+                if (it->second.HasIdentity())
+                    ++withIdentity;
+                if (auto on = g_online.find(guid); on != g_online.end())
                     ++tiers[static_cast<int>(on->second.tier)];
             }
 
@@ -2253,33 +1904,24 @@ namespace
             if (!Autopilot_IsActive())
                 SendInactiveReasons(handler);
             handler->SendSysMessage(SafeFormat(
-                "  enrolled: {} total, {} online | bots tracked online: {} | rule-enrolled {} of cap {}",
-                g_enrolledCount, onlineEnrolled, g_roster.size(), g_cappedCount,
+                "  enrolled: {} total, {} online ({} with an identity from the model) | rule-enrolled {} of cap {}",
+                g_enrolledCount, onlineEnrolled, withIdentity, g_cappedCount,
                 g_cfg.maxEnrolled ? std::to_string(g_cfg.maxEnrolled) : std::string("none")));
-
-            std::string activities;
-            for (const auto& [activity, n] : byActivity)
-                activities += SafeFormat("{}{} {}", activities.empty() ? "" : ", ", n, activity);
-            handler->SendSysMessage("  activities: " + (activities.empty() ? std::string("-") : activities));
             handler->SendSysMessage(SafeFormat(
                 "  tiers (as last computed): {} foreground, {} background, {} dormant",
                 tiers[2], tiers[1], tiers[0]));
 
             const AutopilotPlannerStats ps = AutopilotPlanner_GetStats();
             handler->SendSysMessage(SafeFormat(
-                "  decisions: {} llm, {} policy, {} guard, {} rejected | rpg steers {} | human locks {}",
-                g_statLlm, g_statPolicy, g_statGuard, g_statInvalid, g_statSteer, g_statLocks));
+                "  plans applied {} | unusable replies {} | strategies refused (not allowed) {} | guards {} | "
+                "rpg steers {} | human locks {}",
+                g_statPlans, g_statInvalid, g_statRejected, g_statGuard, g_statSteer, g_statLocks));
             handler->SendSysMessage(SafeFormat(
                 "  llm: {} | budget {:.1f}/{:.0f} tokens ({}/h) | in flight {} | submitted {}, refused {}, "
                 "parsed {}, failed {}{}",
                 g_cfg.llmEnable ? "on" : "off", ps.tokens, ps.capacity, g_cfg.llmCallsPerHour, ps.inFlight,
                 ps.submitted, ps.refused, ps.parsed, ps.failed,
                 ps.lastError.empty() ? "" : " | last error: " + ps.lastError));
-            handler->SendSysMessage(SafeFormat(
-                "  sweep: {} bots every {} ms (full cycle ~{}s) | snapshots every {} min",
-                g_cfg.botsPerSweep, g_cfg.sweepIntervalMs,
-                (g_roster.size() / std::max<uint32_t>(1, g_cfg.botsPerSweep) + 1) * g_cfg.sweepIntervalMs / 1000,
-                g_cfg.snapshotIntervalMinutes));
             return true;
         }
 
@@ -2294,14 +1936,12 @@ namespace
         bool   hasRow = false;
         {
             std::lock_guard<std::mutex> lock(g_mutex);
-            auto it = g_rows.find(guid);
-            if (it != g_rows.end())
+            if (auto it = g_rows.find(guid); it != g_rows.end())
             {
                 row    = it->second;
                 hasRow = true;
             }
-            auto on = g_online.find(guid);
-            if (on != g_online.end())
+            if (auto on = g_online.find(guid); on != g_online.end())
                 ob = on->second;
         }
 
@@ -2313,30 +1953,34 @@ namespace
 
         PlayerbotAI* ai = BotAI(bot);
         handler->SendSysMessage(SafeFormat(
-            "OllamaChat: {} - {} (mode: {}, source: {}) | marker strategy: {}",
+            "OllamaChat: {} - {} (mode: {}, source: {}) | tier: {}{}",
             bot->GetName(), row.enrolled ? "ON autopilot" : "not on autopilot", ModeName(row.mode),
-            row.source.empty() ? "-" : row.source, ai && HasMarker(ai) ? "present" : "absent"));
-        handler->SendSysMessage(SafeFormat(
-            "  playstyle: {} | awareness: {} | dispositions: {} | enrolled since: {}",
-            row.playstyle, row.awareness, SerializeDispositions(row.dispositions),
-            row.enrolledAt ? Ago(row.enrolledAt, now) : "-"));
-        handler->SendSysMessage(SafeFormat(
-            "  activity: {} (since {}, by {}, reconsider in {}) | rpg status: {} | tier: {}{}",
-            row.activity.empty() ? "-" : row.activity,
-            row.activitySince ? Ago(row.activitySince, now) : "-",
-            row.decidedBy.empty() ? "-" : row.decidedBy,
-            ob.activityUntil > now ? Span(ob.activityUntil - now) : "now",
-            ai ? AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai)) : "-", TierName(ob.tier),
+            row.source.empty() ? "-" : row.source, TierName(ob.tier),
             ob.planPending ? " | waiting on the model" : ""));
+        handler->SendSysMessage(row.HasIdentity()
+            ? SafeFormat("  identity: {} ({}) - {}", row.style, row.outlook, row.profile)
+            : std::string("  identity: none yet - the model writes one on its first plan"));
+        handler->SendSysMessage(SafeFormat(
+            "  doing: {} (since {}) | next plan due: {}",
+            row.doing.empty() ? "-" : row.doing, row.doingSince ? Ago(row.doingSince, now) : "-",
+            ob.planUntil > now ? "in " + Span(ob.planUntil - now) : "now"));
+        handler->SendSysMessage("  wants: " + (row.desired.empty() ? std::string("-") : ChangesText(row.desired)));
+        handler->SendSysMessage(SafeFormat("  rpg focus: {}{} | now: {}",
+            row.rpg.empty() ? "free roaming" : JoinList(row.rpg),
+            ob.guardRpg.empty() ? "" : " (overridden: " + ob.lastGuard + ")",
+            ai ? AutopilotRpg_StatusName(AutopilotRpg_CurrentStatus(ai)) : "-"));
+        if (ai)
+            handler->SendSysMessage("  live: " + AutopilotStrategies_DescribeLive(ai));
+        for (const auto& [situation, changes] : row.playbook)
+            handler->SendSysMessage(SafeFormat("  playbook {}: {}", situation, ChangesText(changes)));
         handler->SendSysMessage("  goal: " + (row.goal.Active() ? Goal_Describe(bot, row.goal, Counters(row))
                                                                 : std::string("-")));
-        handler->SendSysMessage("  mood: " + MoodText(row, ob, now));
-        if (!row.playbook.empty())
-            handler->SendSysMessage("  playbook: " + SerializeDispositions(row.playbook));
+        handler->SendSysMessage("  last reason: " + (row.lastReason.empty() ? std::string("-") : row.lastReason));
+        const std::string rewards = RewardSummary(ob, now);
+        handler->SendSysMessage("  last hour: " + (rewards.empty() ? std::string("nothing rewarding") : rewards));
         for (const auto& [at, text] : ob.temptations)
             if (now - at <= kHour)
                 handler->SendSysMessage(SafeFormat("  tempted ({}): {}", Ago(at, now), text));
-        handler->SendSysMessage("  last reason: " + (row.lastReason.empty() ? std::string("-") : row.lastReason));
         if (!ob.locked.empty())
         {
             std::string locked;
@@ -2349,22 +1993,7 @@ namespace
             row.killsTotal, row.deathsTotal, row.questsTotal, row.dungeonsTotal));
 
         std::vector<ProgressSnapshot> snaps = Progress_LoadSnapshots(guid, now > 86400 ? now - 86400 : 0, 2000);
-        if (snaps.empty())
-        {
-            handler->SendSysMessage("  no snapshots in the last 24h yet.");
-            return true;
-        }
-
-        const ProgressSnapshot& last = snaps.back();
-        handler->SendSysMessage(SafeFormat(
-            "  latest snapshot ({}): level {}, {}, {} | durability {}% | {} free bag slots | {} quests in log",
-            Ago(last.takenAt, now), uint32_t(last.level), Progress_FormatMoney(last.money),
-            Progress_ZoneName(last.zoneId), uint32_t(last.durabilityPct), uint32_t(last.freeBagSlots),
-            uint32_t(last.questsActive)));
-        if (!last.professions.empty())
-            handler->SendSysMessage("  professions: " + Progress_DescribeProfessions(last.professions));
-        std::string summary = Progress_Summarize(snaps);
-        if (!summary.empty())
+        if (std::string summary = Progress_Summarize(snaps); !summary.empty())
             handler->SendSysMessage("  " + summary);
         return true;
     }
@@ -2440,30 +2069,15 @@ namespace
         if (wouldEnroll != matched)
             handler->SendSysMessage(SafeFormat("  MaxEnrolled {} limits that to ~{}.", g_cfg.maxEnrolled, wouldEnroll));
 
-        const uint32_t interval = std::max<uint32_t>(1, g_cfg.snapshotIntervalMinutes);
         handler->SendSysMessage(SafeFormat(
-            "  diary load: ~{} snapshot rows/hour; history settles at <= {} snapshots and {} events per bot.",
-            wouldEnroll * 60 / interval, g_cfg.snapshotRetention, g_cfg.eventRetention));
-
-        // What the matched bots would ask for at the configured cadences,
-        // against what the budget lets through.
+            "  tiers right now: {} foreground, {} background, {} dormant.", tiers[2], tiers[1], tiers[0]));
+        const uint32_t wanted =
+            tiers[2] * 60 / std::max<uint32_t>(1, g_cfg.decisionIntervalMinutes) +
+            tiers[1] * 60 / std::max<uint32_t>(1, g_cfg.goalRefreshMinutes);
         handler->SendSysMessage(SafeFormat(
-            "  tiers right now: {} foreground, {} background, {} dormant (dormant bots never call the LLM).",
-            tiers[2], tiers[1], tiers[0]));
-        if (g_cfg.llmEnable)
-        {
-            const uint32_t wanted =
-                tiers[2] * 60 / std::max<uint32_t>(1, g_cfg.decisionIntervalMinutes) +
-                tiers[1] * 60 / std::max<uint32_t>(1, g_cfg.goalRefreshMinutes);
-            handler->SendSysMessage(SafeFormat(
-                "  LLM: these bots would ask ~{} plans/hour; the budget allows {}/hour{}.",
-                wanted, g_cfg.llmCallsPerHour,
-                wanted > g_cfg.llmCallsPerHour ? " - the rest fall back to the playstyle policy" : ""));
-        }
-        else
-        {
-            handler->SendSysMessage("  LLM planning is off (Autopilot.Llm.Enable = 0): policy only, no LLM calls.");
-        }
+            "  LLM: up to ~{} plans/hour at the tier intervals; the budget allows {}/hour. Bots that cannot be "
+            "planned for keep doing what the model last chose; dormant bots wait until a player comes near.",
+            wanted, g_cfg.llmCallsPerHour));
 
         if (!Autopilot_IsActive())
         {
@@ -2473,90 +2087,36 @@ namespace
         return true;
     }
 
-    bool HandlePlaystyle(ChatHandler* handler, std::string name, Optional<std::string> style)
+    // `identity <bot>` shows it; `identity <bot> clear` has the model write a
+    // new one on its next plan.
+    bool HandleIdentity(ChatHandler* handler, std::string name, Optional<std::string> action)
     {
         Player* bot = FindBot(handler, name);
         if (!bot)
             return true;
 
-        std::string all;
-        for (const std::string& s : Playstyle_List())
-            all += (all.empty() ? "" : ", ") + s;
-
-        const uint64_t guid = bot->GetGUID().GetRawValue();
         std::lock_guard<std::mutex> lock(g_mutex);
-        auto it = g_rows.find(guid);
-        if (!style)
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: {} playstyle: {} (available: {})", bot->GetName(),
-                                               it == g_rows.end() || it->second.playstyle.empty()
-                                                   ? "-" : it->second.playstyle, all));
+        Row*    row = nullptr;
+        Online* ob  = nullptr;
+        if (!ControlTarget(handler, bot, row, ob))
             return true;
-        }
-        if (!Playstyle_Exists(*style))
+
+        if (action && Lower(*action) == "clear")
         {
-            handler->SendSysMessage(SafeFormat("OllamaChat: unknown playstyle '{}'. Available: {}", *style, all));
-            return true;
-        }
-        if (it == g_rows.end())
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: {} has never been on autopilot; enroll it first.", bot->GetName()));
+            row->style.clear();
+            row->outlook.clear();
+            row->profile.clear();
+            row->dirty     = true;
+            ob->urgentPlan = true;
+            RecordEvent(bot->GetGUID().GetRawValue(), "identity", "cleared by GM; the model will write a new one");
+            handler->SendSysMessage(SafeFormat("OllamaChat: {}'s identity cleared; the model writes a new one on "
+                                               "its next plan.", bot->GetName()));
             return true;
         }
 
-        it->second.playstyle = Lower(*style);
-        it->second.dirty     = true;
-        RecordEvent(guid, "playstyle", it->second.playstyle + " (set by GM)");
-
-        // Its next decision should reflect the new playstyle.
-        auto on = g_online.find(guid);
-        if (on != g_online.end())
-        {
-            on->second.urgentPlan    = true;
-            on->second.activityUntil = 0;
-        }
-        handler->SendSysMessage(SafeFormat("OllamaChat: {} playstyle set to {}.", bot->GetName(), it->second.playstyle));
-        return true;
-    }
-
-    bool HandleAwareness(ChatHandler* handler, std::string name, Optional<std::string> level)
-    {
-        Player* bot = FindBot(handler, name);
-        if (!bot)
-            return true;
-
-        std::string all;
-        for (const std::string& s : Awareness_List())
-            all += (all.empty() ? "" : ", ") + s;
-
-        const uint64_t guid = bot->GetGUID().GetRawValue();
-        std::lock_guard<std::mutex> lock(g_mutex);
-        auto it = g_rows.find(guid);
-        if (!level)
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: {} awareness: {} (available: {})", bot->GetName(),
-                                               it == g_rows.end() || it->second.awareness.empty()
-                                                   ? "-" : it->second.awareness, all));
-            return true;
-        }
-        if (!Awareness_Allowed(*level))
-        {
-            handler->SendSysMessage(SafeFormat(
-                "OllamaChat: awareness '{}' is not available{}. Available: {}", *level,
-                g_RoleplayEnable && g_RoleplayStrictness >= 2 ? " at roleplay strictness 2 (immersed only)" : "",
-                all));
-            return true;
-        }
-        if (it == g_rows.end())
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: {} has never been on autopilot; enroll it first.", bot->GetName()));
-            return true;
-        }
-
-        it->second.awareness = Lower(*level);
-        it->second.dirty     = true;
-        RecordEvent(guid, "awareness", it->second.awareness + " (set by GM)");
-        handler->SendSysMessage(SafeFormat("OllamaChat: {} awareness set to {}.", bot->GetName(), it->second.awareness));
+        handler->SendSysMessage(row->HasIdentity()
+            ? SafeFormat("OllamaChat: {} - {} ({}): {}", bot->GetName(), row->style, row->outlook, row->profile)
+            : SafeFormat("OllamaChat: {} has no identity yet.", bot->GetName()));
         return true;
     }
 
@@ -2573,9 +2133,7 @@ namespace
             return true;
 
         PlayerbotAI* ai = BotAI(bot);
-        const Situation sit = Classify(bot, ai);
-        const uint32_t now = Progress_Now();
-        if (!sit.CanSteerActivity())
+        if (!Classify(bot, ai).CanUseNonCombat())
         {
             ob->urgentPlan = true;
             handler->SendSysMessage(SafeFormat(
@@ -2584,11 +2142,11 @@ namespace
         }
 
         ob->planPending = false;
-        Decide(bot, ai, bot->GetGUID().GetRawValue(), *row, *ob, sit, now, /*forceLlm*/ true);
-        handler->SendSysMessage(ob->planPending
+        const bool asked = TrySubmitPlan(bot, ai, bot->GetGUID().GetRawValue(), *row, *ob, Progress_Now(), true);
+        handler->SendSysMessage(asked
             ? SafeFormat("OllamaChat: asked the model what {} should do next.", bot->GetName())
-            : SafeFormat("OllamaChat: {} -> {} (policy; the model was unavailable or over budget).",
-                         bot->GetName(), row->activity));
+            : SafeFormat("OllamaChat: could not ask the model for {} right now (LLM off, budget spent or too many "
+                         "plans in flight); it keeps its current plan.", bot->GetName()));
         return true;
     }
 
@@ -2636,49 +2194,8 @@ namespace
 
         SetGoal(guid, *row, ob, std::move(goal), "gm");
         ob->urgentPlan = true;
-        handler->SendSysMessage(SafeFormat("OllamaChat: {} goal: {}", bot->GetName(),
-                                           Goal_Describe(bot, row->goal, Counters(*row))));
-        return true;
-    }
-
-    bool HandleActivity(ChatHandler* handler, std::string name, Optional<std::string> activity,
-                        Optional<uint32> minutes)
-    {
-        Player* bot = FindBot(handler, name);
-        if (!bot)
-            return true;
-
-        std::string all;
-        for (const AutopilotPreset& p : AutopilotPresets_Activities())
-            all += (all.empty() ? "" : ", ") + p.name;
-
-        std::lock_guard<std::mutex> lock(g_mutex);
-        Row*    row = nullptr;
-        Online* ob  = nullptr;
-        if (!ControlTarget(handler, bot, row, ob))
-            return true;
-
-        if (!activity)
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: {} activity: {} (available: {})", bot->GetName(),
-                                               row->activity.empty() ? "-" : row->activity, all));
-            return true;
-        }
-
-        const AutopilotPreset* preset = AutopilotPresets_Activity(*activity);
-        if (!preset)
-        {
-            handler->SendSysMessage(SafeFormat("OllamaChat: unknown activity '{}'. Available: {}", *activity, all));
-            return true;
-        }
-
-        PlayerbotAI* ai = BotAI(bot);
-        const Situation sit = Classify(bot, ai);
-        const uint32_t mins = std::clamp<uint32_t>(minutes.value_or(PickMinutes(*row)), 1, 600);
-        SetActivity(bot, ai, bot->GetGUID().GetRawValue(), *row, *ob, sit, *preset, "gm", "set by a GM", mins,
-                    Progress_Now());
-        handler->SendSysMessage(SafeFormat("OllamaChat: {} -> {} for {} minutes{}.", bot->GetName(), preset->name, mins,
-                                           sit.CanSteerActivity() ? "" : " (applies when its group/instance ends)"));
+        handler->SendSysMessage(SafeFormat("OllamaChat: {} goal: {} (the model plans around it next).",
+                                           bot->GetName(), Goal_Describe(bot, row->goal, Counters(*row))));
         return true;
     }
 }
@@ -2717,6 +2234,7 @@ void Autopilot_LoadConfig()
     c.maxConcurrentPlans      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.MaxConcurrentPlans", 2));
     c.decisionIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DecisionIntervalMinutes", 15));
     c.goalRefreshMinutes      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 90));
+    c.defaultPlanMinutes      = std::clamp<uint32_t>(sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DefaultPlanMinutes", 45), 10, 180);
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
@@ -2755,28 +2273,20 @@ void Autopilot_LoadConfig()
     c.guardFreeBagSlots       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.FreeBagSlots", 2);
     c.guardHoldMinutes        = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.HoldMinutes", 10));
 
-    c.boredomThreshold        = std::clamp(sConfigMgr->GetOption<float>("OllamaChat.Autopilot.BoredomThreshold", 70.0f), 1.0f, 100.0f);
-    c.satisfiedScore          = std::max(0.1f, sConfigMgr->GetOption<float>("OllamaChat.Autopilot.SatisfiedScore", 10.0f));
     c.goalStaleMinutes        = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalStaleMinutes", 120);
-    c.policyGoals             = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.PolicyGoals", true);
 
     if (c.minLevel > c.maxLevel)
         std::swap(c.minLevel, c.maxLevel);
 
-    Playstyle_LoadConfig();
-    AutopilotPresets_Load();
+    AutopilotStrategies_Load();
     AutopilotPlanner_ConfigureBudget(c.llmCallsPerHour, c.maxConcurrentPlans);
 
     std::lock_guard<std::mutex> lock(g_mutex);
     g_cfg = std::move(c);
 
-    // Rules and presets may have changed: re-evaluate every online bot on its
-    // next visit, and re-check every row's dispositions against the new axes.
+    // Rules may have changed: re-evaluate every online bot on its next visit.
     for (auto& [guid, ob] : g_online)
         ob.evaluated = false;
-    for (auto& [guid, row] : g_rows)
-        if (row.enrolled && NormalizeDispositions(row))
-            row.dirty = true;
 
     if (g_cfg.enable && !g_EnableChatBotSnapshotTemplate)
         LOG_WARN("module.ollamachat",
@@ -2797,20 +2307,21 @@ void Autopilot_Load()
 
     if (g_tablesOk)
     {
-        // Columns were added while the table was still unreleased; a database
+        // Columns changed while the table was still unreleased; a database
         // set up from an earlier draft needs the file re-applied.
         if (QueryResult result = CharacterDatabase.Query(
                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                "AND table_name = 'mod_ollama_chat_autopilot' AND column_name = 'goal_kind'"))
-            g_tablesOk = (*result)[0].Get<uint64>() == 1;
+                "AND table_name = 'mod_ollama_chat_autopilot' AND column_name IN ('profile', 'strategies')"))
+            g_tablesOk = (*result)[0].Get<uint64>() == 2;
     }
 
     if (!g_tablesOk)
     {
         if (g_cfg.enable)
             LOG_ERROR("server.loading",
-                      "[Ollama Chat] Autopilot tables are missing or out of date; apply "
-                      "data/sql/characters/base/2026_10_05_autopilot.sql. Autopilot stays off.");
+                      "[Ollama Chat] Autopilot tables are missing or out of date; drop "
+                      "mod_ollama_chat_autopilot and apply data/sql/characters/base/2026_10_05_autopilot.sql. "
+                      "Autopilot stays off.");
         return;
     }
 
@@ -2837,11 +2348,10 @@ void Autopilot_Load()
     g_cappedCount   = 0;
 
     if (QueryResult result = CharacterDatabase.Query(
-            "SELECT bot_guid, mode, enrolled, source, playstyle, awareness, kills_total, "
-            "deaths_total, quests_total, enrolled_at, activity, activity_since, decided_by, "
-            "dispositions, goal_text, last_reason, dungeons_total, playbook, goal_kind, "
-            "goal_target, goal_target_id, goal_value, goal_baseline, goal_set_at "
-            "FROM mod_ollama_chat_autopilot"))
+            "SELECT bot_guid, mode, enrolled, source, style, outlook, profile, kills_total, deaths_total, "
+            "quests_total, dungeons_total, doing, doing_since, decided_by, strategies, rpg, playbook, "
+            "goal_kind, goal_target, goal_target_id, goal_value, goal_baseline, goal_set_at, goal_text, "
+            "last_reason, enrolled_at FROM mod_ollama_chat_autopilot"))
     {
         do
         {
@@ -2853,35 +2363,33 @@ void Autopilot_Load()
             row.mode          = f[1].Get<uint8>();
             row.enrolled      = f[2].Get<uint8>() != 0;
             row.source        = f[3].Get<std::string>();
-            row.playstyle     = f[4].Get<std::string>();
-            row.awareness     = f[5].Get<std::string>();
-            row.killsTotal    = f[6].Get<uint32>();
-            row.deathsTotal   = f[7].Get<uint32>();
-            row.questsTotal   = f[8].Get<uint32>();
-            row.enrolledAt    = f[9].Get<uint32>();
-            row.activity      = f[10].Get<std::string>();
-            row.activitySince = f[11].Get<uint32>();
-            row.decidedBy     = f[12].Get<std::string>();
-            row.dispositions  = ParseDispositions(f[13].Get<std::string>());
-            row.lastReason    = f[15].Get<std::string>();
-            row.dungeonsTotal = f[16].Get<uint32>();
-            row.playbook      = ParseDispositions(f[17].Get<std::string>());
+            row.style         = f[4].Get<std::string>();
+            row.outlook       = f[5].Get<std::string>();
+            row.profile       = f[6].Get<std::string>();
+            row.killsTotal    = f[7].Get<uint32>();
+            row.deathsTotal   = f[8].Get<uint32>();
+            row.questsTotal   = f[9].Get<uint32>();
+            row.dungeonsTotal = f[10].Get<uint32>();
+            row.doing         = f[11].Get<std::string>();
+            row.doingSince    = f[12].Get<uint32>();
+            row.decidedBy     = f[13].Get<std::string>();
+            row.desired       = AutopilotStrategies_Parse(f[14].Get<std::string>());
+            row.rpg           = SplitString(f[15].Get<std::string>(), ',');
+            row.playbook      = ParsePlaybook(f[16].Get<std::string>());
 
-            row.goal.kind     = Goal_KindFromName(f[18].Get<std::string>());
-            if (f[18].Get<std::string>().empty())
-                row.goal.kind = GoalKind::None;
-            row.goal.text     = f[14].Get<std::string>();
-            row.goal.target   = f[19].Get<std::string>();
-            row.goal.targetId = f[20].Get<uint32>();
-            row.goal.value    = f[21].Get<uint32>();
-            row.goal.baseline = f[22].Get<uint32>();
-            row.goal.setAt    = f[23].Get<uint32>();
+            const std::string kind = f[17].Get<std::string>();
+            row.goal.kind     = kind.empty() ? GoalKind::None : Goal_KindFromName(kind);
+            row.goal.target   = f[18].Get<std::string>();
+            row.goal.targetId = f[19].Get<uint32>();
+            row.goal.value    = f[20].Get<uint32>();
+            row.goal.baseline = f[21].Get<uint32>();
+            row.goal.setAt    = f[22].Get<uint32>();
+            row.goal.text     = f[23].Get<std::string>();
+            row.lastReason    = f[24].Get<std::string>();
+            row.enrolledAt    = f[25].Get<uint32>();
+
             if (row.enrolled)
-            {
                 CountEnrolled(row, +1);
-                if (NormalizeDispositions(row))
-                    row.dirty = true;
-            }
             g_rows.emplace(f[0].Get<uint64>(), std::move(row));
         } while (result->NextRow());
     }
@@ -2981,8 +2489,7 @@ void Autopilot_Update(uint32_t diff)
     // Round-robin with a fixed budget: BotsPerSweep full visits (enrolled or
     // not yet evaluated bots), plus cheap checks of the rest -- a lookup and a
     // marker test -- capped at a few times that. Per-tick cost stays flat
-    // however many bots are online, and the budget goes to enrolled bots
-    // rather than being spread across everyone.
+    // however many bots are online, and the budget goes to enrolled bots.
     const size_t limit = std::min<size_t>(g_roster.size(), size_t(g_cfg.botsPerSweep) * 8);
     size_t full = 0;
     for (size_t i = 0; i < limit && full < g_cfg.botsPerSweep; ++i)
@@ -3021,23 +2528,22 @@ ChatCommandTable const& Autopilot_CommandTable()
 {
     static ChatCommandTable table =
     {
-        { "on",        HandleOn,        SEC_ADMINISTRATOR, Console::Yes },
-        { "off",       HandleOff,       SEC_ADMINISTRATOR, Console::Yes },
-        { "rules",     HandleRules,     SEC_ADMINISTRATOR, Console::Yes },
-        { "status",    HandleStatus,    SEC_ADMINISTRATOR, Console::Yes },
-        { "history",   HandleHistory,   SEC_ADMINISTRATOR, Console::Yes },
-        { "preview",   HandlePreview,   SEC_ADMINISTRATOR, Console::Yes },
-        { "playstyle", HandlePlaystyle, SEC_ADMINISTRATOR, Console::Yes },
-        { "awareness", HandleAwareness, SEC_ADMINISTRATOR, Console::Yes },
-        { "replan",    HandleReplan,    SEC_ADMINISTRATOR, Console::Yes },
-        { "activity",  HandleActivity,  SEC_ADMINISTRATOR, Console::Yes },
-        { "goal",      HandleGoal,      SEC_ADMINISTRATOR, Console::Yes },
+        { "on",       HandleOn,       SEC_ADMINISTRATOR, Console::Yes },
+        { "off",      HandleOff,      SEC_ADMINISTRATOR, Console::Yes },
+        { "rules",    HandleRules,    SEC_ADMINISTRATOR, Console::Yes },
+        { "status",   HandleStatus,   SEC_ADMINISTRATOR, Console::Yes },
+        { "history",  HandleHistory,  SEC_ADMINISTRATOR, Console::Yes },
+        { "preview",  HandlePreview,  SEC_ADMINISTRATOR, Console::Yes },
+        { "identity", HandleIdentity, SEC_ADMINISTRATOR, Console::Yes },
+        { "replan",   HandleReplan,   SEC_ADMINISTRATOR, Console::Yes },
+        { "goal",     HandleGoal,     SEC_ADMINISTRATOR, Console::Yes },
     };
     return table;
 }
 
 // ==========================================================================
-// Hooks
+// Hooks. The progress hooks run on map threads; each touches only the player
+// it was handed and module state under g_mutex (taken by WithEnrolledRow).
 // ==========================================================================
 
 AutopilotPlayerScript::AutopilotPlayerScript()
@@ -3077,39 +2583,6 @@ void AutopilotPlayerScript::OnPlayerLogin(Player* player)
     g_online[guid] = Online();
     if (std::find(g_roster.begin(), g_roster.end(), guid) == g_roster.end())
         g_roster.push_back(guid);
-}
-
-void AutopilotPlayerScript::OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 lowGuid)
-{
-    // Runs inside Player::DeleteFromDB for every real delete (client, GM,
-    // playerbots' per-bot deletes). Our rows go in the same transaction as the
-    // character's, so they cannot outlive it. Player guids have no high part,
-    // so the raw guid we store is the low guid.
-    if (!g_tablesOk)
-        return;
-
-    const uint64_t guid = lowGuid;
-    for (const char* table : { "mod_ollama_chat_autopilot", "mod_ollama_chat_autopilot_snapshots",
-                               "mod_ollama_chat_autopilot_events" })
-        trans->Append(DeleteRowsSql(table, std::to_string(guid)));
-
-    std::lock_guard<std::mutex> lock(g_mutex);
-    ForgetRows({ guid });
-}
-
-AutopilotGuildScript::AutopilotGuildScript()
-    : GuildScript("AutopilotGuildScript", { GUILDHOOK_ON_ADD_MEMBER }) { }
-
-void AutopilotGuildScript::OnAddMember(Guild* guild, Player* player, uint8& /*plRank*/)
-{
-    // A human joining (or founding) a guild makes its bots eligible now
-    // rather than at the next refresh.
-    if (!guild || !player || OllamaIsBotPlayer(player))
-        return;
-
-    std::lock_guard<std::mutex> lock(g_mutex);
-    if (g_realGuilds.insert(guild->GetId()).second)
-        OnRealGuildsChanged();
 }
 
 void AutopilotPlayerScript::OnPlayerLogout(Player* player)
@@ -3155,16 +2628,6 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
             std::swap(g_roster[index], g_roster[g_cursor]);
         }
     }
-}
-
-// The hooks below run on map threads. Each touches only the player it was
-// handed and module state under g_mutex (taken by WithEnrolledRow).
-
-// Online state for a bot, if it is tracked. g_mutex held.
-static Online* OnlineOf(uint64_t guid)
-{
-    auto it = g_online.find(guid);
-    return it == g_online.end() ? nullptr : &it->second;
 }
 
 void AutopilotPlayerScript::OnPlayerCreatureKill(Player* killer, Creature* /*victim*/)
@@ -3231,11 +2694,11 @@ void AutopilotPlayerScript::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
         if (level > oldLevel)
             NoteReward(*ob, "level", level - oldLevel, now);
 
-        // Whatever this level opened up is a temptation.
-        for (const AutopilotPreset& p : AutopilotPresets_Activities())
-            if (p.minLevel > oldLevel && p.minLevel <= level)
-                AddTemptation(*ob, SafeFormat("{} is open to them now (level {}): {}", p.name, p.minLevel,
-                                              p.description), now);
+        // Doors that just opened.
+        if (oldLevel < 10 && level >= 10)
+            AddTemptation(*ob, "old enough for battlegrounds now (level 10)", now);
+        if (oldLevel < 15 && level >= 15)
+            AddTemptation(*ob, "old enough for dungeon-finder groups now (level 15)", now);
 
         // A level is a natural moment for a snapshot and a fresh look.
         ob->nextSnapshotAt = 1;
@@ -3260,7 +2723,7 @@ void AutopilotPlayerScript::OnPlayerStoreNewItem(Player* player, Item* item, uin
         if (Online* ob = OnlineOf(guid))
         {
             const uint32_t now = Progress_Now();
-            NoteReward(*ob, "loot", tmpl->Quality >= ITEM_QUALITY_EPIC ? 3 : 1, now);
+            NoteReward(*ob, "loot", 1, now);
             AddTemptation(*ob, "just found " + what, now);
         }
     });
@@ -3275,4 +2738,37 @@ void AutopilotPlayerScript::OnPlayerAchievementComplete(Player* player, Achievem
     {
         RecordEvent(guid, "achievement", achievement->name[0]);
     });
+}
+
+void AutopilotPlayerScript::OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 lowGuid)
+{
+    // Runs inside Player::DeleteFromDB for every real delete (client, GM,
+    // playerbots' per-bot deletes). Our rows go in the same transaction as the
+    // character's, so they cannot outlive it. Player guids have no high part,
+    // so the raw guid we store is the low guid.
+    if (!g_tablesOk)
+        return;
+
+    const uint64_t guid = lowGuid;
+    for (const char* table : { "mod_ollama_chat_autopilot", "mod_ollama_chat_autopilot_snapshots",
+                               "mod_ollama_chat_autopilot_events" })
+        trans->Append(DeleteRowsSql(table, std::to_string(guid)));
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    ForgetRows({ guid });
+}
+
+AutopilotGuildScript::AutopilotGuildScript()
+    : GuildScript("AutopilotGuildScript", { GUILDHOOK_ON_ADD_MEMBER }) { }
+
+void AutopilotGuildScript::OnAddMember(Guild* guild, Player* player, uint8& /*plRank*/)
+{
+    // A human joining (or founding) a guild makes its bots eligible now
+    // rather than at the next refresh.
+    if (!guild || !player || OllamaIsBotPlayer(player))
+        return;
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_realGuilds.insert(guild->GetId()).second)
+        OnRealGuildsChanged();
 }
