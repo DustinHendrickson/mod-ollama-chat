@@ -633,6 +633,58 @@ decisions:
   being managed, or a bot is turned off, it goes back to that, even if
   playerbots saved autopilot's choices into its own store in between.
 
+### What autopilot controls, and what it doesn't
+
+Autopilot makes the big decisions. Playerbots still does everything else.
+
+**The LLM controls:**
+
+| Area | What exactly | Where |
+|---|---|---|
+| Behaviours | Turning these playerbots strategies on or off. Out of combat: `new rpg`, `quest`, `grind`, `rpg`, `travel`, `explore`, `move random`, `gather`, `loot`, `lfg`, `bg`, `pvp`, `duel`, `start duel`, `emote`, `guild`, `group`, `attack tagged`. In combat: `flee`, `potions`, `avoid aoe`, `aggressive`, `threat`, `kite` | Out-of-combat ones only while the bot is on its own; combat ones everywhere |
+| Focus | Which NewRpg status the bot stays in: `do quest`, `wander npc`, `go camp`, `go grind`, `wander random`, `travel flight`, `rest`, `outdoor pvp` | Only while the bot is on its own |
+| Situational combat | Combat behaviours used only in dungeons, battlegrounds, or a human's group (the playbook) | In that situation |
+| Goals | One measurable aim at a time, or a free-form one | Always |
+| Identity | Who the character is: style, outlook, what it loves, what bores it | Shapes all of the above |
+| Timing | How long a plan holds before it rethinks | Always |
+
+The operator can widen or narrow both lists in the conf
+(`Autopilot.Strategies.*`, `Autopilot.RpgStatuses`).
+
+**Autopilot does not control:**
+
+- **Moving, targeting, casting, rotations, talents or gear.** Playerbots' own
+  AI handles all of it, as usual.
+- **The details inside a focus.** "Do quest" doesn't pick the quest, and
+  "go grind" doesn't pick the spot. Playerbots chooses the quest, camp,
+  hunting ground, NPC or flight path.
+- **Strategies outside the allow-list.** That includes class, spec and role
+  strategies (tank, heal, dps), chat-command handling, `follow`/`stay`,
+  eating and drinking, buffs and mounting. They stay as playerbots set them
+  unless you add them to the list yourself.
+- **Shopping and crafting.** No playerbots strategy buys, sells, repairs,
+  uses the auction house, crafts or trains on command. When gear breaks or
+  bags fill up, a safety guard sends the bot to NPCs for a while. Whether it
+  actually repairs or sells there is up to playerbots.
+- **Bots in a human's group.** The player leads. Only the bot's combat
+  behaviours apply, and a player toggling one by hand overrides autopilot.
+  With `WithRealPlayer = 0` autopilot doesn't touch the bot at all.
+- **Bots following a bot group's leader, or in a dungeon or battleground.**
+  Out-of-combat behaviour and focus are paused until they leave; combat
+  behaviour still applies.
+- **Dead bots.** Nothing changes until they are alive.
+- **Playerbots' own random-bot maintenance.** Random bots are still
+  periodically teleported, refreshed and re-randomised by playerbots on its
+  own schedule. Autopilot carries on from wherever the bot ends up.
+- **Chat.** The bot's chat replies don't yet mention its goal or plan.
+  Autopilot and chat run side by side.
+- **Bots it can't plan for.** A bot outside the planning reach (no player
+  nearby by default) keeps its last plan. A newly enrolled bot keeps
+  ordinary playerbots behaviour until it gets its first plan.
+
+When a bot is turned off, or autopilot is disabled, every strategy autopilot
+changed goes back to what the bot had before.
+
 ### Quick start
 
 1. Apply `data/sql/characters/base/2026_10_05_autopilot.sql` to your
