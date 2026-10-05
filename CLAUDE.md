@@ -35,7 +35,7 @@ same race it looks like it avoids.
 ## The second rule: workers never read config strings directly
 
 A worker thread must not touch `g_OllamaUrl`, `g_OllamaModel`,
-`g_OllamaSystemPrompt`, `g_OllamaStop`, `g_OllamaSeed`,
+`g_OllamaSystemPrompt`, `g_OllamaStop`, `g_OllamaSeed`, `g_OllamaApiKey`,
 `g_SentimentAnalysisPrompt` or any other `std::string` global.
 
 `.ollama reload` reassigns those on the world thread. Reassigning a
@@ -54,6 +54,16 @@ The pattern to follow:
 
 POD globals (`bool`, `uint32_t`, `float`) are a benign racy read and are fine
 to touch directly.
+
+## Provider support lives in one file
+
+`OllamaChat.Provider` (`ollama` / `openai` / `anthropic`) only changes how a
+request is encoded and decoded inside `mod-ollama-chat_api.cpp`: one builder,
+one parser and one header function per provider, selected on
+`OllamaEndpointSettings::provider`. Nothing outside that file should branch on
+the provider except the capability probe, which is skipped for non-Ollama
+providers because a live probe there is a billed request. Add a provider by
+adding a builder/parser pair and an enum value; do not teach callers about it.
 
 ## Channels are resolved by id, never by name
 

@@ -33,13 +33,118 @@ OllamaChat.DebugShowFullPrompt = 0
 # OLLAMA LLM CONNECTION AND INFERENCE
 # --------------------------------------------
 
+# OllamaChat.Provider
+#     Description: Which API format OllamaChat.Url speaks. The module was
+#                  written for Ollama, but the only Ollama-specific part is
+#                  how one request is encoded, so other services can be used
+#                  by changing this, the Url, the Model and (usually) ApiKey.
+#
+#                  ollama     Ollama's native /api/generate endpoint. Default.
+#
+#                  openai     OpenAI Chat Completions format. This is the
+#                             de facto standard and covers OpenAI itself,
+#                             OpenRouter, Groq, Together, Mistral, DeepSeek,
+#                             xAI, Google Gemini (its OpenAI-compatible
+#                             endpoint), LM Studio, vLLM, llama.cpp server
+#                             and Ollama's own /v1/chat/completions route.
+#
+#                  anthropic  Anthropic Messages API, for Claude models
+#                             directly. (Claude is also reachable through
+#                             OpenRouter using the openai format.)
+#
+#                  Example settings for each:
+#
+#                    OpenAI
+#                      OllamaChat.Provider = openai
+#                      OllamaChat.Url      = https://api.openai.com/v1/chat/completions
+#                      OllamaChat.Model    = gpt-4o-mini
+#                      OllamaChat.ApiKey   = sk-...
+#
+#                    OpenRouter
+#                      OllamaChat.Provider = openai
+#                      OllamaChat.Url      = https://openrouter.ai/api/v1/chat/completions
+#                      OllamaChat.Model    = openai/gpt-4o-mini
+#                      OllamaChat.ApiKey   = sk-or-...
+#
+#                    Anthropic (Claude)
+#                      OllamaChat.Provider = anthropic
+#                      OllamaChat.Url      = https://api.anthropic.com/v1/messages
+#                      OllamaChat.Model    = claude-haiku-4-5-20251001
+#                      OllamaChat.ApiKey   = sk-ant-...
+#
+#                    LM Studio (local, no key)
+#                      OllamaChat.Provider = openai
+#                      OllamaChat.Url      = http://localhost:1234/v1/chat/completions
+#                      OllamaChat.Model    = <whatever LM Studio shows as the model id>
+#
+#                  Settings that have no equivalent on a provider are simply
+#                  not sent. For openai that is NumCtx, NumThreads,
+#                  RepeatPenalty, MinP and TopK; for anthropic it is those
+#                  plus TopP, Seed and the penalties. NumPredict is honoured
+#                  everywhere (anthropic requires a cap, so 0 becomes 1024).
+#
+#                  HTTPS endpoints need the module to have been built with
+#                  OpenSSL, which the build prints as "[mod-ollama-chat]
+#                  OpenSSL found - HTTPS support enabled".
+#
+#                  COST WARNING: random chatter and event chatter across many
+#                  bots adds up quickly against a metered API, and hosted
+#                  providers answer bursts with HTTP 429. Start with
+#                  EnableRandomChatter = 0, a low MaxConcurrentQueries, and
+#                  watch the provider's usage page before opening it up.
+#
+#     Default:     ollama
+OllamaChat.Provider = ollama
+
 # OllamaChat.Url
-#     Description: The URL used to query the Ollama API.
+#     Description: The full URL of the generation endpoint for the configured
+#                  Provider. See the examples under OllamaChat.Provider.
 #     Default:     http://localhost:11434/api/generate
 OllamaChat.Url = http://localhost:11434/api/generate
 
+# OllamaChat.ApiKey
+#     Description: Credential for providers that require one. Sent as
+#                  "Authorization: Bearer <key>" for ollama and openai, and as
+#                  "x-api-key" for anthropic (see ApiKeyHeader to override).
+#                  Leave empty for a local server that needs none.
+#                  Surrounding quotes and whitespace are ignored.
+#
+#                  Never printed: ".ollama status" and the startup log only
+#                  say whether one is set. If a provider answers HTTP 401/403
+#                  the module logs one clear line saying what to check.
+#                  Keep this file readable only by the account that runs
+#                  worldserver, as you would for the database password in
+#                  worldserver.conf.
+#     Default:     (empty)
+OllamaChat.ApiKey =
+
+# OllamaChat.ApiKeyHeader
+#     Description: Override the header the key is sent in, for services with
+#                  their own convention. Empty uses the provider default
+#                  (Authorization: Bearer for ollama/openai, x-api-key for
+#                  anthropic). "Bearer " is prepended automatically when the
+#                  header is Authorization.
+#                    Azure OpenAI:        api-key
+#                    Google Gemini native: x-goog-api-key
+#     Default:     (empty)
+OllamaChat.ApiKeyHeader =
+
+# OllamaChat.VerifyCertificates
+#     Description: Whether HTTPS connections verify the server's certificate
+#                  against the system trust store.
+#                  -1 = automatic: verify whenever ApiKey is set, since a key
+#                       should never travel over an unverified connection;
+#                       otherwise off, so self-signed reverse proxies in
+#                       front of a local Ollama keep working.
+#                   0 = never verify.
+#                   1 = always verify.
+#     Default:     -1
+OllamaChat.VerifyCertificates = -1
+
 # OllamaChat.Model
-#     Description: The model identifier to be used in the Ollama API request.
+#     Description: The model identifier to send to the provider. For Ollama
+#                  this is a pulled model tag (llama3.2:1b); for other
+#                  providers it is whatever model name they publish.
 #     Default:     llama3.2:1b
 OllamaChat.Model = llama3.2:1b
 
@@ -991,6 +1096,16 @@ OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this info
 #            boolean form permanently for that model and logs it once.
 #
 #        ".ollama status" reports whatever has been detected so far.
+#
+#        Other providers (OllamaChat.Provider = openai / anthropic): there is
+#        no capability endpoint to ask and a live probe would be a billed
+#        request, so nothing is probed. Under auto, reasoning is not requested
+#        at all. Under on, it is requested on every call -- as
+#        "reasoning_effort" for openai, as an extended-thinking budget of
+#        max(1024, ReasoningTokenReserve) tokens for anthropic -- and switched
+#        off for the session if the provider rejects it. Reasoning models on
+#        those services reason whether asked or not; the setting only tunes
+#        them.
 #        Default: auto
 OllamaChat.ThinkMode = "auto"
 
@@ -1040,6 +1155,23 @@ OllamaChat.MaxQueueDepth = 64
 #        Connection/read/write timeout for LLM calls.
 #        Default: 120
 OllamaChat.HttpTimeoutSeconds = 120
+
+#    OllamaChat.RateLimitRetries
+#        How many times to retry one request after the provider answers
+#        HTTP 429 (rate limited), 503 (busy) or 529 (Anthropic overloaded).
+#        The wait between attempts honours the provider's Retry-After header,
+#        or doubles from 2 seconds when there is none. The worker thread
+#        sleeps for it, so a throttled provider slows replies down rather
+#        than dropping them; the queue cap sheds load if it gets worse.
+#        0 disables retries. Mostly relevant for hosted providers.
+#        Default: 2
+OllamaChat.RateLimitRetries = 2
+
+#    OllamaChat.RateLimitMaxWaitSeconds
+#        Upper bound on any single back-off wait, whatever Retry-After says.
+#        A chat reply that arrives a minute late is worse than no reply.
+#        Default: 15
+OllamaChat.RateLimitMaxWaitSeconds = 15
 
 #    OllamaChat.TypingSimulationMaxDelay
 #        Ceiling on the simulated typing delay, in milliseconds. Without a cap

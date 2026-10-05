@@ -2,9 +2,10 @@
 #define MOD_OLLAMA_CHAT_API_H
 
 #include "mod-ollama-chat_capability.h"
+#include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_httpclient.h"
 #include <string>
 #include <cstdint>
-#include <string>
 
 // Result of one generation call. The old API returned a bare string, so
 // "server unreachable", "model refused to think" and "model said nothing"
@@ -19,6 +20,7 @@ struct OllamaApiResult
     std::string error;
     uint64_t    latencyMs = 0;
     bool        thinkUsed = false;
+    int         retryAfterSeconds = 0;   // provider's Retry-After on 429/503, else 0
 
     bool empty() const { return text.empty(); }
 };
@@ -41,6 +43,16 @@ struct OllamaEndpointSettings
     std::string systemPrompt;
     std::string stop;
     std::string seed;
+
+    // Wire format for `url`, and the credential it needs. The key is carried
+    // here (not read from g_OllamaApiKey) for the same reason as everything
+    // else in this struct. verifyCerts is the resolved value of
+    // OllamaChat.VerifyCertificates: on when a key is configured unless the
+    // operator says otherwise.
+    OllamaProvider provider    = OllamaProvider::Ollama;
+    std::string    apiKey;
+    std::string    apiKeyHeader;   // empty = the provider's conventional header
+    bool           verifyCerts = false;
 
     uint32_t numPredict = 0;
     uint32_t numCtx     = 0;
@@ -65,9 +77,15 @@ void OllamaConfig_Publish();
 // Thread-safe copy for a worker.
 OllamaEndpointSettings OllamaConfig_Snapshot();
 
-// Perform one generation. Decides whether to think based on the configured
-// policy and the probed model capability, and transparently retries once
-// without thinking if Ollama rejects the request for asking.
+// The authentication / versioning headers this provider needs. Shared with
+// the capability probe so an authenticated Ollama (Ollama cloud, or a proxy
+// in front of it) can be probed too.
+OllamaHttpHeaders OllamaBuildRequestHeaders(const OllamaEndpointSettings& cfg);
+
+// Perform one generation against whichever provider is configured. Decides
+// whether to think based on the configured policy and the probed model
+// capability, and transparently retries once without thinking if the
+// provider rejects the request for asking.
 //
 // Blocking. Call from a worker thread, never from the world thread.
 OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind);

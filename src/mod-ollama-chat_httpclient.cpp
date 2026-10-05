@@ -53,7 +53,7 @@ namespace
         return out;
     }
 
-    httplib::Headers BuildHeaders(const std::string& host)
+    httplib::Headers BuildHeaders(const std::string& host, const OllamaHttpHeaders& extra)
     {
         httplib::Headers headers = {
             { "Content-Type", "application/json" },
@@ -63,6 +63,9 @@ namespace
 
         if (host.find("ngrok") != std::string::npos)
             headers.emplace("ngrok-skip-browser-warning", "true");
+
+        for (const auto& kv : extra)
+            headers.emplace(kv.first, kv.second);
 
         return headers;
     }
@@ -112,15 +115,18 @@ namespace
     }
 
     OllamaHttpResult Perform(const ParsedUrl& u, int timeout,
-                             const std::string& jsonData, bool isPost)
+                             const std::string& jsonData, bool isPost,
+                             const OllamaHttpHeaders& extraHeaders, bool verifyCerts)
     {
         OllamaHttpResult result;
-        const std::string key = u.host + ":" + std::to_string(u.port);
+        // Verification is a property of the SSL context, so a client built
+        // one way must not be reused the other way.
+        const std::string key = u.host + ":" + std::to_string(u.port) + (verifyCerts ? "+verify" : "");
 
         InvalidateIfTimeoutChanged(timeout);
 
         httplib::Result response(nullptr, httplib::Error::Unknown);
-        const httplib::Headers headers = BuildHeaders(u.host);
+        const httplib::Headers headers = BuildHeaders(u.host, extraHeaders);
 
         if (u.https)
         {
@@ -129,7 +135,10 @@ namespace
             if (!slot)
             {
                 slot = std::make_unique<httplib::SSLClient>(u.host, u.port);
-                slot->enable_server_certificate_verification(false);
+                // With verification on, cpp-httplib loads the Windows ROOT
+                // store (crypt32 is linked by mod-ollama-chat.cmake) or the
+                // OpenSSL default paths elsewhere.
+                slot->enable_server_certificate_verification(verifyCerts);
                 ApplyTimeout(*slot, timeout);
             }
             response = isPost ? slot->Post(u.path, headers, jsonData, "application/json")
@@ -172,8 +181,35 @@ namespace
 
         result.status = response->status;
         result.body   = response->body;
+
+        // Hosted providers say how long to back off on 429/503. Only the
+        // delta-seconds form is honoured; an HTTP-date is rare and the caller
+        // falls back to its own schedule.
+        if (response->has_header("Retry-After"))
+        {
+            try
+            {
+                result.retryAfterSeconds = std::stoi(response->get_header_value("Retry-After"));
+                if (result.retryAfterSeconds < 0)
+                    result.retryAfterSeconds = 0;
+            }
+            catch (const std::exception&)
+            {
+                result.retryAfterSeconds = 0;
+            }
+        }
+
         return result;
     }
+}
+
+bool OllamaHttp_TlsAvailable()
+{
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+    return true;
+#else
+    return false;
+#endif
 }
 
 // --------------------------------------------------------------------------
@@ -212,7 +248,9 @@ bool OllamaHttpClient::IsAvailable() const
 }
 
 OllamaHttpResult OllamaHttpClient::PostEx(const std::string& url, const std::string& jsonData,
-                                          int timeoutOverride)
+                                          int timeoutOverride,
+                                          const OllamaHttpHeaders& extraHeaders,
+                                          bool verifyCerts)
 {
     OllamaHttpResult result;
 
@@ -235,7 +273,7 @@ OllamaHttpResult OllamaHttpClient::PostEx(const std::string& url, const std::str
         if (g_DebugEnabled)
             LOG_INFO("module.ollamachat", "[Ollama Chat] POST {}:{}{}", u.host, u.port, u.path);
 
-        result = Perform(u, timeout, jsonData, true);
+        result = Perform(u, timeout, jsonData, true, extraHeaders, verifyCerts);
 
         if (!result.error.empty())
             LOG_ERROR("module.ollamachat", "[Ollama Chat] HTTP POST to {}:{}{} failed: {}",
@@ -272,7 +310,7 @@ OllamaHttpResult OllamaHttpClient::GetEx(const std::string& url, int timeoutOver
                                        ? static_cast<int>(g_HttpTimeoutSeconds)
                                        : m_timeout);
 
-        result = Perform(u, timeout, std::string(), false);
+        result = Perform(u, timeout, std::string(), false, {}, false);
     }
     catch (const std::exception& e)
     {

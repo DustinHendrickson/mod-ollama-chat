@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_capability.h"
+#include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_httpclient.h"
 #include "mod-ollama-chat-utilities.h"
@@ -63,14 +64,15 @@ namespace
     // Step 1: ask Ollama what the model can do. Ollama 0.6+ returns a
     // "capabilities" array on /api/show.
     // Returns true when the answer was conclusive.
-    bool ProbeViaShow(OllamaHttpClient& http, const std::string& base,
-                      const std::string& model, bool& outSupported,
-                      std::string& outDetail)
+    bool ProbeViaShow(OllamaHttpClient& http, const OllamaEndpointSettings& cfg,
+                      const std::string& base, const std::string& model,
+                      bool& outSupported, std::string& outDetail)
     {
         nlohmann::json body = { { "model", model } };
 
         OllamaHttpResult r = http.PostEx(base + "/api/show", body.dump(),
-                                         static_cast<int>(g_CapabilityProbeTimeoutSeconds));
+                                         static_cast<int>(g_CapabilityProbeTimeoutSeconds),
+                                         OllamaBuildRequestHeaders(cfg), cfg.verifyCerts);
 
         if (!r.ok())
         {
@@ -109,9 +111,9 @@ namespace
 
     // Step 2 (older Ollama, or an inconclusive /api/show): actually ask for a
     // one-token thinking generation and see whether it is refused.
-    bool ProbeViaGenerate(OllamaHttpClient& http, const std::string& base,
-                          const std::string& model, bool& outSupported,
-                          std::string& outDetail)
+    bool ProbeViaGenerate(OllamaHttpClient& http, const OllamaEndpointSettings& cfg,
+                          const std::string& base, const std::string& model,
+                          bool& outSupported, std::string& outDetail)
     {
         nlohmann::json body = {
             { "model",  model },
@@ -122,7 +124,8 @@ namespace
         };
 
         OllamaHttpResult r = http.PostEx(base + "/api/generate", body.dump(),
-                                         static_cast<int>(g_CapabilityProbeTimeoutSeconds));
+                                         static_cast<int>(g_CapabilityProbeTimeoutSeconds),
+                                         OllamaBuildRequestHeaders(cfg), cfg.verifyCerts);
 
         if (r.ok())
         {
@@ -144,18 +147,20 @@ namespace
         return false;
     }
 
-    void RunProbe(std::string base, std::string model)
+    // cfg is a copy of the published snapshot taken on the world thread, so
+    // this thread never touches a config string global.
+    void RunProbe(OllamaEndpointSettings cfg, std::string base, std::string model)
     {
         OllamaHttpClient http;
 
         bool supported = false;
         std::string detail;
 
-        bool conclusive = ProbeViaShow(http, base, model, supported, detail);
+        bool conclusive = ProbeViaShow(http, cfg, base, model, supported, detail);
         if (!conclusive)
         {
             std::string showDetail = detail;
-            conclusive = ProbeViaGenerate(http, base, model, supported, detail);
+            conclusive = ProbeViaGenerate(http, cfg, base, model, supported, detail);
             if (!conclusive && !showDetail.empty())
                 detail = showDetail + "; " + detail;
         }
@@ -204,6 +209,12 @@ void OllamaCapability_Init(bool force)
     const std::string base  = OllamaDeriveBaseUrl(g_OllamaUrl);
     const std::string model = g_OllamaModel;
 
+    // Non-Ollama providers have no capability endpoint to ask, and a live
+    // probe there is a billed request against someone's account. Reasoning is
+    // instead sent only when the policy is explicitly "on" and withdrawn if
+    // the provider rejects it (the runtime self-heal below handles that).
+    const bool probeable = (g_OllamaProvider == OllamaProvider::Ollama);
+
     {
         std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -220,7 +231,24 @@ void OllamaCapability_Init(bool force)
         g_probedModel = model;
         g_support     = OllamaThinkSupport::Unknown;
         g_probeDetail = "probe in progress";
-        g_probeRunning = true;
+        g_probeRunning = probeable;
+
+        if (!probeable)
+        {
+            const char* name = OllamaProvider_Name(g_OllamaProvider);
+            if (static_cast<OllamaThinkPolicy>(g_ThinkModePolicy) == OllamaThinkPolicy::On)
+            {
+                g_support     = OllamaThinkSupport::Supported;
+                g_probeDetail = std::string("not probed: provider ") + name +
+                                "; reasoning requested because ThinkMode = on";
+            }
+            else
+            {
+                g_support     = OllamaThinkSupport::Unsupported;
+                g_probeDetail = std::string("not probed: provider ") + name +
+                                "; set ThinkMode = on to request reasoning";
+            }
+        }
     }
 
     g_latencyDisabled.store(false);
@@ -233,8 +261,12 @@ void OllamaCapability_Init(bool force)
         g_thinkLatencySum = 0;
     }
 
-    // Off the world thread: a missing Ollama must not stall startup.
-    std::thread(RunProbe, base, model).detach();
+    if (!probeable)
+        return;
+
+    // Off the world thread: a missing Ollama must not stall startup. The
+    // snapshot is already published by LoadOllamaChatConfig at this point.
+    std::thread(RunProbe, OllamaConfig_Snapshot(), base, model).detach();
 }
 
 OllamaThinkSupport OllamaCapability_GetSupport()
@@ -254,10 +286,23 @@ bool OllamaCapability_IsThinkRejection(int status, const std::string& body)
         return false;
 
     const std::string lower = ToLower(body);
-    return lower.find("does not support thinking") != std::string::npos ||
-           lower.find("does not support think")    != std::string::npos ||
-           lower.find("thinking is not supported") != std::string::npos ||
-           lower.find("unsupported parameter: think") != std::string::npos;
+
+    // Ollama's wording.
+    if (lower.find("does not support thinking") != std::string::npos ||
+        lower.find("does not support think")    != std::string::npos ||
+        lower.find("thinking is not supported") != std::string::npos ||
+        lower.find("unsupported parameter: think") != std::string::npos)
+        return true;
+
+    // OpenAI-format ("Unsupported parameter: 'reasoning_effort' is not
+    // supported with this model") and Anthropic ("thinking ... not supported").
+    const bool unsupported = lower.find("unsupported")   != std::string::npos ||
+                             lower.find("not supported") != std::string::npos ||
+                             lower.find("does not support") != std::string::npos;
+    const bool aboutReasoning = lower.find("reasoning_effort") != std::string::npos ||
+                                lower.find("reasoning")        != std::string::npos ||
+                                lower.find("thinking")         != std::string::npos;
+    return unsupported && aboutReasoning;
 }
 
 void OllamaCapability_NoteThinkRejected()

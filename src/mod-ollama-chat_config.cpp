@@ -50,6 +50,54 @@ uint32_t   g_EventChatterMaxBotsPerPlayer    = 2;
 // --------------------------------------------
 std::string g_OllamaUrl        = "http://localhost:11434/api/generate";
 std::string g_OllamaModel      = "llama3.2:1b";
+OllamaProvider g_OllamaProvider = OllamaProvider::Ollama;
+std::string g_OllamaApiKey;
+std::string g_OllamaApiKeyHeader;
+int32_t     g_OllamaVerifyCertificates = -1;
+
+namespace
+{
+    // Keys get pasted with stray quotes and whitespace more often than not.
+    std::string TrimApiKey(const std::string& raw)
+    {
+        const size_t start = raw.find_first_not_of(" \t\"'");
+        const size_t end   = raw.find_last_not_of(" \t\"'");
+        return (start == std::string::npos) ? std::string() : raw.substr(start, end - start + 1);
+    }
+}
+
+OllamaProvider OllamaProvider_Parse(const std::string& text)
+{
+    std::string lower = text;
+    for (char& c : lower)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    const size_t start = lower.find_first_not_of(" \t\"'");
+    const size_t end   = lower.find_last_not_of(" \t\"'");
+    lower = (start == std::string::npos) ? std::string() : lower.substr(start, end - start + 1);
+
+    if (lower.empty() || lower == "ollama")
+        return OllamaProvider::Ollama;
+    if (lower == "openai" || lower == "openrouter" || lower == "openai-compatible" || lower == "openai_compatible")
+        return OllamaProvider::OpenAI;
+    if (lower == "anthropic" || lower == "claude")
+        return OllamaProvider::Anthropic;
+
+    LOG_WARN("module.ollamachat",
+             "[Ollama Chat] Unknown OllamaChat.Provider '{}'; expected ollama, openai or anthropic. "
+             "Falling back to ollama.", text);
+    return OllamaProvider::Ollama;
+}
+
+const char* OllamaProvider_Name(OllamaProvider provider)
+{
+    switch (provider)
+    {
+        case OllamaProvider::OpenAI:    return "openai";
+        case OllamaProvider::Anthropic: return "anthropic";
+        default:                        return "ollama";
+    }
+}
 uint32_t    g_OllamaNumPredict = 40;
 float       g_OllamaTemperature = 0.8f;
 float       g_OllamaTopP = 0.95f;
@@ -94,6 +142,8 @@ uint32_t g_CapabilityProbeTimeoutSeconds = 10;
 // HTTP / dispatcher
 // --------------------------------------------
 uint32_t g_HttpTimeoutSeconds     = 120;
+uint32_t g_RateLimitRetries       = 2;
+uint32_t g_RateLimitMaxWaitSeconds = 15;
 uint32_t g_DispatchWorkerThreads  = 4;
 uint32_t g_MaxQueueDepth          = 64;
 
@@ -516,6 +566,50 @@ void LoadOllamaChatConfig()
     g_MaxBotsToPick                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
     g_OllamaUrl                       = sConfigMgr->GetOption<std::string>("OllamaChat.Url", "http://localhost:11434/api/generate");
     g_OllamaModel                     = sConfigMgr->GetOption<std::string>("OllamaChat.Model", "llama3.2:1b");
+    g_OllamaProvider                  = OllamaProvider_Parse(sConfigMgr->GetOption<std::string>("OllamaChat.Provider", "ollama"));
+    g_OllamaApiKey                    = TrimApiKey(sConfigMgr->GetOption<std::string>("OllamaChat.ApiKey", ""));
+    g_OllamaApiKeyHeader              = sConfigMgr->GetOption<std::string>("OllamaChat.ApiKeyHeader", "");
+    g_OllamaVerifyCertificates        = sConfigMgr->GetOption<int32_t>("OllamaChat.VerifyCertificates", -1);
+
+    // The endpoint path is provider-specific and the most common mistake is
+    // switching Provider while leaving Url on Ollama's /api/generate. Warn,
+    // do not override: proxies and self-hosted gateways use arbitrary paths.
+    {
+        const char* expected = nullptr;
+        switch (g_OllamaProvider)
+        {
+            case OllamaProvider::OpenAI:    expected = "/chat/completions"; break;
+            case OllamaProvider::Anthropic: expected = "/messages";         break;
+            default:                        expected = "/api/generate";     break;
+        }
+        if (g_OllamaUrl.find(expected) == std::string::npos)
+        {
+            LOG_WARN("module.ollamachat",
+                     "[Ollama Chat] OllamaChat.Provider is '{}' but OllamaChat.Url ('{}') does not "
+                     "contain '{}'. Check that the URL is the full endpoint for this provider.",
+                     OllamaProvider_Name(g_OllamaProvider), g_OllamaUrl, expected);
+        }
+        if (g_OllamaProvider != OllamaProvider::Ollama && g_OllamaApiKey.empty())
+        {
+            LOG_WARN("module.ollamachat",
+                     "[Ollama Chat] OllamaChat.Provider is '{}' and OllamaChat.ApiKey is empty. "
+                     "Hosted services will reject every request; local servers (LM Studio, vLLM) are fine.",
+                     OllamaProvider_Name(g_OllamaProvider));
+        }
+
+        // Say this at startup, once, rather than on every failed request. Every
+        // hosted provider is HTTPS-only, so without OpenSSL none of them work.
+        if (g_OllamaUrl.rfind("https://", 0) == 0 && !OllamaHttp_TlsAvailable())
+        {
+            LOG_ERROR("module.ollamachat",
+                      "[Ollama Chat] OllamaChat.Url is HTTPS but this build has no OpenSSL support, "
+                      "so every request will fail. Install the OpenSSL development package "
+                      "(Windows: 'vcpkg install openssl' or the Win64 OpenSSL installer; "
+                      "Linux: libssl-dev / openssl-devel), re-run CMake and confirm it prints "
+                      "'[mod-ollama-chat] OpenSSL found - HTTPS support enabled'.");
+        }
+    }
+
     g_OllamaNumPredict                = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumPredict", 40);
     g_OllamaTemperature               = sConfigMgr->GetOption<float>("OllamaChat.Temperature", 0.8f);
     g_OllamaTopP                      = sConfigMgr->GetOption<float>("OllamaChat.TopP", 0.95f);
@@ -691,6 +785,8 @@ void LoadOllamaChatConfig()
 
     // --- HTTP / dispatcher ----------------------------------------------
     g_HttpTimeoutSeconds              = sConfigMgr->GetOption<uint32_t>("OllamaChat.HttpTimeoutSeconds", 120);
+    g_RateLimitRetries                = sConfigMgr->GetOption<uint32_t>("OllamaChat.RateLimitRetries", 2);
+    g_RateLimitMaxWaitSeconds         = sConfigMgr->GetOption<uint32_t>("OllamaChat.RateLimitMaxWaitSeconds", 15);
     g_DispatchWorkerThreads           = sConfigMgr->GetOption<uint32_t>("OllamaChat.WorkerThreads",
                                             g_MaxConcurrentQueries > 0 ? g_MaxConcurrentQueries : 4);
     g_MaxQueueDepth                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxQueueDepth", 64);
@@ -1044,7 +1140,7 @@ void LoadOllamaChatConfig()
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
              "Reply Chances - Say: P{}%/B{}%, Channel: P{}%/B{}%, Party: P{}%/B{}%, Guild: P{}%/B{}%, MaxBotsToPick = {}, "
-             "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
+             "Provider = {}, Url = {}, Model = {}, ApiKey = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
              "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
              g_Enable, g_SayDistance, g_YellDistance,
              g_PlayerReplyChance_Say, g_BotReplyChance_Say,
@@ -1052,7 +1148,8 @@ void LoadOllamaChatConfig()
              g_PlayerReplyChance_Party, g_BotReplyChance_Party,
              g_PlayerReplyChance_Guild, g_BotReplyChance_Guild,
              g_MaxBotsToPick,
-             g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
+             OllamaProvider_Name(g_OllamaProvider), g_OllamaUrl, g_OllamaModel,
+             g_OllamaApiKey.empty() ? "not set" : "set", g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,
              g_RandomChatterBotCommentChance, g_MaxConcurrentQueries, extraBlacklist);
 }
