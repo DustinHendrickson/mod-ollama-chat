@@ -186,6 +186,21 @@ namespace
 
 void OllamaCapability_Init(bool force)
 {
+    // A disabled module must not touch the network at all. Record why so
+    // `.ollama status` explains the missing probe instead of saying "unknown".
+    if (!g_Enable)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (!g_probeRunning)
+        {
+            g_probedUrl.clear();
+            g_probedModel.clear();
+            g_support     = OllamaThinkSupport::Unknown;
+            g_probeDetail = "not probed: module disabled (OllamaChat.Enable = 0)";
+        }
+        return;
+    }
+
     const std::string base  = OllamaDeriveBaseUrl(g_OllamaUrl);
     const std::string model = g_OllamaModel;
 
