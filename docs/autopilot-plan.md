@@ -140,18 +140,83 @@ and prints:
 
 This lets the operator size the feature before turning it on.
 
-### Automatic pause
+### Control in every situation
 
-An enrolled bot is skipped for planning, but keeps recording, while any of
-these is true:
+Autopilot controls four layers. Only the activity layer ever stands down, and
+only while something else already owns the bot's movement. An LLM round trip
+takes seconds, so nothing is decided *in the moment*. Combat, death and
+dungeon behaviour are **decided ahead of time** and applied instantly by C++
+when the situation starts.
 
-- it is grouped with a real player (the master drives)
-- it is in a battleground, arena or instance
-- it is dead or in combat
-- it is on a flight path
-- the global `Autopilot.Enable` is `0`
+| layer | what it is | decided by | applied |
+|---|---|---|---|
+| **disposition** | standing behaviour modifiers that hold in every state, combat included | LLM, at goal time (from playstyle + personality) | always; reapplied after resets |
+| **playbook** | which preset to use in each situation: dungeon, battleground, grouped with a player, dead, low health | LLM, at goal time, as part of the same answer | instantly by C++ when the situation starts |
+| **boundary decisions** | "what now?" at the edges: dungeon finished, BG over, left a group, died repeatedly, landed from a flight | LLM, event-triggered and high in the budget queue; policy fallback | when the answer arrives |
+| **activity** | where to go and what to work on | policy / LLM | suspended only while movement is owned elsewhere (see below) |
 
-Nothing is torn down, so resuming is free.
+**Dispositions** are presets in conf. The model picks names, not strategies,
+just as it does for activities. They only ever use a whitelist of *modifier*
+strategies that exist in this fork (`StrategyContext.h`). Class, spec and role
+strategies (tank/heal/dps, `ranged`/`close`) are **never** touched. Examples:
+
+```
+OllamaChat.Autopilot.Disposition.cautious = "co:+flee,+potions,+avoid aoe,+threat,-aggressive"
+OllamaChat.Autopilot.Disposition.bold     = "co:+aggressive,-flee,-threat"
+OllamaChat.Autopilot.Disposition.greedy   = "nc:+loot,+gather;co:+attack tagged"
+OllamaChat.Autopilot.Disposition.frugal   = "co:+save mana,-potions"
+OllamaChat.Autopilot.Disposition.social   = "nc:+emote,+chat,+start duel"
+OllamaChat.Autopilot.Disposition.reserved = "nc:-emote,-start duel"
+```
+
+A bot holds one disposition per axis (risk, greed, sociability), so a
+"cautious greedy reserved" crafter really does play differently in a fight
+from a "bold social" speedrunner. Risk tolerance is where self-preservation
+reaches into combat.
+
+**Playbook** is a small object in the goal-time answer:
+
+```json
+"playbook": { "dungeon": "cautious", "battleground": "bold",
+              "with_player": "follow_lead", "on_death": "wait_for_res",
+              "low_health": "flee" }
+```
+
+Every value must be a known preset name for that situation, so it is validated
+like everything else. On death, `wait_for_res` vs `release` controls how long
+the `dead` engine waits before releasing. Repeated deaths are a boundary
+decision.
+
+#### Where the activity layer stands down, and what still happens
+
+| situation | activity layer | still active |
+|---|---|---|
+| **grouped with a real player** | depends on `Autopilot.WithRealPlayer` (below) | disposition, playbook; the bot can *voice* its wants ("could we stop at the forge?") through normal chat |
+| **dungeon / raid** | off: the dungeon strategies and the group own movement | disposition (via the dungeon playbook entry); on finish, a boundary decision: run again, go sell, back to the goal |
+| **battleground / arena** | off: the BG strategies own movement | disposition (BG playbook entry); on end, a boundary decision |
+| **combat** | off for the length of the fight | disposition, low-health playbook; nothing waits on the LLM |
+| **dead** | off | `on_death` playbook; a death streak triggers a boundary decision |
+| **flight path** | off | on landing, a boundary decision if the flight was the activity's goal |
+
+`Autopilot.WithRealPlayer` is for the server owner, because how much a bot
+should assert itself in a human's group is a taste call:
+
+- `0`: hands off. Not even dispositions are changed.
+- `1` (**default**): dispositions and playbook only. The player leads.
+- `2`: as `1`, plus the bot voices its goals and wants in party chat, and
+  periodically asks to do something its playstyle wants.
+- `3`: full autonomy. The bot may leave the group when its goals diverge, and
+  stays polite about it.
+
+**A human's choice always wins.** When a bot is grouped with a real player,
+the applier compares the bot's live strategies with what autopilot last
+applied. Any managed strategy that differs was changed by the player (`co -flee`,
+for example). That strategy is then **locked** against autopilot until the
+group breaks up, so autopilot never fights a human over a toggle.
+
+The global `Autopilot.Enable = 0` is the only thing that switches all four
+layers off. Nothing is torn down, so turning it back on resumes where the bot
+left off.
 
 ## Scaling: making hundreds of bots affordable
 
@@ -388,6 +453,8 @@ the dispatch queue is above half depth, so chat always wins.
   "goal": { "kind": "explore_zone", "target": "Feralas",
             "text": "See the twin colossals before the season turns." },
   "keep_goal": false,
+  "disposition": { "risk": "cautious", "greed": "greedy", "social": "reserved" },
+  "playbook": { "dungeon": "cautious", "on_death": "wait_for_res" },
   "upkeep": ["repair", "sell"],
   "reason": "Bored of Desolace, nothing gained in an hour.",
   "say": "optional one-liner, delivered through the normal chat path"
@@ -454,7 +521,8 @@ as a normal request, so the governor still gates it.
 `.Model` (optional override, published via the endpoint snapshot),
 `.LlmCallsPerHour`, `.GoalRefreshMinutes`, `.DecisionIntervalMinutes`,
 `.ForegroundRange`, `.DormantAfterMinutes`, `.SweepIntervalMs`,
-`.BotsPerSweep`, `.FlushIntervalSeconds`, `.BatchSize`, `.MaxConcurrentPlans`, `.SnapshotIntervalMinutes`, `.SnapshotRetention`,
+`.BotsPerSweep`, `.FlushIntervalSeconds`, `.BatchSize`, `.MaxConcurrentPlans`,
+`.WithRealPlayer`, `.Disposition.*`, `.Playbook.*`, `.SnapshotIntervalMinutes`, `.SnapshotRetention`,
 `.EventRetention`, `.BoredomThreshold`, `.Guard.*`, `.Activity.*`,
 `.Playstyle.*`, `.Awareness.*`, `.PromptTemplate`, `.Debug`. Each one gets a
 full comment block with its default.
