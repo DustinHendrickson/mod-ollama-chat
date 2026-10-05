@@ -3,6 +3,7 @@
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat_personality.h"
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_capability.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_governor.h"
@@ -48,7 +49,8 @@ ChatCommandTable OllamaChatConfigCommand::GetCommands() const
         { "status",      HandleOllamaStatusCommand,  SEC_ADMINISTRATOR, Console::Yes },
         { "test",        HandleOllamaTestCommand,    SEC_ADMINISTRATOR, Console::Yes },
         { "sentiment",   ollamaSentimentCommandTable },
-        { "personality", ollamaPersonalityCommandTable }
+        { "personality", ollamaPersonalityCommandTable },
+        { "autopilot",   Autopilot_CommandTable() }
     };
 
     static ChatCommandTable commandTable =

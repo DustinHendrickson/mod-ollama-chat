@@ -74,7 +74,7 @@ that module's mistakes:
  │       ChangeStrategy / rpgInfo / do X  │
  │       record event + goal in DB        │
  └───────────────────────────────────────┘
- Event hooks (events.cpp: kill/loot/death/quest/level/achievement/learn)
+ AutopilotPlayerScript hooks (kill/loot/death/quest/level/achievement, login/logout)
    └─ Recorder_Event(...)  → in-memory ring + async DB insert
 ```
 
@@ -298,7 +298,7 @@ chat module already uses: thinking nobody sees is the first thing to cut.
   one snapshot every 2 s, not 1000 at once. A recorder snapshot reads only
   `Player` fields (level, money, durability, bags, skills) and does no grid
   scans.
-- **Events are counters.** The `events.cpp` hooks bump counters in the bot's
+- **Events are counters.** The `AutopilotPlayerScript` hooks bump counters in the bot's
   struct, which is O(1). Only notable events (level, death, rare loot, quest,
   goal) become DB rows.
 - **Batched DB writes.** Snapshot and event rows queue in memory and are
@@ -383,7 +383,8 @@ New file `data/sql/characters/base/2026_10_05_autopilot.sql`, using
   Trimmed to `EventRetention` rows per bot.
 
 Counters (kills, deaths, skill-ups since the last snapshot) are accumulated in
-memory from the existing `events.cpp` hooks, which already fire for bots. They
+memory from a dedicated `AutopilotPlayerScript`, separate from the chatter
+hooks in `events.cpp` so neither feature gates the other. They
 are flushed with the snapshot. All DB writes are async, using the same pattern
 as `memory.cpp`.
 
@@ -541,9 +542,12 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
    - The `autopilot` strategy registration spike: verify that it shows up in
      `nc ?` for every class and survives `ResetStrategies`.
    - Selection rules, explicit on/off, `preview`.
-   - Snapshot recorder and event log fed from `events.cpp`.
-   - `status` and `history` commands.
+   - Snapshot recorder and event log fed by `AutopilotPlayerScript`.
+   - `status`, `history`, `preview`, `playstyle` and `awareness` commands.
    - Ships as "bots keep a diary".
+   - **Status: implemented on this branch; syntax-checked (`cl /Zs`), not yet
+     built or run in-game.** The spike items (marker visible in `nc ?` for
+     every class, restored after `ResetStrategies`) still need an in-game check.
 2. **Policy first, then the planner MVP.**
    - The deterministic activity policy and preset applier come first, along
      with re-assert after reset and the guards. With just these, bots already

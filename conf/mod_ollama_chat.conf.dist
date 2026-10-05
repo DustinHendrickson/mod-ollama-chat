@@ -2001,3 +2001,180 @@ OllamaChat.PresencePenalty = -1000
 #   Default: -1000
 OllamaChat.FrequencyPenalty = -1000
 
+
+###############################################################################
+#
+#   OLLAMA CHAT - AUTOPILOT (EXPERIMENTAL, PHASE 1)
+#
+#   Gives selected playerbots a playstyle, an awareness level and a diary of
+#   their progress, as the foundation for LLM-driven macro goals (see
+#   docs/autopilot-plan.md). This phase records and selects only: it does not
+#   yet change what bots do, and it makes no LLM calls.
+#
+#   Requires:
+#     - OllamaChat.EnableChatBotSnapshotTemplate = 1
+#     - the tables in data/sql/characters/base/2026_10_05_autopilot.sql
+#
+#   Enrolled bots carry the `autopilot` playerbots strategy (visible in
+#   `nc ?`). The strategy is a marker that mirrors enrollment. Enrollment
+#   itself lives in the mod_ollama_chat_autopilot table, because playerbots
+#   resets wipe strategies all the time; autopilot adds the marker back.
+#   For the same reason `nc -autopilot` cannot unenroll a bot. Use
+#   `.ollama autopilot off <bot>`.
+#
+#   Commands (GM):
+#     .ollama autopilot status [bot]          overview, or one bot's details
+#     .ollama autopilot preview               dry-run the selection rules
+#     .ollama autopilot on|off <bot>          force a bot on or off
+#     .ollama autopilot rules <bot>           hand the bot back to the rules
+#     .ollama autopilot history <bot> [n]     recent diary events
+#     .ollama autopilot playstyle <bot> [x]   show or set the playstyle
+#     .ollama autopilot awareness <bot> [x]   show or set the awareness level
+#
+###############################################################################
+
+#    OllamaChat.Autopilot.Enable
+#        Master switch.
+#        Default: 0
+OllamaChat.Autopilot.Enable = 0
+
+#    OllamaChat.Autopilot.Debug
+#        Log each enrollment decision to module.ollamachat.
+#        Default: 0
+OllamaChat.Autopilot.Debug = 0
+
+# ----------------------------------------------
+# Selection: which bots are autopilot characters
+# ----------------------------------------------
+#
+# A bot is enrolled when any include rule matches and no exclude rule does.
+# The rules are checked once when a bot logs in and again on `.ollama reload`,
+# never per tick. A GM's `.ollama autopilot on|off` always overrides them.
+# Run `.ollama autopilot preview` to see what the current rules would select.
+
+#    OllamaChat.Autopilot.Select.RandomBotPercent
+#        Share of random bots to enroll, 0-100. The choice is a stable hash of
+#        the character, so the same bots stay selected across restarts, and
+#        raising the percent only ever adds bots.
+#        Default: 0
+OllamaChat.Autopilot.Select.RandomBotPercent = 0
+
+#    OllamaChat.Autopilot.Select.AltBots
+#        Enroll non-random bots (alts and addclass bots). These usually have a
+#        human master already, so the default leaves them alone.
+#        Default: 0
+OllamaChat.Autopilot.Select.AltBots = 0
+
+#    OllamaChat.Autopilot.Select.Guilds
+#        Comma-separated guild ids whose bot members are enrolled, e.g. an
+#        all-bot roleplay guild.
+#        Default: "" (none)
+OllamaChat.Autopilot.Select.Guilds = ""
+
+#    OllamaChat.Autopilot.Select.Accounts
+#        Comma-separated account ids whose bots are enrolled.
+#        Default: "" (none)
+OllamaChat.Autopilot.Select.Accounts = ""
+
+#    OllamaChat.Autopilot.Select.Include
+#    OllamaChat.Autopilot.Select.Exclude
+#        Comma-separated character names. Include always enrolls (it ignores
+#        the level band); Exclude always wins over every rule above. Neither
+#        overrides a GM's on/off.
+#        Default: "" (none)
+OllamaChat.Autopilot.Select.Include = ""
+OllamaChat.Autopilot.Select.Exclude = ""
+
+#    OllamaChat.Autopilot.Select.MinLevel
+#    OllamaChat.Autopilot.Select.MaxLevel
+#        Level band for the guild, account, random and alt rules. A bot that
+#        levels out of the band is unenrolled at its next login. Its history
+#        and playstyle are kept for when it comes back.
+#        Default: 1 and 255
+OllamaChat.Autopilot.Select.MinLevel = 1
+OllamaChat.Autopilot.Select.MaxLevel = 255
+
+#    OllamaChat.Autopilot.Select.GuildPlaystyles
+#        Pin the playstyle of every bot enrolled from a guild, as
+#        guildId:playstyle pairs. For example "12:roleplayer,40:crafter".
+#        Default: "" (none)
+OllamaChat.Autopilot.Select.GuildPlaystyles = ""
+
+#    OllamaChat.Autopilot.AllowMasterEnroll
+#        Let a bot's master enroll it by whispering `nc +autopilot`. Once
+#        granted it is sticky; use `.ollama autopilot off <bot>` to undo it.
+#        With 0, the marker is removed again if a master adds it.
+#        Default: 1
+OllamaChat.Autopilot.AllowMasterEnroll = 1
+
+#    OllamaChat.Autopilot.MaxEnrolled
+#        Upper bound on bots enrolled by the guild, account, random and alt
+#        rules. Bots that are already enrolled keep their place, so the set
+#        does not churn. Hand-picked bots (GM command, Include, master) do not
+#        count against it. 0 = no cap.
+#        Default: 0
+OllamaChat.Autopilot.MaxEnrolled = 0
+
+# ----------------------------------------------
+# Playstyle and awareness
+# ----------------------------------------------
+
+#    OllamaChat.Autopilot.Playstyle.Weights
+#        The playstyles a bot can be given, with relative weights, as
+#        name:weight pairs. A new name is a new playstyle. Weight 0 keeps a
+#        name usable by command but never assigns it at random.
+#        Default: "explorer:12,speedrunner:10,quester:16,grinder:8,crafter:12,roleplayer:10,dungeonrunner:10,casual:16,pvper:6"
+OllamaChat.Autopilot.Playstyle.Weights = "explorer:12,speedrunner:10,quester:16,grinder:8,crafter:12,roleplayer:10,dungeonrunner:10,casual:16,pvper:6"
+
+#    OllamaChat.Autopilot.Awareness.Weights
+#        How bots think about what they are doing:
+#          immersed  - the character does not know it is a game
+#          player    - a person playing casually
+#          metagamer - knows the systems and optimises them
+#        At Roleplay.Strictness 2 every bot is immersed regardless.
+#        Default: "immersed:30,player:50,metagamer:20"
+OllamaChat.Autopilot.Awareness.Weights = "immersed:30,player:50,metagamer:20"
+
+# ----------------------------------------------
+# Diary and performance
+# ----------------------------------------------
+#
+# The sweep visits a fixed number of bots per tick in rotation, so its cost
+# per tick does not grow with the number of bots. Snapshots are staggered
+# across the interval, and all writes are batched into one transaction per
+# flush.
+
+#    OllamaChat.Autopilot.SweepIntervalMs
+#        How often the sweep runs. Minimum 100.
+#        Default: 1000
+OllamaChat.Autopilot.SweepIntervalMs = 1000
+
+#    OllamaChat.Autopilot.BotsPerSweep
+#        Bots visited per sweep. Every online bot is visited once per
+#        (online bots / BotsPerSweep) sweeps. That is how quickly a reset
+#        marker is restored and a zone change is noticed.
+#        Default: 25
+OllamaChat.Autopilot.BotsPerSweep = 25
+
+#    OllamaChat.Autopilot.SnapshotIntervalMinutes
+#        Minutes between progress snapshots per enrolled bot. A bot also gets
+#        one on first enrollment, on each level up, and at logout.
+#        Default: 30
+OllamaChat.Autopilot.SnapshotIntervalMinutes = 30
+
+#    OllamaChat.Autopilot.FlushIntervalSeconds
+#        Seconds between batched database writes. Minimum 5.
+#        Default: 60
+OllamaChat.Autopilot.FlushIntervalSeconds = 60
+
+#    OllamaChat.Autopilot.SnapshotRetention
+#        Hard cap on snapshots kept per bot. History is also thinned as it
+#        ages: every snapshot for a day, one per hour for a week, one per day
+#        after that. 0 = no cap.
+#        Default: 500
+OllamaChat.Autopilot.SnapshotRetention = 500
+
+#    OllamaChat.Autopilot.EventRetention
+#        Events kept per bot (newest first). 0 = no cap.
+#        Default: 300
+OllamaChat.Autopilot.EventRetention = 300

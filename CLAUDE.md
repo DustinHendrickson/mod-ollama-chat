@@ -153,3 +153,26 @@ signature mismatches, missing declarations and bad `override`s:
   line
 
 This does not link, so it will not catch a declared-but-undefined function.
+
+## Autopilot (playerbots strategy control)
+
+Design and phase status: `docs/autopilot-plan.md`. Facts that are easy to get
+wrong:
+
+- **Registering a playerbots strategy from this module** works by adding a
+  `NamedObjectContext<Strategy>` to all ten class contexts'
+  `sharedStrategyContexts` (public statics; see
+  `mod-ollama-chat_autopilot_strategy.cpp`). Do it at `OnStartup`, before any
+  bot logs in, because bots read those creator maps on map threads. Keep
+  playerbots engine includes confined to that file.
+- **`PlayerbotAI::ChangeStrategy` does not persist**, and random bots get
+  `ResetStrategies()` constantly. Autopilot's own table is the source of
+  truth, and the sweep puts the marker back after a reset. Never treat a
+  strategy's absence as the user's intent.
+- **PlayerScript progress hooks run on map threads**, several at once. They
+  may read only the player they were handed plus mutex-guarded module state.
+  `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`
+  has joined its workers, so it may touch any bot.
+- **Keep per-tick cost flat.** The sweep visits a fixed `BotsPerSweep` in
+  rotation. Snapshots are staggered by guid hash, and DB writes are batched
+  per flush. Do not add a walk over every online player to the tick.

@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_events.h"
@@ -33,6 +34,9 @@ void Addmod_ollama_chatScripts()
 
     // Bots react when a player emotes at them.
     new ChatOnEmote();
+
+    // Autopilot: bot roster, progress diary and the `autopilot` strategy.
+    new AutopilotPlayerScript();
 
     new OllamaChatConfigCommand();
 }

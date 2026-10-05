@@ -6,6 +6,7 @@
 #include "Config.h"
 #include "Log.h"
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_capability.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_memory.h"
@@ -920,6 +921,9 @@ void LoadOllamaChatConfig()
     // buffers under a worker mid-request.
     OllamaConfig_Publish();
 
+    // After the snapshot setting above: autopilot depends on it.
+    Autopilot_LoadConfig();
+
     LoadPersonalityTemplatesFromDB();
 
     // Loads the environment random chatter message templates for each type.
@@ -1228,6 +1232,11 @@ void OllamaChatConfigWorldScript::OnStartup()
     Roleplay_Load();
     Memory_Load();
 
+    // Registers the `autopilot` playerbots strategy. Playerbots built its
+    // strategy contexts in OnBeforeWorldInitialized, and no bot has logged in
+    // yet, so nothing can be reading the creator maps while we add to them.
+    Autopilot_Load();
+
     // Spread the three periodic saves so they do not all come due on the same
     // world tick. Each is incremental now, but they queue onto one database
     // worker and there is no reason to bunch them.
@@ -1269,6 +1278,7 @@ void OllamaChatConfigWorldScript::OnShutdown()
 
     SaveBotConversationHistoryToDB();
     Memory_SaveAll();
+    Autopilot_SaveAll();
     if (g_EnableSentimentTracking)
         SaveBotPlayerSentimentsToDB();
 
