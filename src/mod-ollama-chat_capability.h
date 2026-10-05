@@ -34,6 +34,7 @@ enum class OllamaRequestKind : uint8_t
     EventChatter,
     Sentiment,
     RoleplayReply,
+    Autopilot,      // an autopilot plan: JSON out, its own model/budget overrides
 };
 
 enum class OllamaThinkSupport : uint8_t

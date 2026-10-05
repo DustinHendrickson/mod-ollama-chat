@@ -556,6 +556,36 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
      think policy.
    - Prompt builder, JSON schema, parser and validator.
    - Tiers and the budget queue.
+   - **Status: implemented on this branch; syntax-checked (`cl /Zs`, all 26
+     module files), not yet built or run in-game.** As built:
+     - Activities and dispositions are conf-defined presets
+       (`autopilot_presets.cpp`). An activity's `rpg:` list is enforced by
+       subclassing `NewRpgBaseAction` to reach its protected
+       `RandomChangeStatus`, restricted to the allowed set. Playerbots' own
+       weights and target selection do the rest.
+     - LLM jobs run through a new generic `OllamaDispatch_SubmitJob`.
+       `OllamaRequestKind::Autopilot` swaps in `Autopilot.Model`,
+       `Autopilot.NumPredict` and `Autopilot.SystemPrompt`, drops the chat
+       stop sequences, never thinks, and sets Ollama `format: json`.
+     - The marker strategy doubles as the reset detector. A missing marker
+       means playerbots reset the bot, so everything is restored. Drift with
+       the marker present while grouped with a human means the human changed
+       it, so that strategy gets locked.
+     - A bot that becomes a group follower with an activity live is handed
+       back to its playerbots defaults (`ResetStrategies`).
+     - Commands added: `replan`, `activity`.
+   - **Simplified or deferred:**
+     - `WithRealPlayer` 2/3 (voicing wants, leaving) is deferred to phase 4.
+     - Situation playbooks (per-situation presets, `on_death`) are deferred
+       to phase 3. Dispositions already hold in combat and instances.
+     - Boredom is only the policy's damper on the current activity. The
+       numeric model is phase 3.
+     - Tiers use "real player on the same map" rather than a
+       `DormantAfterMinutes` timer.
+     - Goals are free text from the model, shown in later prompts. Measurable
+       goal kinds are phase 3.
+     - Guards can only move a bot to `town` or `rest`. Whether it then
+       actually repairs or sells is up to playerbots' NPC interactions.
 3. **Goals and feelings.**
    - Goal kinds with measurable progress against snapshots: reach level, reach
      skill, gold, explore zone, complete quest or chain, run dungeon.

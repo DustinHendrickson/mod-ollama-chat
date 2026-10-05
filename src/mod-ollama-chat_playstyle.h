@@ -41,6 +41,25 @@ bool Awareness_Allowed(const std::string& name);
 std::vector<std::string> Playstyle_List();
 std::vector<std::string> Awareness_List();
 
+// What a playstyle means to the planner. Shipped defaults for the nine stock
+// playstyles; every field can be overridden or supplied for a new playstyle
+// with OllamaChat.Autopilot.Playstyle.<name>.Description / .Activities /
+// .SpanMinutes / .Disposition.
+struct PlaystyleProfile
+{
+    std::string name;
+    std::string description;
+    std::vector<std::pair<std::string, uint32_t>> activityWeights;  // activity -> weight
+    uint32_t spanMinMinutes = 20;      // how long an activity holds its interest
+    uint32_t spanMaxMinutes = 45;
+    std::vector<std::pair<std::string, std::string>> dispositions;  // axis -> option
+};
+
+// Null for an unknown name.
+const PlaystyleProfile* Playstyle_Profile(const std::string& name);
+
+std::string Awareness_Description(const std::string& name);
+
 // Stable, well-mixed hash of a guid. Used wherever autopilot needs a
 // deterministic per-bot choice (assignment, percent selection, staggering).
 uint64_t OllamaStableHash(uint64_t value);

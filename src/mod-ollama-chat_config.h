@@ -73,6 +73,12 @@ extern uint32_t    g_OllamaNumCtx;
 extern uint32_t    g_OllamaNumThreads;
 extern std::string g_OllamaStop;
 extern std::string g_OllamaSystemPrompt;
+
+// Autopilot planner overrides. Strings: published to workers only through
+// OllamaConfig_Publish, never read off-thread.
+extern std::string g_AutopilotModel;          // empty = OllamaChat.Model
+extern uint32_t    g_AutopilotNumPredict;
+extern std::string g_AutopilotSystemPrompt;
 extern std::string g_OllamaSeed;
 
 // Optional sampling controls for response diversity. All default to "unset",

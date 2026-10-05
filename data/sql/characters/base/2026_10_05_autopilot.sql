@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     kills_total INT UNSIGNED NOT NULL DEFAULT 0,
     deaths_total INT UNSIGNED NOT NULL DEFAULT 0,
     quests_total INT UNSIGNED NOT NULL DEFAULT 0,
+    activity VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Current activity preset',
+    activity_since INT UNSIGNED NOT NULL DEFAULT 0,
+    decided_by VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'llm, policy, guard or gm',
+    dispositions VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'axis:option,...',
+    goal_text VARCHAR(255) NOT NULL DEFAULT '',
+    last_reason VARCHAR(255) NOT NULL DEFAULT '',
     enrolled_at INT UNSIGNED NOT NULL DEFAULT 0,
     updated_at INT UNSIGNED NOT NULL DEFAULT 0,
     INDEX idx_enrolled (enrolled)

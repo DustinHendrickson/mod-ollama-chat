@@ -2,8 +2,13 @@
 
 #include "Log.h"
 
+#include "Player.h"
+
 #include "AiObjectContext.h"
 #include "NamedObjectContext.h"
+#include "NewRpgBaseAction.h"
+#include "NewRpgInfo.h"
+#include "PlayerbotAI.h"
 #include "Strategy.h"
 
 #include "DKAiObjectContext.h"
@@ -38,6 +43,34 @@ namespace
 
     private:
         static Strategy* autopilot(PlayerbotAI* botAI) { return new AutopilotMarkerStrategy(botAI); }
+    };
+
+    // Not registered anywhere and never executed as an action: it exists only
+    // to reach NewRpgBaseAction's protected status-selection helpers.
+    class AutopilotRpgSteer : public NewRpgBaseAction
+    {
+    public:
+        explicit AutopilotRpgSteer(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "autopilot rpg steer") { }
+
+        bool Steer(const std::vector<int>& allowed)
+        {
+            std::vector<NewRpgStatus> available;
+            for (int s : allowed)
+            {
+                if (s <= RPG_IDLE || s >= RPG_STATUS_END)
+                    continue;
+                NewRpgStatus status = static_cast<NewRpgStatus>(s);
+                if (sPlayerbotAIConfig.RpgStatusProbWeight[status] == 0)
+                    continue;
+                if (status == RPG_REST || CheckRpgStatusAvailable(status))
+                    available.push_back(status);
+            }
+
+            if (available.empty())
+                return false;
+
+            return RandomChangeStatus(available);
+        }
     };
 
     bool g_registered = false;
@@ -101,4 +134,51 @@ bool AutopilotStrategy_Register()
 bool AutopilotStrategy_IsRegistered()
 {
     return g_registered;
+}
+
+int AutopilotRpg_StatusFromName(const std::string& name)
+{
+    NewRpgStatus status = NewRpgInfo::StatusFromString(name);
+    return status == RPG_STATUS_END ? -1 : static_cast<int>(status);
+}
+
+std::string AutopilotRpg_StatusName(int status)
+{
+    switch (status)
+    {
+        case RPG_IDLE:          return "idle";
+        case RPG_GO_GRIND:      return "go grind";
+        case RPG_GO_CAMP:       return "go camp";
+        case RPG_WANDER_RANDOM: return "wander random";
+        case RPG_WANDER_NPC:    return "wander npc";
+        case RPG_DO_QUEST:      return "do quest";
+        case RPG_TRAVEL_FLIGHT: return "travel flight";
+        case RPG_REST:          return "rest";
+        case RPG_OUTDOOR_PVP:   return "outdoor pvp";
+        default:                return "unknown";
+    }
+}
+
+int AutopilotRpg_CurrentStatus(PlayerbotAI* ai)
+{
+    return ai ? static_cast<int>(ai->rpgInfo.GetStatus()) : -1;
+}
+
+bool AutopilotRpg_IsTravelling(PlayerbotAI* ai)
+{
+    if (!ai)
+        return false;
+    if (Player* bot = ai->GetBot())
+        if (bot->IsInFlight())
+            return true;
+    return ai->rpgInfo.GetStatus() == RPG_TRAVEL_FLIGHT;
+}
+
+bool AutopilotRpg_Steer(PlayerbotAI* ai, const std::vector<int>& allowed)
+{
+    if (!ai || allowed.empty())
+        return false;
+
+    AutopilotRpgSteer steer(ai);
+    return steer.Steer(allowed);
 }

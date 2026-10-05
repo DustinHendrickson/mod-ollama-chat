@@ -28,4 +28,37 @@ bool AutopilotStrategy_Register();
 
 bool AutopilotStrategy_IsRegistered();
 
+// --------------------------------------------------------------------------
+// NewRpg steering. World thread only.
+//
+// An autopilot activity is, in part, "the set of NewRpg statuses this bot may
+// be in" (questing allows do quest / wander npc / go camp, and so on). When
+// the bot drifts outside the set, Steer moves it back in by calling
+// playerbots' own NewRpgBaseAction::RandomChangeStatus restricted to the set.
+// That uses playerbots' weights and its own target selection (grind spots,
+// camps, quests with POIs, flight paths), so nothing here duplicates it.
+//
+// Status ids are playerbots' NewRpgStatus values carried as int, so callers
+// need no playerbots engine headers.
+// --------------------------------------------------------------------------
+
+#include <string>
+#include <vector>
+
+class PlayerbotAI;
+
+// -1 for an unknown name. Names are playerbots' own: "do quest", "wander npc".
+int         AutopilotRpg_StatusFromName(const std::string& name);
+std::string AutopilotRpg_StatusName(int status);
+
+int  AutopilotRpg_CurrentStatus(PlayerbotAI* ai);
+
+// Taking or walking to a flight. Never interrupt one.
+bool AutopilotRpg_IsTravelling(PlayerbotAI* ai);
+
+// Move the bot into one of `allowed` that is available right now. Returns
+// false, changing nothing, when none is -- rather than letting playerbots fall
+// back to sitting down.
+bool AutopilotRpg_Steer(PlayerbotAI* ai, const std::vector<int>& allowed);
+
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_STRATEGY_H

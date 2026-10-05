@@ -37,7 +37,7 @@ namespace
 {
     using Clock = std::chrono::steady_clock;
 
-    enum class TaskType : uint8_t { ChatReply, Sentiment, Condense, Relationship };
+    enum class TaskType : uint8_t { ChatReply, Sentiment, Condense, Relationship, Job };
 
     struct Task
     {
@@ -55,6 +55,9 @@ namespace
         uint64_t    memoryOtherGuid = 0;
         std::string memoryOtherName;
         std::string memoryPrompt;
+
+        // Job payload.
+        std::function<void()> job;
     };
 
     struct Completion
@@ -196,6 +199,10 @@ namespace
                     case TaskType::Relationship:
                         Memory_RunRelationshipUpdate(task.memoryBotGuid, task.memoryOtherGuid,
                                                      task.memoryOtherName, task.memoryPrompt);
+                        break;
+                    case TaskType::Job:
+                        if (task.job)
+                            task.job();
                         break;
                     default:
                         RunChatTask(task);
@@ -636,6 +643,22 @@ namespace
         g_queue.push_back(std::move(task));
         return true;
     }
+}
+
+bool OllamaDispatch_SubmitJob(std::function<void()> job)
+{
+    if (!job)
+        return false;
+
+    Task task;
+    task.type = TaskType::Job;
+    task.job  = std::move(job);
+
+    if (!SubmitBackground(std::move(task)))
+        return false;
+
+    g_queueCv.notify_one();
+    return true;
 }
 
 void OllamaDispatch_SubmitCondensation(uint64_t botGuid, const std::string& prompt)

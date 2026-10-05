@@ -176,3 +176,15 @@ wrong:
 - **Keep per-tick cost flat.** The sweep visits a fixed `BotsPerSweep` in
   rotation. Snapshots are staggered by guid hash, and DB writes are batched
   per flush. Do not add a walk over every online player to the tick.
+- **Steering NewRpg goes through `AutopilotRpg_Steer`**, a
+  `NewRpgBaseAction` subclass that reaches the protected
+  `RandomChangeStatus`. Do not set `rpgInfo.ChangeTo*` directly; the
+  positioned variants need grind/camp/quest/flight targets that only those
+  helpers compute.
+- **The marker strategy is the reset detector.** If it is missing,
+  playerbots reset the bot: restore everything. If it is present but a
+  managed strategy drifted while a human is in the group, the human changed
+  it: lock that name. Do not "fix" this by re-applying unconditionally.
+- **The planner's prompt template is filled by literal `{name}`
+  replacement, not fmt**, so JSON braces in it need no escaping. Free text
+  from the model has its braces neutralised before it is fed back in.

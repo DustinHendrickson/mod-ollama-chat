@@ -428,6 +428,10 @@ bool OllamaCapability_ShouldThink(OllamaRequestKind kind)
             return true;    // a judgement, and never shown to players
         case OllamaRequestKind::RoleplayReply:
             return g_RoleplayStrictness >= 2;
+        case OllamaRequestKind::Autopilot:
+            // Reasoning eats the JSON budget and the planner may run on a
+            // different model than the one the capability probe looked at.
+            return false;
         case OllamaRequestKind::ChatReply:
         case OllamaRequestKind::RandomChatter:
         case OllamaRequestKind::EventChatter:

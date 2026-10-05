@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+class Field;
 class Player;
 
 // --------------------------------------------------------------------------
@@ -57,6 +58,14 @@ struct ProgressEvent
 // the caller to fill.
 ProgressSnapshot Progress_Capture(Player* bot);
 
+// Equipped-gear durability, 0-100. Same thread rule as Progress_Capture.
+uint8_t Progress_DurabilityPct(Player* bot);
+
+// The snapshot column list for a SELECT, and a reader for one row of it.
+// Shared by the synchronous reads below and autopilot's async history load.
+const char*      Progress_SnapshotColumns();
+ProgressSnapshot Progress_ReadSnapshot(Field* fields, uint64_t botGuid);
+
 // Queue for the next flush. Thread-safe.
 void Progress_QueueSnapshot(ProgressSnapshot snapshot);
 void Progress_QueueEvent(uint64_t botGuid, std::string type, std::string detail);
@@ -76,6 +85,14 @@ std::vector<ProgressSnapshot> Progress_LoadSnapshots(uint64_t botGuid, uint32_t 
 
 // "Mining 75/150, Herbalism 60/75" from the compact column.
 std::string Progress_DescribeProfessions(const std::string& compact);
+
+// Prompt text describing change across a window of snapshots (oldest first):
+// "Over the last 3h: level 21 -> 23, +12g 40s 0c, 9 quests done, 140 kills,
+// 2 deaths. Zones: Westfall, Duskwood. Mining 75 -> 98." Deltas, not raw
+// rows: what changed is what the model should reason about.
+std::string Progress_Summarize(const std::vector<ProgressSnapshot>& oldestFirst);
+
+std::string Progress_ZoneName(uint32_t zoneId);
 
 // "12g 34s 5c"
 std::string Progress_FormatMoney(int64_t copper);

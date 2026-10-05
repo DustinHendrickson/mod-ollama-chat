@@ -5,6 +5,7 @@
 #include "mod-ollama-chat_handler.h"
 
 #include "ObjectGuid.h"
+#include <functional>
 #include <string>
 #include <cstdint>
 
@@ -112,6 +113,13 @@ void OllamaDispatch_SubmitCondensation(uint64_t botGuid, const std::string& prom
 void OllamaDispatch_SubmitRelationship(uint64_t botGuid, uint64_t otherGuid,
                                        const std::string& otherName,
                                        const std::string& prompt);
+
+// Run arbitrary background work on a dispatcher worker -- for features that
+// own their own result handling (the autopilot planner). The job must obey
+// the worker rules: HTTP and string work only, no Player/Map/Channel access,
+// no config string reads. Best-effort like sentiment: refused (returns false)
+// when the queue is past half depth, so it never crowds out chat.
+bool OllamaDispatch_SubmitJob(std::function<void()> job);
 
 // A player emoted at a bot and the bot decided to answer in words.
 // World thread only.

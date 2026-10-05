@@ -8,6 +8,7 @@
 #include "Player.h"
 #include "SharedDefines.h"
 
+#include <algorithm>
 #include <ctime>
 #include <mutex>
 #include <unordered_map>
@@ -282,38 +283,52 @@ std::vector<ProgressEvent> Progress_LoadEvents(uint64_t botGuid, uint32_t limit)
     return out;
 }
 
+uint8_t Progress_DurabilityPct(Player* bot)
+{
+    return DurabilityPct(bot);
+}
+
+const char* Progress_SnapshotColumns()
+{
+    return "taken_at, level, xp, money, map_id, zone_id, area_id, durability_pct, "
+           "free_bag_slots, quests_active, quests_rewarded, kills_total, deaths_total, "
+           "quests_total, professions";
+}
+
+ProgressSnapshot Progress_ReadSnapshot(Field* f, uint64_t botGuid)
+{
+    ProgressSnapshot s;
+    s.botGuid        = botGuid;
+    s.takenAt        = f[0].Get<uint32>();
+    s.level          = f[1].Get<uint8>();
+    s.xp             = f[2].Get<uint32>();
+    s.money          = f[3].Get<uint32>();
+    s.mapId          = f[4].Get<uint16>();
+    s.zoneId         = f[5].Get<uint32>();
+    s.areaId         = f[6].Get<uint32>();
+    s.durabilityPct  = f[7].Get<uint8>();
+    s.freeBagSlots   = f[8].Get<uint16>();
+    s.questsActive   = f[9].Get<uint8>();
+    s.questsRewarded = f[10].Get<uint32>();
+    s.killsTotal     = f[11].Get<uint32>();
+    s.deathsTotal    = f[12].Get<uint32>();
+    s.questsTotal    = f[13].Get<uint32>();
+    s.professions    = f[14].Get<std::string>();
+    return s;
+}
+
 std::vector<ProgressSnapshot> Progress_LoadSnapshots(uint64_t botGuid, uint32_t sinceUnix,
                                                      uint32_t limit)
 {
     std::vector<ProgressSnapshot> out;
     if (QueryResult result = CharacterDatabase.Query(
-            "SELECT taken_at, level, xp, money, map_id, zone_id, area_id, durability_pct, "
-            "free_bag_slots, quests_active, quests_rewarded, kills_total, deaths_total, "
-            "quests_total, professions FROM mod_ollama_chat_autopilot_snapshots "
+            "SELECT {} FROM mod_ollama_chat_autopilot_snapshots "
             "WHERE bot_guid = {} AND taken_at >= {} ORDER BY taken_at ASC LIMIT {}",
-            botGuid, sinceUnix, limit))
+            Progress_SnapshotColumns(), botGuid, sinceUnix, limit))
     {
         do
         {
-            Field* f = result->Fetch();
-            ProgressSnapshot s;
-            s.botGuid        = botGuid;
-            s.takenAt        = f[0].Get<uint32>();
-            s.level          = f[1].Get<uint8>();
-            s.xp             = f[2].Get<uint32>();
-            s.money          = f[3].Get<uint32>();
-            s.mapId          = f[4].Get<uint16>();
-            s.zoneId         = f[5].Get<uint32>();
-            s.areaId         = f[6].Get<uint32>();
-            s.durabilityPct  = f[7].Get<uint8>();
-            s.freeBagSlots   = f[8].Get<uint16>();
-            s.questsActive   = f[9].Get<uint8>();
-            s.questsRewarded = f[10].Get<uint32>();
-            s.killsTotal     = f[11].Get<uint32>();
-            s.deathsTotal    = f[12].Get<uint32>();
-            s.questsTotal    = f[13].Get<uint32>();
-            s.professions    = f[14].Get<std::string>();
-            out.push_back(std::move(s));
+            out.push_back(Progress_ReadSnapshot(result->Fetch(), botGuid));
         } while (result->NextRow());
     }
     return out;
@@ -341,6 +356,88 @@ std::string Progress_DescribeProfessions(const std::string& compact)
             out += ", ";
         out += name + " " + entry.substr(colon + 1);
     }
+    return out;
+}
+
+std::string Progress_ZoneName(uint32_t zoneId)
+{
+    if (AreaTableEntry const* area = sAreaTableStore.LookupEntry(zoneId))
+        if (area->area_name[0] && *area->area_name[0])
+            return area->area_name[0];
+    return std::to_string(zoneId);
+}
+
+std::string Progress_Summarize(const std::vector<ProgressSnapshot>& oldestFirst)
+{
+    if (oldestFirst.size() < 2)
+        return "";
+
+    const ProgressSnapshot& a = oldestFirst.front();
+    const ProgressSnapshot& b = oldestFirst.back();
+    const uint32_t span = b.takenAt > a.takenAt ? b.takenAt - a.takenAt : 0;
+    if (span < 60)
+        return "";
+
+    const std::string window = span >= 7200 ? SafeFormat("{}h", span / 3600) : SafeFormat("{}m", span / 60);
+
+    std::string out = SafeFormat("Over the last {}: ", window);
+    out += a.level == b.level ? SafeFormat("still level {}", uint32_t(b.level))
+                              : SafeFormat("level {} -> {}", uint32_t(a.level), uint32_t(b.level));
+
+    const int64_t money = int64_t(b.money) - int64_t(a.money);
+    out += money >= 0 ? ", +" + Progress_FormatMoney(money) : ", " + Progress_FormatMoney(money);
+    out += SafeFormat(", {} quests done, {} kills, {} deaths.",
+                      b.questsTotal - a.questsTotal, b.killsTotal - a.killsTotal,
+                      b.deathsTotal - a.deathsTotal);
+
+    std::vector<uint32_t> zones;
+    for (const ProgressSnapshot& s : oldestFirst)
+        if (std::find(zones.begin(), zones.end(), s.zoneId) == zones.end())
+            zones.push_back(s.zoneId);
+    out += " Zones:";
+    for (size_t i = 0; i < zones.size(); ++i)
+        out += (i ? ", " : " ") + Progress_ZoneName(zones[i]);
+    out += ".";
+
+    // Profession progress, only where it moved.
+    auto parse = [](const std::string& compact)
+    {
+        std::unordered_map<uint32_t, uint32_t> values;
+        for (const std::string& entry : SplitString(compact, ','))
+        {
+            size_t colon = entry.find(':');
+            size_t slash = entry.find('/');
+            if (colon == std::string::npos)
+                continue;
+            try
+            {
+                values[static_cast<uint32_t>(std::stoul(entry.substr(0, colon)))] =
+                    static_cast<uint32_t>(std::stoul(entry.substr(colon + 1, slash - colon - 1)));
+            }
+            catch (...) { }
+        }
+        return values;
+    };
+
+    const auto before = parse(a.professions);
+    const auto after  = parse(b.professions);
+    std::string skills;
+    for (const auto& [skill, value] : after)
+    {
+        auto it = before.find(skill);
+        const uint32_t was = it == before.end() ? 0 : it->second;
+        if (value == was)
+            continue;
+
+        std::string name = std::to_string(skill);
+        if (SkillLineEntry const* line = sSkillLineStore.LookupEntry(skill))
+            if (line->name[0] && *line->name[0])
+                name = line->name[0];
+        skills += SafeFormat("{}{} {} -> {}", skills.empty() ? " " : ", ", name, was, value);
+    }
+    if (!skills.empty())
+        out += skills + ".";
+
     return out;
 }
 

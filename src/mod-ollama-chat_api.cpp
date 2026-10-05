@@ -125,6 +125,10 @@ namespace
         if (hasOptions)
             request["options"] = options;
 
+        // Constrained decoding: Ollama only emits valid JSON with this set.
+        if (cfg.jsonOutput)
+            request["format"] = "json";
+
         if (!cfg.stop.empty())
         {
             const std::vector<std::string> stopSeqs = ParseStopSequences(cfg.stop);
@@ -561,6 +565,10 @@ void OllamaConfig_Publish()
     next.presencePenalty  = g_OllamaPresencePenalty;
     next.frequencyPenalty = g_OllamaFrequencyPenalty;
 
+    next.autopilotModel        = g_AutopilotModel;
+    next.autopilotNumPredict   = g_AutopilotNumPredict;
+    next.autopilotSystemPrompt = g_AutopilotSystemPrompt;
+
     next.provider     = g_OllamaProvider;
     next.apiKey       = g_OllamaApiKey;
     next.apiKeyHeader = g_OllamaApiKeyHeader;
@@ -634,7 +642,21 @@ OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
         return result;
     }
 
-    const OllamaEndpointSettings cfg = OllamaConfig_Snapshot();
+    OllamaEndpointSettings settings = OllamaConfig_Snapshot();
+
+    // A plan is a JSON object several times longer than a chat line, and may
+    // be routed to a separate (often cheaper) model.
+    if (kind == OllamaRequestKind::Autopilot)
+    {
+        if (!settings.autopilotModel.empty())
+            settings.model = settings.autopilotModel;
+        settings.numPredict   = settings.autopilotNumPredict;
+        settings.systemPrompt = settings.autopilotSystemPrompt;
+        settings.stop.clear();          // chat stop sequences can cut JSON short
+        settings.jsonOutput   = true;
+    }
+
+    const OllamaEndpointSettings& cfg = settings;
 
     // One place decides what the "think" field should be: policy for this
     // request kind, plus everything learned about this model so far.

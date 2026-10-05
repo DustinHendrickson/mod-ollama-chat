@@ -2004,12 +2004,20 @@ OllamaChat.FrequencyPenalty = -1000
 
 ###############################################################################
 #
-#   OLLAMA CHAT - AUTOPILOT (EXPERIMENTAL, PHASE 1)
+#   OLLAMA CHAT - AUTOPILOT (EXPERIMENTAL)
 #
-#   Gives selected playerbots a playstyle, an awareness level and a diary of
-#   their progress, as the foundation for LLM-driven macro goals (see
-#   docs/autopilot-plan.md). This phase records and selects only: it does not
-#   yet change what bots do, and it makes no LLM calls.
+#   Lets an LLM run selected playerbots the way a player runs a character:
+#   choosing what kind of session to have (questing, exploring, grinding,
+#   gathering, time in town, dungeons, PvP, a rest) and in what spirit
+#   (cautious or bold, greedy or content, social or reserved). It never
+#   steers, targets or casts. It switches existing playerbots strategies and
+#   NewRpg statuses, and playerbots does the moment-to-moment work.
+#   See docs/autopilot-plan.md.
+#
+#   Each bot has a playstyle, an awareness level (immersed character / casual
+#   player / metagamer) and a diary of its progress. The LLM sees all three.
+#   Between LLM calls a deterministic playstyle policy keeps bots busy, so LLM
+#   cost is set by OllamaChat.Autopilot.LlmCallsPerHour, not by bot count.
 #
 #   Requires:
 #     - OllamaChat.EnableChatBotSnapshotTemplate = 1
@@ -2030,6 +2038,8 @@ OllamaChat.FrequencyPenalty = -1000
 #     .ollama autopilot history <bot> [n]     recent diary events
 #     .ollama autopilot playstyle <bot> [x]   show or set the playstyle
 #     .ollama autopilot awareness <bot> [x]   show or set the awareness level
+#     .ollama autopilot replan <bot>          ask the LLM what to do now
+#     .ollama autopilot activity <bot> [x] [m]  show or force an activity
 #
 ###############################################################################
 
@@ -2178,3 +2188,239 @@ OllamaChat.Autopilot.SnapshotRetention = 500
 #        Events kept per bot (newest first). 0 = no cap.
 #        Default: 300
 OllamaChat.Autopilot.EventRetention = 300
+
+# ----------------------------------------------
+# Control: what autopilot changes on a bot
+# ----------------------------------------------
+#
+# Autopilot works in layers:
+#   disposition  standing modifiers (risk / greed / social) that hold
+#                everywhere, combat and dungeons included
+#   activity     what kind of session the bot is having. It stands down while
+#                something else owns the bot's movement: a human's group,
+#                following a bot group's leader, an instance or battleground.
+#                It also pauses for death, combat and flights.
+# When a bot joins a group with an activity live, it is handed back to its
+# playerbots defaults so the activity does not fight `follow`.
+
+#    OllamaChat.Autopilot.Control
+#        Apply activities and dispositions. 0 = diary only: bots are selected
+#        and recorded but play exactly as playerbots would.
+#        Default: 1
+OllamaChat.Autopilot.Control = 1
+
+#    OllamaChat.Autopilot.WithRealPlayer
+#        In a group with a real player:
+#          0 = hands off entirely
+#          1 = dispositions only; the player leads
+#        If someone in the group changes a strategy autopilot manages by hand
+#        (e.g. `co -flee`), autopilot leaves that strategy alone until the
+#        group breaks up. Modes where the bot voices its own goals in party
+#        chat, or leaves when its goals diverge, are planned for a later phase.
+#        Default: 1
+OllamaChat.Autopilot.WithRealPlayer = 1
+
+# ----------------------------------------------
+# LLM planning and budget
+# ----------------------------------------------
+#
+# Each bot gets a tier, worked out from where the real players are:
+#   foreground  a real player is near (see ForegroundRange) or in its guild:
+#               the LLM chooses its activity every DecisionIntervalMinutes
+#   background  a real player is on the same map: the LLM is asked every
+#               GoalRefreshMinutes, and the policy fills in between
+#   dormant     no real player on its map: policy only, zero LLM calls
+# Every plan spends one token from a shared hourly budget. When the budget is
+# empty, bots carry on under the playstyle policy. Planning is also refused
+# while the shared request queue is more than half full, so chat replies
+# always come first. `.ollama autopilot preview` estimates the demand.
+
+#    OllamaChat.Autopilot.Llm.Enable
+#        Use the LLM for planning. 0 = playstyle policy only (no LLM calls).
+#        Default: 1
+OllamaChat.Autopilot.Llm.Enable = 1
+
+#    OllamaChat.Autopilot.LlmCallsPerHour
+#        Shared budget of plans per hour across all bots. Up to five minutes'
+#        worth may be spent in a burst. A quarter of the bucket is kept for
+#        foreground bots.
+#        Default: 300
+OllamaChat.Autopilot.LlmCallsPerHour = 300
+
+#    OllamaChat.Autopilot.MaxConcurrentPlans
+#        Plans in flight at once.
+#        Default: 2
+OllamaChat.Autopilot.MaxConcurrentPlans = 2
+
+#    OllamaChat.Autopilot.DecisionIntervalMinutes
+#    OllamaChat.Autopilot.GoalRefreshMinutes
+#        Minimum minutes between LLM plans for foreground and background bots.
+#        A bot may be asked sooner after a level-up, a guard, or a GM's replan.
+#        Default: 15 and 90
+OllamaChat.Autopilot.DecisionIntervalMinutes = 15
+OllamaChat.Autopilot.GoalRefreshMinutes = 90
+
+#    OllamaChat.Autopilot.ForegroundRange
+#        Yards within which a real player makes a bot foreground.
+#        0 = anywhere in the same zone.
+#        Default: 0
+OllamaChat.Autopilot.ForegroundRange = 0
+
+#    OllamaChat.Autopilot.PlanTimeoutSeconds
+#        A plan that has not come back after this long is abandoned, and the
+#        policy takes over.
+#        Default: 300
+OllamaChat.Autopilot.PlanTimeoutSeconds = 300
+
+#    OllamaChat.Autopilot.Model
+#        Model for planning. Empty = OllamaChat.Model. A plan is short and
+#        needs reliable JSON more than prose, so a smaller or cheaper model
+#        often does fine. It uses the same OllamaChat.Url, Provider and ApiKey.
+#        Default: ""
+OllamaChat.Autopilot.Model = ""
+
+#    OllamaChat.Autopilot.NumPredict
+#        Output token cap for a plan. The chat cap (OllamaChat.NumPredict) is
+#        far too small for a JSON plan.
+#        Default: 400
+OllamaChat.Autopilot.NumPredict = 400
+
+#    OllamaChat.Autopilot.SystemPrompt
+#        System prompt for planning (replaces OllamaChat.SystemPrompt for these
+#        requests). Empty = a short built-in instruction to answer in JSON.
+#        Default: ""
+OllamaChat.Autopilot.SystemPrompt = ""
+
+#    OllamaChat.Autopilot.PromptTemplate
+#        The planning prompt. Empty = the built-in template, which puts the
+#        static instructions and menus first so prompt caching works.
+#        Placeholders (replaced literally, so JSON braces need no escaping):
+#          {activities} {dispositions} {disposition_shape} {bot_name}
+#          {bot_level} {bot_race} {bot_class} {playstyle}
+#          {playstyle_description} {awareness} {awareness_description}
+#          {personality} {unavailable} {activity} {activity_minutes} {goal}
+#          {decisions} {progress} {events} {guards} {state} {memories}
+#        The reply must be a JSON object with "activity", one key per
+#        disposition axis, and optionally "minutes", "goal" and "reason".
+#        Default: ""
+OllamaChat.Autopilot.PromptTemplate = ""
+
+# ----------------------------------------------
+# Self-preservation guards
+# ----------------------------------------------
+#
+# Checked before anyone is asked, and never overridden by the LLM. A guard
+# switches the activity for HoldMinutes, then asks for a fresh plan with the
+# reason in the prompt. 0 disables a check.
+
+#    OllamaChat.Autopilot.Guard.Deaths
+#    OllamaChat.Autopilot.Guard.DeathWindowMinutes
+#        This many deaths within the window -> "rest".
+#        Default: 3 and 15
+OllamaChat.Autopilot.Guard.Deaths = 3
+OllamaChat.Autopilot.Guard.DeathWindowMinutes = 15
+
+#    OllamaChat.Autopilot.Guard.DurabilityPct
+#        Equipped durability below this percent -> "town".
+#        Default: 20
+OllamaChat.Autopilot.Guard.DurabilityPct = 20
+
+#    OllamaChat.Autopilot.Guard.FreeBagSlots
+#        Fewer free bag slots than this -> "town".
+#        Default: 2
+OllamaChat.Autopilot.Guard.FreeBagSlots = 2
+
+#    OllamaChat.Autopilot.Guard.HoldMinutes
+#        How long a guard's activity holds.
+#        Default: 10
+OllamaChat.Autopilot.Guard.HoldMinutes = 10
+
+# ----------------------------------------------
+# Activities
+# ----------------------------------------------
+#
+# The only things the planner can choose. Each one is a short spec:
+#
+#   nc:+a,-b    strategy changes on the non-combat engine
+#   co:+a,-b    strategy changes on the combat engine
+#   rpg:x,y     NewRpg statuses the bot may be in. When it drifts outside the
+#               set, autopilot moves it back using playerbots' own weights
+#               and target selection.
+#               Names: idle, rest, wander random, wander npc, go grind,
+#               go camp, do quest, travel flight, outdoor pvp
+#   level:a-b   only available in this level band
+#   needs:gathering   only for bots with herbalism, mining or skinning
+#
+# Clauses are separated by ';'. Activities are not reverted when the next one
+# starts, so each should set every strategy it cares about. The shipped ones
+# all set new rpg / rpg / move random / grind for that reason.
+#
+# Leave a line commented out to keep its built-in default. Add a new activity
+# by listing its name in Activities and giving it a spec and a .Description.
+
+#    OllamaChat.Autopilot.Activities
+#        Default: "quest,grind,explore,travel,town,gather,dungeon,pvp,rest"
+OllamaChat.Autopilot.Activities = "quest,grind,explore,travel,town,gather,dungeon,pvp,rest"
+
+# Built-in defaults, shown for reference:
+# OllamaChat.Autopilot.Activity.quest   = "nc:+new rpg,+quest,-grind,-rpg,-move random;rpg:do quest,wander npc,go camp"
+# OllamaChat.Autopilot.Activity.grind   = "nc:+new rpg,+grind,-rpg,-move random;rpg:go grind,wander random"
+# OllamaChat.Autopilot.Activity.explore = "nc:+new rpg,-grind,-rpg,-move random;rpg:wander random,travel flight,go camp"
+# OllamaChat.Autopilot.Activity.travel  = "nc:+new rpg,-rpg,-move random;rpg:travel flight"
+# OllamaChat.Autopilot.Activity.town    = "nc:+new rpg,-grind,-rpg,-move random;rpg:wander npc,go camp,rest"
+# OllamaChat.Autopilot.Activity.gather  = "nc:+new rpg,+gather,-rpg,-move random;rpg:wander random,go grind;needs:gathering"
+# OllamaChat.Autopilot.Activity.dungeon = "nc:+lfg,+new rpg,-grind,-rpg,-move random;rpg:wander npc,go camp,rest;level:15-80"
+# OllamaChat.Autopilot.Activity.pvp     = "nc:+bg,+new rpg,-rpg,-move random;rpg:outdoor pvp,wander random;level:10-80"
+# OllamaChat.Autopilot.Activity.rest    = "nc:+new rpg,-grind,-rpg,-move random;rpg:rest"
+# OllamaChat.Autopilot.Activity.<name>.Description = "what the LLM is told it means"
+
+# ----------------------------------------------
+# Dispositions
+# ----------------------------------------------
+#
+# Standing behaviour modifiers. Each one is an axis with options; the bot
+# holds one option per axis. The playstyle picks the defaults and the LLM may
+# change them. Options use the same nc:/co: spec as activities. Switching
+# options undoes the previous option's changes first. Keep to modifier
+# strategies: class, spec and role strategies are never in the defaults.
+
+#    OllamaChat.Autopilot.Dispositions
+#        The axes, each with the option used when nothing else applies.
+#        Default: "risk:balanced,greed:content,social:neutral"
+OllamaChat.Autopilot.Dispositions = "risk:balanced,greed:content,social:neutral"
+
+# Built-in defaults, shown for reference:
+# OllamaChat.Autopilot.Disposition.risk            = "cautious,balanced,bold"
+# OllamaChat.Autopilot.Disposition.risk.cautious   = "co:+flee,+potions,+avoid aoe,-aggressive"
+# OllamaChat.Autopilot.Disposition.risk.balanced   = ""
+# OllamaChat.Autopilot.Disposition.risk.bold       = "co:+aggressive,-flee"
+# OllamaChat.Autopilot.Disposition.greed           = "greedy,content"
+# OllamaChat.Autopilot.Disposition.greed.greedy    = "nc:+loot,+gather"
+# OllamaChat.Autopilot.Disposition.greed.content   = ""
+# OllamaChat.Autopilot.Disposition.social          = "social,neutral,reserved"
+# OllamaChat.Autopilot.Disposition.social.social   = "nc:+emote,+chat,+start duel"
+# OllamaChat.Autopilot.Disposition.social.neutral  = ""
+# OllamaChat.Autopilot.Disposition.social.reserved = "nc:-emote,-start duel"
+# OllamaChat.Autopilot.Disposition.<axis>.<option>.Description = "..."
+
+# ----------------------------------------------
+# Playstyle profiles
+# ----------------------------------------------
+#
+# What each playstyle in Playstyle.Weights means to the planner. The nine
+# shipped playstyles have built-in profiles; a new playstyle needs at least
+# .Activities. Fields:
+#   .Description   what the LLM is told about this playstyle
+#   .Activities    activity:weight pairs the policy picks from (the LLM sees
+#                  the description, not the weights)
+#   .SpanMinutes   min-max minutes an activity holds their interest
+#   .Disposition   axis:option defaults
+#
+# Example, the built-in explorer:
+# OllamaChat.Autopilot.Playstyle.explorer.Description = "Lives to see new places. Quests and fights are mostly a reason to travel somewhere new."
+# OllamaChat.Autopilot.Playstyle.explorer.Activities  = "explore:6,travel:4,quest:2,town:1,rest:1"
+# OllamaChat.Autopilot.Playstyle.explorer.SpanMinutes = "25-50"
+# OllamaChat.Autopilot.Playstyle.explorer.Disposition = "risk:cautious,greed:content,social:social"
+#
+# Awareness levels can be described the same way:
+# OllamaChat.Autopilot.Awareness.immersed.Description = "..."

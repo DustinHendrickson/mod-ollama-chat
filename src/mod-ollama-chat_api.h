@@ -68,6 +68,16 @@ struct OllamaEndpointSettings
     float   minP             = -1.0f;
     float   presencePenalty  = -1000.0f;
     float   frequencyPenalty = -1000.0f;
+
+    // Autopilot planner overrides, swapped in by QueryOllama for
+    // OllamaRequestKind::Autopilot. An empty model means "use `model`".
+    std::string autopilotModel;
+    uint32_t    autopilotNumPredict = 400;
+    std::string autopilotSystemPrompt;
+
+    // Ask the provider for a JSON object where it has a reliable switch for it
+    // (Ollama's `format: json`). Set per request, never published.
+    bool jsonOutput = false;
 };
 
 // Republish from the g_Ollama* globals. Call on the world thread after config
