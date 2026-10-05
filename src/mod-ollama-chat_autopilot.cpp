@@ -275,6 +275,8 @@ namespace
     uint32_t g_flushTimer  = 0;
     uint32_t g_guildTimer  = 0;
     bool     g_wasActive   = false;
+    uint32_t g_orphanTimer = 0;
+    constexpr uint32_t kOrphanCheckMs = 60 * 60 * 1000;
 
     // Counters for `.ollama autopilot status`.
     uint64_t g_statPolicy  = 0;
@@ -1896,6 +1898,79 @@ namespace
         SteerRpg(ai, *current, sit);
     }
 
+    // ----------------------------------------------------------------------
+    // Deleted characters. Their rows would otherwise sit in the table for
+    // good -- and rule-enrolled ones would hold a MaxEnrolled place for a bot
+    // that no longer exists, so random-bot churn slowly fills the cap.
+    // ----------------------------------------------------------------------
+
+    // Drop the in-memory state for these bots. Their DB rows are deleted by
+    // the caller. g_mutex held.
+    void ForgetRows(const std::vector<uint64_t>& guids)
+    {
+        for (uint64_t guid : guids)
+        {
+            auto it = g_rows.find(guid);
+            if (it != g_rows.end())
+            {
+                if (it->second.enrolled)
+                    CountEnrolled(it->second, -1);
+                g_rows.erase(it);
+            }
+            Progress_Forget(guid);
+        }
+    }
+
+    std::string DeleteRowsSql(const char* table, const std::string& guidList)
+    {
+        return SafeFormat("DELETE FROM {} WHERE bot_guid IN ({})", table, guidList);
+    }
+
+    // Rows whose character is gone, from any cause: a client delete while
+    // autopilot was off, playerbots' bulk reset (raw SQL, no script hook), or
+    // an operator's own tooling. Every bot with history has a row in the
+    // main table, so that is the only one that needs scanning.
+    constexpr const char* kOrphanQuery =
+        "SELECT a.bot_guid FROM mod_ollama_chat_autopilot a "
+        "LEFT JOIN characters c ON c.guid = a.bot_guid WHERE c.guid IS NULL";
+
+    void DeleteOrphans(const std::vector<uint64_t>& guids)
+    {
+        if (guids.empty())
+            return;
+
+        std::string list;
+        for (uint64_t guid : guids)
+            list += (list.empty() ? "" : ",") + std::to_string(guid);
+
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+        trans->Append(DeleteRowsSql("mod_ollama_chat_autopilot", list));
+        trans->Append(DeleteRowsSql("mod_ollama_chat_autopilot_snapshots", list));
+        trans->Append(DeleteRowsSql("mod_ollama_chat_autopilot_events", list));
+        CharacterDatabase.CommitTransaction(trans);
+    }
+
+    void PruneOrphansAsync()
+    {
+        g_callbacks.AddCallback(CharacterDatabase.AsyncQuery(kOrphanQuery)
+            .WithCallback([](QueryResult result)
+            {
+                if (!result)
+                    return;
+
+                std::vector<uint64_t> guids;
+                do { guids.push_back((*result)[0].Get<uint64>()); } while (result->NextRow());
+
+                {
+                    std::lock_guard<std::mutex> lock(g_mutex);
+                    ForgetRows(guids);
+                }
+                DeleteOrphans(guids);
+                LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: removed {} rows for deleted characters.",
+                         guids.size());
+            }));
+    }
+
     // Autopilot went inactive: hand every bot we touched back to playerbots
     // and take the marker off. Rows are kept, so turning it back on resumes
     // where each bot left off. One pass over online bots, on the transition
@@ -2739,6 +2814,23 @@ void Autopilot_Load()
         return;
     }
 
+    // Clear out characters deleted while we were not watching before loading,
+    // so they never take a MaxEnrolled place. The lookup is synchronous (this
+    // is startup); the delete is queued, so the load below skips them itself.
+    std::unordered_set<uint64_t> orphans;
+    {
+        std::vector<uint64_t> list;
+        if (QueryResult result = CharacterDatabase.Query(kOrphanQuery))
+            do { list.push_back((*result)[0].Get<uint64>()); } while (result->NextRow());
+        if (!list.empty())
+        {
+            DeleteOrphans(list);
+            orphans.insert(list.begin(), list.end());
+            LOG_INFO("server.loading", "[Ollama Chat] Autopilot: removed {} rows for deleted characters.",
+                     list.size());
+        }
+    }
+
     std::lock_guard<std::mutex> lock(g_mutex);
     g_rows.clear();
     g_enrolledCount = 0;
@@ -2754,6 +2846,9 @@ void Autopilot_Load()
         do
         {
             Field* f = result->Fetch();
+            if (orphans.count(f[0].Get<uint64>()))
+                continue;
+
             Row row;
             row.mode          = f[1].Get<uint8>();
             row.enrolled      = f[2].Get<uint8>() != 0;
@@ -2834,6 +2929,15 @@ void Autopilot_Update(uint32_t diff)
     {
         g_guildTimer = 0;
         RefreshRealGuilds();
+    }
+
+    // Characters deleted without a script hook (playerbots' bulk reset uses
+    // raw SQL) are caught here within the hour. One indexed anti-join.
+    g_orphanTimer += diff;
+    if (g_orphanTimer >= kOrphanCheckMs)
+    {
+        g_orphanTimer = 0;
+        PruneOrphansAsync();
     }
 
     const bool active = Autopilot_IsActive();
@@ -2947,6 +3051,7 @@ AutopilotPlayerScript::AutopilotPlayerScript()
           PLAYERHOOK_ON_LEVEL_CHANGED,
           PLAYERHOOK_ON_STORE_NEW_ITEM,
           PLAYERHOOK_ON_ACHI_COMPLETE,
+          PLAYERHOOK_ON_DELETE_FROM_DB,
       }) { }
 
 void AutopilotPlayerScript::OnPlayerLogin(Player* player)
@@ -2972,6 +3077,24 @@ void AutopilotPlayerScript::OnPlayerLogin(Player* player)
     g_online[guid] = Online();
     if (std::find(g_roster.begin(), g_roster.end(), guid) == g_roster.end())
         g_roster.push_back(guid);
+}
+
+void AutopilotPlayerScript::OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 lowGuid)
+{
+    // Runs inside Player::DeleteFromDB for every real delete (client, GM,
+    // playerbots' per-bot deletes). Our rows go in the same transaction as the
+    // character's, so they cannot outlive it. Player guids have no high part,
+    // so the raw guid we store is the low guid.
+    if (!g_tablesOk)
+        return;
+
+    const uint64_t guid = lowGuid;
+    for (const char* table : { "mod_ollama_chat_autopilot", "mod_ollama_chat_autopilot_snapshots",
+                               "mod_ollama_chat_autopilot_events" })
+        trans->Append(DeleteRowsSql(table, std::to_string(guid)));
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    ForgetRows({ guid });
 }
 
 AutopilotGuildScript::AutopilotGuildScript()

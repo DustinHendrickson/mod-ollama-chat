@@ -2140,6 +2140,10 @@ OllamaChat.Autopilot.AllowMasterEnroll = 1
 #        rules. Bots that are already enrolled keep their place, so the set
 #        does not churn. Hand-picked bots (GM command, Include, master) do not
 #        count against it. 0 = no cap.
+#        Deleted characters give their place back: their autopilot rows and
+#        history are removed when the character is deleted, and a sweep at
+#        startup and every hour catches deletions made outside the game
+#        (playerbots' random-bot reset deletes with raw SQL).
 #        Default: 0
 OllamaChat.Autopilot.MaxEnrolled = 0
 

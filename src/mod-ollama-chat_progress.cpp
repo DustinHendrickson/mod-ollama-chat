@@ -205,6 +205,13 @@ void Progress_QueueEvent(uint64_t botGuid, std::string type, std::string detail)
     g_pendingEvents.push_back(std::move(e));
 }
 
+void Progress_Forget(uint64_t botGuid)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    std::erase_if(g_pendingSnapshots, [botGuid](const ProgressSnapshot& s) { return s.botGuid == botGuid; });
+    std::erase_if(g_pendingEvents, [botGuid](const ProgressEvent& e) { return e.botGuid == botGuid; });
+}
+
 void Progress_Flush(uint32_t maxSnapshotsPerBot, uint32_t maxEventsPerBot)
 {
     std::vector<ProgressSnapshot> snapshots;

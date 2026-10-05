@@ -70,6 +70,10 @@ ProgressSnapshot Progress_ReadSnapshot(Field* fields, uint64_t botGuid);
 void Progress_QueueSnapshot(ProgressSnapshot snapshot);
 void Progress_QueueEvent(uint64_t botGuid, std::string type, std::string detail);
 
+// Drop anything still queued for a character that no longer exists, so a
+// later flush does not write orphan rows for it. Thread-safe.
+void Progress_Forget(uint64_t botGuid);
+
 // Write everything queued, then thin history for bots due a trim.
 // World thread.
 void Progress_Flush(uint32_t maxSnapshotsPerBot, uint32_t maxEventsPerBot);

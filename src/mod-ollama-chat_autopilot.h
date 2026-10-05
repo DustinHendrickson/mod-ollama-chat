@@ -67,6 +67,7 @@ public:
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
     void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count) override;
     void OnPlayerAchievementComplete(Player* player, AchievementEntry const* achievement) override;
+    void OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 lowGuid) override;
 };
 
 // Keeps the set of guilds with a human member current when one joins.
