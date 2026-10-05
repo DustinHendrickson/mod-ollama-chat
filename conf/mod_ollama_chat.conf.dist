@@ -2410,9 +2410,11 @@ OllamaChat.Autopilot.Guard.HoldMinutes = 10
 #   level:a-b   only available in this level band
 #   needs:gathering   only for bots with herbalism, mining or skinning
 #
-# Clauses are separated by ';'. Activities are not reverted when the next one
-# starts, so each should set every strategy it cares about. The shipped ones
-# all set new rpg / rpg / move random / grind for that reason.
+# Clauses are separated by ';'. When the next activity starts, every strategy the
+# old one changed (and the new one does not mention) goes back to what the bot
+# had before autopilot touched it, so nothing leaks from one activity to the
+# next. Turning a bot off, or autopilot itself, returns it to its playerbots
+# defaults (and, for alts, its master's saved strategies).
 #
 # Leave a line commented out to keep its built-in default. Add a new activity
 # by listing its name in Activities and giving it a spec and a .Description.
@@ -2440,7 +2442,9 @@ OllamaChat.Autopilot.Activities = "quest,grind,explore,travel,town,gather,dungeo
 # Standing behaviour modifiers. Each one is an axis with options; the bot
 # holds one option per axis. The playstyle picks the defaults and the LLM may
 # change them. Options use the same nc:/co: spec as activities. Switching
-# options undoes the previous option's changes first. Keep to modifier
+# options puts the previous option's strategies back to what the bot had
+# before autopilot touched them (not simply the opposite of the spec, so a
+# default like loot or potions is never stripped). Keep to modifier
 # strategies: class, spec and role strategies are never in the defaults.
 
 #    OllamaChat.Autopilot.Dispositions

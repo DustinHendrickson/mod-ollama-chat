@@ -117,6 +117,20 @@ inline std::vector<std::string> SplitString(const std::string& str, char delim)
     return tokens;
 }
 
+// Cut to at most `max` bytes without splitting a UTF-8 sequence. A plain
+// substr() can leave half an em dash at the end, which strict MySQL rejects --
+// and with it the whole batched statement the string was part of.
+inline std::string Utf8Truncate(std::string s, size_t max)
+{
+    if (s.size() <= max)
+        return s;
+    size_t cut = max;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80)
+        --cut;
+    s.resize(cut);
+    return s;
+}
+
 // Sanitize a string to be valid UTF-8 by removing or replacing invalid bytes
 inline std::string SanitizeUTF8(const std::string& str)
 {

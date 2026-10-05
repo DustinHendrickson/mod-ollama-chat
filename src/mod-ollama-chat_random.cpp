@@ -206,6 +206,10 @@ OllamaBotRandomChatter::OllamaBotRandomChatter() : WorldScript("OllamaBotRandomC
 
 void OllamaBotRandomChatter::OnUpdate(uint32 diff)
 {
+    // Before the master switch: with the module turned off, autopilot still
+    // has to hand its bots back to playerbots and flush its diary.
+    Autopilot_Update(diff);
+
     if (!g_Enable)
         return;
 
@@ -213,7 +217,6 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
     // early, because pending replies still have to be delivered even when
     // random chatter itself is switched off.
     OllamaDispatch_Update(diff);
-    Autopilot_Update(diff);
 
     static uint32 maintenanceTimer = 0;
     if (maintenanceTimer <= diff)

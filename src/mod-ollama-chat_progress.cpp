@@ -119,7 +119,7 @@ namespace
                 if (!values.empty())
                     values += ',';
                 values += SafeFormat("({}, {}, '{}', '{}')", e.botGuid, e.at,
-                                     Escape(e.type.substr(0, 32)), Escape(e.detail.substr(0, 255)));
+                                     Escape(Utf8Truncate(e.type, 32)), Escape(Utf8Truncate(e.detail, 255)));
             }
 
             trans->Append("INSERT INTO mod_ollama_chat_autopilot_events "

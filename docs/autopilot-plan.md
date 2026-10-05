@@ -532,8 +532,8 @@ full comment block with its default.
 
 `.ollama autopilot on|off <bot>`, `preview`, `status <bot>` (playstyle, goal, activity,
 boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
-`playstyle <bot> <name>`, `awareness <bot> <level>`, `replan <bot>`, `stats`
-(global counts, decisions/h, validation failures).
+`playstyle <bot> <name>`, `awareness <bot> <level>`, `replan <bot>`, `activity <bot>`, `goal <bot>`
+(`status` with no bot name shows global counts, the budget and decision stats).
 
 ## Phases
 
@@ -642,7 +642,7 @@ boredom, last reason), `history <bot> [n]`, `goal <bot> <text>`,
   have their own strategy.
 - **Cost.** Cost is bounded by `LlmCallsPerHour`, not by bot count (see
   Scaling). The failure mode becomes "bots think too rarely" rather than
-  "server overloaded", and `preview` and `stats` make that visible.
+  "server overloaded", and `preview` and `status` make that visible.
 - **Small models and JSON.** Use Ollama `format: json` where the provider
   supports it. Otherwise fall back to the brace-extraction parser, made aware
   of strings, unlike bot-buddy's.

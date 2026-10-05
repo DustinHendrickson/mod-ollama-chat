@@ -31,6 +31,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotMgr.h"
+#include "PlayerbotRepository.h"
 #include "RandomPlayerbotMgr.h"
 
 #include <algorithm>
@@ -191,6 +192,7 @@ namespace
     {
         bool     evaluated      = false;  // rules applied since login/reload
         bool     markerOurs     = false;  // we added the strategy, not a master
+        bool     loginSettled   = false;  // evaluated at least once since login
         uint32_t nextSnapshotAt = 0;
         uint32_t lastSnapshotAt = 0;
         uint32_t lastZone       = 0;
@@ -203,7 +205,8 @@ namespace
         bool     urgentPlan      = false;
         Tier     tier            = Tier::Dormant;
         bool     controlled      = false;   // we have applied presets this session
-        bool     activityApplied = false;   // an activity's strategies are live on the bot
+        std::string       appliedActivity;   // activity whose strategies are live on the bot
+        AutopilotBaseline baseline;          // strategy states before autopilot touched them
 
         // Strategies a human changed by hand while grouped with the bot, and
         // the group that lock belongs to.
@@ -211,6 +214,7 @@ namespace
         uint64_t              lockGroup = 0;
 
         std::deque<uint32_t> deathTimes;
+        std::unordered_map<std::string, uint32_t> guardCooldown;   // guard kind -> may fire again at
         std::string          lastGuard;
         uint32_t             lastGuardAt = 0;
 
@@ -246,6 +250,8 @@ namespace
         uint8_t  prevInstance   = 0;     // 0 none, 1 dungeon, 2 battleground
         bool     prevGrouped    = false;
         bool     prevTravelling = false;
+        uint32_t lastDungeonMap = 0;     // for telling a run-back after a wipe from a new run
+        uint32_t lastDungeonAt  = 0;
     };
 
     // Guards everything below. The world thread holds it for the sweep and
@@ -268,6 +274,7 @@ namespace
     uint32_t g_sweepTimer  = 0;
     uint32_t g_flushTimer  = 0;
     uint32_t g_guildTimer  = 0;
+    bool     g_wasActive   = false;
 
     // Counters for `.ollama autopilot status`.
     uint64_t g_statPolicy  = 0;
@@ -359,6 +366,18 @@ namespace
     PlayerbotAI* BotAI(Player* bot)
     {
         return bot ? PlayerbotsMgr::instance().GetPlayerbotAI(bot) : nullptr;
+    }
+
+    // Return a bot to exactly what playerbots would give it without us: its
+    // defaults, plus -- for alts -- the strategies its master saved, which
+    // ResetStrategies alone does not reload (its Load call is commented out).
+    // Mirrors PlayerbotHolder::OnBotLogin.
+    void HandBack(PlayerbotAI* ai)
+    {
+        ai->ResetStrategies();
+        if (Player* bot = ai->GetBot())
+            if (!sRandomPlayerbotMgr.IsRandomBot(bot))
+                PlayerbotRepository::instance().Load(ai);
     }
 
     bool HasMarker(PlayerbotAI* ai)
@@ -650,8 +669,24 @@ namespace
         return out;
     }
 
-    // Move the bot from the dispositions it has (ob.effective) to `wanted`,
-    // reverting each option that is being replaced.
+    void ReapplyDispositions(PlayerbotAI* ai, Online& ob)
+    {
+        for (const auto& [axis, option] : ob.effective)
+            if (const AutopilotPreset* p = AutopilotPresets_Disposition(axis, option))
+                AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
+    }
+
+    void ReapplyActivity(PlayerbotAI* ai, Online& ob)
+    {
+        if (!ob.appliedActivity.empty())
+            if (const AutopilotPreset* p = AutopilotPresets_Activity(ob.appliedActivity))
+                AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
+    }
+
+    // Move the bot from the dispositions it has (ob.effective) to `wanted`.
+    // Each replaced option is reverted to what the bot had before autopilot
+    // touched it, then the live activity is re-applied in case the two share a
+    // strategy (greedy and gather both want `gather`).
     void ApplyEffective(PlayerbotAI* ai, Online& ob,
                         const std::vector<std::pair<std::string, std::string>>& wanted)
     {
@@ -664,12 +699,29 @@ namespace
             for (const auto& [a, o] : ob.effective)
                 if (a == axis && o != option)
                     if (const AutopilotPreset* old = AutopilotPresets_Disposition(a, o))
-                        AutopilotPresets_Revert(ai, *old, now, ob.locked);
+                        AutopilotPresets_Revert(ai, *old, now, ob.locked, ob.baseline);
 
-            AutopilotPresets_Apply(ai, *now, ob.locked);
+            AutopilotPresets_Apply(ai, *now, ob.locked, ob.baseline);
         }
         ob.effective  = wanted;
         ob.controlled = true;
+        ReapplyActivity(ai, ob);
+    }
+
+    // Make `preset` the live activity: put back whatever the previous one
+    // changed (unless the new one manages it too), apply the new one, then
+    // re-apply dispositions for any strategy the two share. Without the
+    // revert, one dungeon activity would leave `lfg` on for good.
+    void ApplyActivity(PlayerbotAI* ai, Online& ob, const AutopilotPreset& preset)
+    {
+        if (!ob.appliedActivity.empty() && ob.appliedActivity != preset.name)
+            if (const AutopilotPreset* old = AutopilotPresets_Activity(ob.appliedActivity))
+                AutopilotPresets_Revert(ai, *old, &preset, ob.locked, ob.baseline);
+
+        AutopilotPresets_Apply(ai, preset, ob.locked, ob.baseline);
+        ob.appliedActivity = preset.name;
+        ob.controlled      = true;
+        ReapplyDispositions(ai, ob);
     }
 
     void SteerRpg(PlayerbotAI* ai, const AutopilotPreset& preset, const Situation& sit)
@@ -703,14 +755,21 @@ namespace
         if (!g_cfg.control)
             return;
 
+        if (reset)
+        {
+            // Playerbots put the bot back to its defaults: everything we had
+            // applied is gone, and the baseline must be re-learned from them.
+            ob.baseline.clear();
+            ob.effective.clear();
+            ob.appliedActivity.clear();
+        }
+
         if (sit.CanDispose())
         {
             const auto wanted = WantedDispositions(row, sit);
 
             if (reset)
             {
-                // Everything we had applied is gone; nothing to revert.
-                ob.effective.clear();
                 ApplyEffective(ai, ob, wanted);
             }
             else if (wanted != ob.effective)
@@ -743,7 +802,7 @@ namespace
                         }
                         continue;
                     }
-                    AutopilotPresets_Apply(ai, *p, ob.locked);
+                    AutopilotPresets_Apply(ai, *p, ob.locked, ob.baseline);
                 }
             }
         }
@@ -752,9 +811,12 @@ namespace
         {
             if (const AutopilotPreset* preset = AutopilotPresets_Activity(row.activity))
             {
-                if (!AutopilotPresets_Drift(ai, *preset, ob.locked).empty())
-                    AutopilotPresets_Apply(ai, *preset, ob.locked);
-                ob.activityApplied = true;
+                // Chosen while the bot could not act on it (a group, an
+                // instance), or drifted: catch up now.
+                if (ob.appliedActivity != preset->name)
+                    ApplyActivity(ai, ob, *preset);
+                else if (!AutopilotPresets_Drift(ai, *preset, ob.locked).empty())
+                    AutopilotPresets_Apply(ai, *preset, ob.locked, ob.baseline);
             }
         }
     }
@@ -854,11 +916,18 @@ namespace
 
     void UpdateMood(Player* bot, uint64_t guid, Row& row, Online& ob, const Situation& sit, uint32_t now)
     {
-        // Gold earned since the last visit. Spending resets the baseline.
+        // Gold earned. Income arrives in coppers and silvers between visits a
+        // few seconds apart, so the baseline only moves when a whole gold is
+        // booked (by exactly that much) or when the bot spends.
         const uint32_t money = bot->GetMoney();
-        if (ob.lastMoney && money > ob.lastMoney + 10000)
-            NoteReward(ob, "gold", (money - ob.lastMoney) / 10000, now);
-        ob.lastMoney = money;
+        if (ob.lastMoney == 0 || money < ob.lastMoney)
+            ob.lastMoney = money;
+        else if (money >= ob.lastMoney + 10000)
+        {
+            const uint32_t gold = (money - ob.lastMoney) / 10000;
+            NoteReward(ob, "gold", gold, now);
+            ob.lastMoney += gold * 10000;
+        }
 
         // Profession skill-ups, and a nudge when a skill hits its cap.
         uint32_t skillSum = 0;
@@ -1049,10 +1118,18 @@ namespace
         {
             if (instance == 1 && ob.prevInstance != 1)
             {
-                ++row.dungeonsTotal;
-                row.dirty = true;
-                RecordEvent(guid, "dungeon", bot->GetMap() ? bot->GetMap()->GetMapName() : "a dungeon");
+                // Walking back in after a wipe is the same run, not a new one.
+                const uint32_t mapId = bot->GetMapId();
+                if (mapId != ob.lastDungeonMap || now - ob.lastDungeonAt > 30 * 60)
+                {
+                    ++row.dungeonsTotal;
+                    row.dirty = true;
+                    RecordEvent(guid, "dungeon", bot->GetMap() ? bot->GetMap()->GetMapName() : "a dungeon");
+                }
+                ob.lastDungeonMap = mapId;
             }
+            if (instance == 1)
+                ob.lastDungeonAt = now;
 
             auto boundary = [&](const char* what)
             {
@@ -1106,9 +1183,7 @@ namespace
 
         if (g_cfg.control && sit.CanSteerActivity())
         {
-            AutopilotPresets_Apply(ai, preset, ob.locked);
-            ob.controlled      = true;
-            ob.activityApplied = true;
+            ApplyActivity(ai, ob, preset);
             SteerRpg(ai, preset, sit);
         }
     }
@@ -1125,26 +1200,43 @@ namespace
         const AutopilotPreset* rest = AutopilotPresets_Activity("rest");
         const AutopilotPreset* town = AutopilotPresets_Activity("town");
 
-        if (g_cfg.guardDeaths > 0 && ob.deathTimes.size() >= g_cfg.guardDeaths && rest && row.activity != "rest")
+        // A guard that fired keeps quiet for a while. Some conditions cannot
+        // be fixed by the activity it picks (a broke bot cannot repair, bags
+        // can be full of unsellable items), and re-firing after every hold
+        // would churn activities and fill the diary forever.
+        auto ready = [&](const char* kind)
+        {
+            auto it = ob.guardCooldown.find(kind);
+            return it == ob.guardCooldown.end() || now >= it->second;
+        };
+        auto fire = [&](const char* kind, const AutopilotPreset* preset)
+        {
+            ob.guardCooldown[kind] = now + g_cfg.guardHoldMinutes * 60 * 4;
+            return preset;
+        };
+
+        if (g_cfg.guardDeaths > 0 && ob.deathTimes.size() >= g_cfg.guardDeaths && rest &&
+            row.activity != "rest" && ready("deaths"))
         {
             reason = SafeFormat("died {} times in {} minutes in {}", ob.deathTimes.size(),
                                 g_cfg.guardDeathWindowMinutes, Progress_ZoneName(bot->GetZoneId()));
             ob.deathTimes.clear();
-            return rest;
+            return fire("deaths", rest);
         }
 
         if (town && row.activity != "town")
         {
             const uint8_t durability = Progress_DurabilityPct(bot);
-            if (g_cfg.guardDurabilityPct > 0 && durability < g_cfg.guardDurabilityPct)
+            if (g_cfg.guardDurabilityPct > 0 && durability < g_cfg.guardDurabilityPct && ready("durability"))
             {
                 reason = SafeFormat("gear is badly damaged ({}% durability)", uint32_t(durability));
-                return town;
+                return fire("durability", town);
             }
-            if (g_cfg.guardFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.guardFreeBagSlots)
+            if (g_cfg.guardFreeBagSlots > 0 && bot->GetFreeInventorySpace() < g_cfg.guardFreeBagSlots &&
+                ready("bags"))
             {
                 reason = "bags are full";
-                return town;
+                return fire("bags", town);
             }
         }
         return nullptr;
@@ -1429,17 +1521,22 @@ namespace
                     LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: goal for {} not taken: {}",
                              bot->GetName(), why);
             }
-            else if (goal.kind != row.goal.kind || goal.targetId != row.goal.targetId ||
-                     goal.value != row.goal.value || goal.text != row.goal.text)
+            else
             {
-                // A restatement of the same aim keeps its baseline and age.
-                const bool same = goal.kind == row.goal.kind && goal.targetId == row.goal.targetId &&
-                                  goal.kind != GoalKind::EarnGold && goal.kind != GoalKind::CompleteQuests &&
-                                  goal.kind != GoalKind::RunDungeon && goal.value == row.goal.value;
+                // The prompt shows the current goal, so models echo it back.
+                // Same kind and same target is the same aim: keep its baseline
+                // and age. Otherwise "earn 50 gold" (target = money now + 50)
+                // would move its goalposts on every plan and never complete.
+                const bool same = goal.kind == row.goal.kind && Lower(goal.target) == Lower(row.goal.target);
                 if (same)
-                    row.goal.text = goal.text;
+                {
+                    if (!goal.text.empty())
+                        row.goal.text = goal.text;
+                }
                 else
+                {
                     SetGoal(d.botGuid, row, onIt != g_online.end() ? &onIt->second : nullptr, std::move(goal), "llm");
+                }
             }
         }
 
@@ -1543,7 +1640,7 @@ namespace
 
     // The source that enrolls this bot, or "" when nothing does. Pure: it
     // changes nothing, so `preview` can call it too.
-    std::string EvaluateRules(Player* bot, PlayerbotAI* ai, Row const* row, bool markerOurs)
+    std::string EvaluateRules(Player* bot, PlayerbotAI* ai, Row const* row, bool markerIsRequest)
     {
         if (row && row->mode == MODE_ON)
             return "command";
@@ -1569,7 +1666,7 @@ namespace
         {
             if (row && row->enrolled && row->source == "master")
                 return "master";
-            if (!markerOurs && HasMarker(ai))
+            if (markerIsRequest && HasMarker(ai))
                 return "master";
         }
 
@@ -1694,11 +1791,12 @@ namespace
         }
 
         // Hand the bot back to playerbots exactly as it would be without us.
-        if (ob.controlled || ob.activityApplied)
+        if (ob.controlled || !ob.appliedActivity.empty())
         {
-            ai->ResetStrategies();
+            HandBack(ai);
             ob.controlled      = false;
-            ob.activityApplied = false;
+            ob.appliedActivity.clear();
+            ob.baseline.clear();
             ob.effective.clear();
         }
         ob.planPending   = false;
@@ -1713,7 +1811,11 @@ namespace
     {
         auto it = g_rows.find(guid);
         Row const* row = it == g_rows.end() ? nullptr : &it->second;
-        Apply(bot, ai, guid, ob, EvaluateRules(bot, ai, row, ob.markerOurs));
+        // Only a marker that appears mid-session is a master asking. One present
+        // at login was restored from playerbots_db_store (playerbots saves every
+        // strategy, ours included, when a grouped bot logs out) and means nothing.
+        Apply(bot, ai, guid, ob, EvaluateRules(bot, ai, row, ob.loginSettled && !ob.markerOurs));
+        ob.loginSettled = true;
         ob.evaluated = true;
     }
 
@@ -1739,10 +1841,11 @@ namespace
         // playerbots on regroup anyway; alts are not. Hand the bot back to its
         // defaults -- Reassert below then restores the marker and the
         // dispositions, which do hold in a group.
-        if ((sit.withRealPlayer || sit.follower) && ob.activityApplied)
+        if ((sit.withRealPlayer || sit.follower) && !ob.appliedActivity.empty())
         {
-            ai->ResetStrategies();
-            ob.activityApplied = false;
+            HandBack(ai);
+            ob.appliedActivity.clear();
+            ob.baseline.clear();
             ob.controlled      = false;
             ob.effective.clear();
             RecordEvent(guid, "grouped", "activity paused while following the group");
@@ -1772,9 +1875,10 @@ namespace
         if (const AutopilotPreset* guard = CheckGuards(bot, row, ob, now, guardReason))
         {
             ++g_statGuard;
+            // No urgent plan: the reason reaches the model through the prompt
+            // at its normal cadence, so a guard never spends budget by itself.
             ob.lastGuard   = guardReason;
             ob.lastGuardAt = now;
-            ob.urgentPlan  = true;   // let the model react once the guard has held
             RecordEvent(guid, "guard", guardReason);
             SetActivity(bot, ai, guid, row, ob, sit, *guard, "guard", guardReason, g_cfg.guardHoldMinutes, now);
             return;
@@ -1792,21 +1896,52 @@ namespace
         SteerRpg(ai, *current, sit);
     }
 
-    void VisitBot(uint64_t guid, Online& ob, uint32_t now)
+    // Autopilot went inactive: hand every bot we touched back to playerbots
+    // and take the marker off. Rows are kept, so turning it back on resumes
+    // where each bot left off. One pass over online bots, on the transition
+    // only. g_mutex held.
+    void ReleaseAll()
+    {
+        for (auto& [guid, ob] : g_online)
+        {
+            if (PlayerbotAI* ai = BotAI(ObjectAccessor::FindPlayer(ObjectGuid(guid))))
+            {
+                if (ob.controlled || !ob.appliedActivity.empty())
+                    HandBack(ai);
+                if (HasMarker(ai))
+                    ai->ChangeStrategy(std::string("-") + AUTOPILOT_STRATEGY_NAME, BOT_STATE_NON_COMBAT);
+            }
+            ob.controlled = false;
+            ob.appliedActivity.clear();
+            ob.baseline.clear();
+            ob.effective.clear();
+            ob.markerOurs    = false;
+            ob.evaluated     = false;
+            ob.planPending   = false;
+            ob.activityUntil = 0;
+        }
+        LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot is off; bots handed back to playerbots.");
+    }
+
+    // Returns true for a full visit (an evaluation, or an enrolled bot), which
+    // is what the sweep budgets; false for a cheap check of an unenrolled bot.
+    bool VisitBot(uint64_t guid, Online& ob, uint32_t now)
     {
         Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(guid));
         if (!bot || !bot->IsInWorld())
-            return;
+            return false;
 
         // The AI attaches inside mod-playerbots' own login hook, whose order
         // relative to ours is undefined; until then there is nothing to do.
         PlayerbotAI* ai = BotAI(bot);
         if (!ai)
-            return;
+            return false;
 
+        bool full = false;
         if (!ob.evaluated)
         {
             Reevaluate(bot, ai, guid, ob);
+            full = true;
         }
         else
         {
@@ -1816,12 +1951,15 @@ namespace
             // A master asked mid-session (`nc +autopilot`). The rules decide
             // whether that is allowed, including a GM's forced off.
             if (!enrolled && !ob.markerOurs && HasMarker(ai))
+            {
                 Reevaluate(bot, ai, guid, ob);
+                full = true;
+            }
         }
 
         auto it = g_rows.find(guid);
         if (it == g_rows.end() || !it->second.enrolled)
-            return;
+            return full;
         Row& row = it->second;
 
         const uint32_t zone = bot->GetZoneId();
@@ -1842,6 +1980,7 @@ namespace
             TakeSnapshot(bot, row, ob, now);
 
         Control(bot, ai, guid, row, ob, now);
+        return true;
     }
 
     void SaveRowsLocked()
@@ -1880,7 +2019,7 @@ namespace
         auto esc = [](std::string s, size_t max)
         {
             if (s.size() > max)
-                s = s.substr(0, max);
+                s = Utf8Truncate(std::move(s), max);
             CharacterDatabase.EscapeString(s);
             return s;
         };
@@ -2200,9 +2339,10 @@ namespace
                 ++enrolledNow;
 
             auto onIt = g_online.find(guid);
-            const bool markerOurs = onIt != g_online.end() && onIt->second.markerOurs;
+            const bool markerIsRequest = onIt != g_online.end() && onIt->second.loginSettled &&
+                                         !onIt->second.markerOurs;
 
-            const std::string source = EvaluateRules(player, ai, row, markerOurs);
+            const std::string source = EvaluateRules(player, ai, row, markerIsRequest);
             if (source.empty())
                 continue;
 
@@ -2660,7 +2800,7 @@ void Autopilot_Load()
 
 bool Autopilot_IsActive()
 {
-    return g_cfg.enable && g_EnableChatBotSnapshotTemplate && g_tablesOk &&
+    return g_Enable && g_cfg.enable && g_EnableChatBotSnapshotTemplate && g_tablesOk &&
            AutopilotStrategy_IsRegistered();
 }
 
@@ -2696,18 +2836,34 @@ void Autopilot_Update(uint32_t diff)
         RefreshRealGuilds();
     }
 
-    // Finished plans are applied even if autopilot was switched off in the
-    // meantime: ApplyDecision only touches enrolled rows.
+    const bool active = Autopilot_IsActive();
+
+    // Switched off (reload with Enable = 0, the module disabled): hand every
+    // bot we were steering back to playerbots rather than leaving our
+    // strategies on it indefinitely.
+    if (g_wasActive && !active)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        ReleaseAll();
+    }
+    g_wasActive = active;
+
+    // Finished plans. While inactive they are dropped, not applied.
     std::vector<AutopilotDecision> decisions = AutopilotPlanner_Drain();
     if (!decisions.empty())
     {
         const uint32_t now = Progress_Now();
         std::lock_guard<std::mutex> lock(g_mutex);
         for (const AutopilotDecision& d : decisions)
-            ApplyDecision(d, now);
+        {
+            if (active)
+                ApplyDecision(d, now);
+            else if (auto it = g_online.find(d.botGuid); it != g_online.end())
+                it->second.planPending = false;
+        }
     }
 
-    if (!Autopilot_IsActive())
+    if (!active)
         return;
 
     g_sweepTimer += diff;
@@ -2718,18 +2874,22 @@ void Autopilot_Update(uint32_t diff)
     const uint32_t now = Progress_Now();
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    // A fixed number of bots per sweep, round-robin: the cost per tick is the
-    // same whether ten bots are online or ten thousand.
-    const size_t visits = std::min<size_t>(g_cfg.botsPerSweep, g_roster.size());
-    for (size_t i = 0; i < visits; ++i)
+    // Round-robin with a fixed budget: BotsPerSweep full visits (enrolled or
+    // not yet evaluated bots), plus cheap checks of the rest -- a lookup and a
+    // marker test -- capped at a few times that. Per-tick cost stays flat
+    // however many bots are online, and the budget goes to enrolled bots
+    // rather than being spread across everyone.
+    const size_t limit = std::min<size_t>(g_roster.size(), size_t(g_cfg.botsPerSweep) * 8);
+    size_t full = 0;
+    for (size_t i = 0; i < limit && full < g_cfg.botsPerSweep; ++i)
     {
         if (g_cursor >= g_roster.size())
             g_cursor = 0;
 
         const uint64_t guid = g_roster[g_cursor++];
         auto it = g_online.find(guid);
-        if (it != g_online.end())
-            VisitBot(guid, it->second, now);
+        if (it != g_online.end() && VisitBot(guid, it->second, now))
+            ++full;
     }
 }
 
@@ -2861,10 +3021,16 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
         const size_t index = static_cast<size_t>(pos - g_roster.begin());
         *pos = g_roster.back();
         g_roster.pop_back();
-        // The swapped-in bot now sits where the cursor already passed; step
-        // back so it is not skipped for a whole cycle.
-        if (index < g_cursor && g_cursor > 0)
+
+        // The last bot (not yet visited this cycle) was moved into a slot the
+        // cursor has already passed. Swap it with the slot just behind the
+        // cursor (already visited) and step the cursor back onto it, so it is
+        // visited next rather than skipped for a whole cycle.
+        if (index < g_cursor && g_cursor > 0 && g_cursor <= g_roster.size())
+        {
             --g_cursor;
+            std::swap(g_roster[index], g_roster[g_cursor]);
+        }
     }
 }
 

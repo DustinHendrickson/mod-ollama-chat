@@ -177,7 +177,7 @@ namespace
     {
         s = Trim(SanitizeUTF8(s));
         if (s.size() > max)
-            s = s.substr(0, max);
+            s = Utf8Truncate(std::move(s), max);
         return s;
     }
 
@@ -314,8 +314,24 @@ bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
     const bool queued = OllamaDispatch_SubmitJob(
         [botGuid, prompt = std::move(prompt)]()
         {
-            RunPlan(botGuid, prompt);
-            --g_inFlight;
+            // Release the slot however this ends. Without it, an exception
+            // (the dispatcher's worker catches and logs it) would leak a slot,
+            // and after MaxConcurrentPlans of those planning stops for good.
+            struct Release { ~Release() { --g_inFlight; } } release;
+            try
+            {
+                RunPlan(botGuid, prompt);
+            }
+            catch (const std::exception& e)
+            {
+                AutopilotDecision failed;
+                failed.botGuid = botGuid;
+                failed.error   = std::string("exception: ") + e.what();
+                ++g_failed;
+                std::lock_guard<std::mutex> lock(g_doneMutex);
+                g_lastError = failed.error;
+                g_done.push_back(std::move(failed));
+            }
         });
 
     if (!queued)

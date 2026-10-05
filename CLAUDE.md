@@ -188,3 +188,13 @@ wrong:
 - **The planner's prompt template is filled by literal `{name}`
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
+- **Never revert a preset by inverting it.** Playerbots defaults include
+  `potions`, `chat`, `loot`, `gather` and `emote`, so "-x on revert" strips
+  them. Presets record each strategy's state on first touch
+  (`AutopilotBaseline`) and restore exactly that; clear the baseline whenever
+  playerbots resets the bot.
+- **Playerbots persists the marker.** `PlayerbotRepository::Save` writes every
+  strategy, `autopilot` included, when a grouped bot logs out or on any
+  `nc`/`co` command, and `Load` restores them at login. A marker present at
+  login is not a master's request; only one that appears mid-session is.
+  `ResetStrategies` does not reload the repository; `HandBack` does, for alts.

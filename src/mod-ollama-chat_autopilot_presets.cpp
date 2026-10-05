@@ -325,9 +325,54 @@ std::string AutopilotPresets_Unavailable(const AutopilotPreset& preset, Player* 
     return "";
 }
 
-bool AutopilotPresets_Apply(PlayerbotAI* ai, const AutopilotPreset& preset,
-                            const std::set<std::string>& locked)
+namespace
 {
+    std::string BaselineKey(BotState state, const std::string& name)
+    {
+        return (state == BOT_STATE_COMBAT ? "co:" : "nc:") + name;
+    }
+
+    void RecordBaseline(PlayerbotAI* ai, const AutopilotStrategyOps& ops, BotState state,
+                        AutopilotBaseline& baseline)
+    {
+        for (const auto* list : { &ops.add, &ops.remove })
+            for (const std::string& name : *list)
+                baseline.emplace(BaselineKey(state, name), ai->HasStrategy(name, state));
+    }
+
+    bool Mentions(const AutopilotStrategyOps* ops, const std::string& name)
+    {
+        return ops && (std::find(ops->add.begin(), ops->add.end(), name) != ops->add.end() ||
+                       std::find(ops->remove.begin(), ops->remove.end(), name) != ops->remove.end());
+    }
+
+    void RestoreOps(PlayerbotAI* ai, const AutopilotStrategyOps& ops, const AutopilotStrategyOps* nextOps,
+                    BotState state, const std::set<std::string>& locked, const AutopilotBaseline& baseline)
+    {
+        AutopilotStrategyOps restore;
+        for (const auto* list : { &ops.add, &ops.remove })
+        {
+            for (const std::string& name : *list)
+            {
+                if (Mentions(nextOps, name))
+                    continue;
+                auto it = baseline.find(BaselineKey(state, name));
+                if (it == baseline.end())
+                    continue;
+                (it->second ? restore.add : restore.remove).push_back(name);
+            }
+        }
+        bool changed = false;
+        ApplyOps(ai, restore, state, locked, changed);
+    }
+}
+
+bool AutopilotPresets_Apply(PlayerbotAI* ai, const AutopilotPreset& preset,
+                            const std::set<std::string>& locked, AutopilotBaseline& baseline)
+{
+    RecordBaseline(ai, preset.nc, BOT_STATE_NON_COMBAT, baseline);
+    RecordBaseline(ai, preset.co, BOT_STATE_COMBAT, baseline);
+
     bool changed = false;
     ApplyOps(ai, preset.nc, BOT_STATE_NON_COMBAT, locked, changed);
     ApplyOps(ai, preset.co, BOT_STATE_COMBAT, locked, changed);
@@ -335,31 +380,10 @@ bool AutopilotPresets_Apply(PlayerbotAI* ai, const AutopilotPreset& preset,
 }
 
 void AutopilotPresets_Revert(PlayerbotAI* ai, const AutopilotPreset& preset, const AutopilotPreset* next,
-                             const std::set<std::string>& locked)
+                             const std::set<std::string>& locked, const AutopilotBaseline& baseline)
 {
-    auto inverse = [&](const AutopilotStrategyOps& ops, const AutopilotStrategyOps* nextOps)
-    {
-        auto managedByNext = [&](const std::string& name)
-        {
-            if (!nextOps)
-                return false;
-            return std::find(nextOps->add.begin(), nextOps->add.end(), name) != nextOps->add.end() ||
-                   std::find(nextOps->remove.begin(), nextOps->remove.end(), name) != nextOps->remove.end();
-        };
-
-        AutopilotStrategyOps out;
-        for (const std::string& name : ops.add)
-            if (!managedByNext(name))
-                out.remove.push_back(name);
-        for (const std::string& name : ops.remove)
-            if (!managedByNext(name))
-                out.add.push_back(name);
-        return out;
-    };
-
-    bool changed = false;
-    ApplyOps(ai, inverse(preset.nc, next ? &next->nc : nullptr), BOT_STATE_NON_COMBAT, locked, changed);
-    ApplyOps(ai, inverse(preset.co, next ? &next->co : nullptr), BOT_STATE_COMBAT, locked, changed);
+    RestoreOps(ai, preset.nc, next ? &next->nc : nullptr, BOT_STATE_NON_COMBAT, locked, baseline);
+    RestoreOps(ai, preset.co, next ? &next->co : nullptr, BOT_STATE_COMBAT, locked, baseline);
 }
 
 std::vector<std::string> AutopilotPresets_Drift(PlayerbotAI* ai, const AutopilotPreset& preset,

@@ -2,6 +2,7 @@
 #define MOD_OLLAMA_CHAT_AUTOPILOT_PRESETS_H
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -67,18 +68,25 @@ const AutopilotPreset* AutopilotPresets_Disposition(const std::string& axis, con
 // Why the bot cannot take this activity right now, or "" when it can.
 std::string AutopilotPresets_Unavailable(const AutopilotPreset& preset, Player* bot);
 
-// Apply a preset's strategy changes, skipping names in `locked` (strategies a
-// human changed by hand). Returns true when anything was changed.
-bool AutopilotPresets_Apply(PlayerbotAI* ai, const AutopilotPreset& preset,
-                            const std::set<std::string>& locked);
+// What each strategy autopilot has touched looked like before it first did,
+// keyed "nc:name" / "co:name" -> present. Recorded on first touch and used to
+// restore exactly that on revert -- so leaving "greedy" puts loot/gather back
+// to what playerbots had (usually on), not off, and leaving "reserved" does not
+// hand every bot a duel habit it never had. Clear it whenever playerbots
+// resets the bot, since the defaults are back.
+using AutopilotBaseline = std::map<std::string, bool>;
 
-// Undo a preset's strategy changes (add what it removed, remove what it
-// added), except for names `next` also manages and names in `locked`. Used
-// when a disposition changes, so "cautious -> balanced" does not leave flee on.
-// Activities are not reverted: each shipped activity sets every strategy it
-// cares about, so the next one overrides it.
+// Apply a preset's strategy changes, skipping names in `locked` (strategies a
+// human changed by hand). Records first-touch state in `baseline`. Returns
+// true when anything was changed.
+bool AutopilotPresets_Apply(PlayerbotAI* ai, const AutopilotPreset& preset,
+                            const std::set<std::string>& locked, AutopilotBaseline& baseline);
+
+// Undo a preset: put every strategy it manages back to its baseline state,
+// except names `next` also manages and names in `locked`. Names with no
+// baseline were never changed by us and are left alone.
 void AutopilotPresets_Revert(PlayerbotAI* ai, const AutopilotPreset& preset, const AutopilotPreset* next,
-                             const std::set<std::string>& locked);
+                             const std::set<std::string>& locked, const AutopilotBaseline& baseline);
 
 // Managed strategy names whose live state differs from what the preset wants.
 std::vector<std::string> AutopilotPresets_Drift(PlayerbotAI* ai, const AutopilotPreset& preset,

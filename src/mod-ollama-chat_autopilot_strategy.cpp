@@ -52,24 +52,121 @@ namespace
     public:
         explicit AutopilotRpgSteer(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "autopilot rpg steer") { }
 
+        // Weighted pick among the allowed statuses, trying the next one when a
+        // status has no target right now. Mirrors RandomChangeStatus but
+        // without its fallback of sitting the bot down when nothing fits, and
+        // without checking each target twice (Check* then Select* again).
         bool Steer(const std::vector<int>& allowed)
         {
-            std::vector<NewRpgStatus> available;
+            std::vector<std::pair<NewRpgStatus, uint32>> candidates;
             for (int s : allowed)
             {
                 if (s <= RPG_IDLE || s >= RPG_STATUS_END)
                     continue;
-                NewRpgStatus status = static_cast<NewRpgStatus>(s);
-                if (sPlayerbotAIConfig.RpgStatusProbWeight[status] == 0)
-                    continue;
-                if (status == RPG_REST || CheckRpgStatusAvailable(status))
-                    available.push_back(status);
+                const NewRpgStatus status = static_cast<NewRpgStatus>(s);
+                const int32 weight = sPlayerbotAIConfig.RpgStatusProbWeight[status];
+                if (weight > 0)
+                    candidates.emplace_back(status, static_cast<uint32>(weight));
             }
 
-            if (available.empty())
-                return false;
+            while (!candidates.empty())
+            {
+                uint32 total = 0;
+                for (const auto& c : candidates)
+                    total += c.second;
 
-            return RandomChangeStatus(available);
+                uint32 roll = urand(1, total);
+                size_t pick = 0;
+                for (; pick < candidates.size(); ++pick)
+                {
+                    if (roll <= candidates[pick].second)
+                        break;
+                    roll -= candidates[pick].second;
+                }
+                pick = std::min(pick, candidates.size() - 1);
+
+                if (Enter(candidates[pick].first))
+                    return true;
+                candidates.erase(candidates.begin() + pick);
+            }
+            return false;
+        }
+
+    private:
+        bool Enter(NewRpgStatus status)
+        {
+            NewRpgInfo& info = botAI->rpgInfo;
+            switch (status)
+            {
+                case RPG_WANDER_RANDOM:
+                    if (!CheckRpgStatusAvailable(status))
+                        return false;
+                    info.ChangeToWanderRandom();
+                    return true;
+                case RPG_WANDER_NPC:
+                    if (!CheckRpgStatusAvailable(status))
+                        return false;
+                    info.ChangeToWanderNpc();
+                    return true;
+                case RPG_GO_GRIND:
+                {
+                    WorldPosition pos = SelectRandomGrindPos(bot);
+                    if (pos == WorldPosition())
+                        return false;
+                    info.ChangeToGoGrind(pos);
+                    return true;
+                }
+                case RPG_GO_CAMP:
+                {
+                    WorldPosition pos = SelectRandomCampPos(bot);
+                    if (pos == WorldPosition())
+                        return false;
+                    info.ChangeToGoCamp(pos);
+                    return true;
+                }
+                case RPG_DO_QUEST:
+                {
+                    std::vector<uint32> quests;
+                    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    {
+                        const uint32 questId = bot->GetQuestSlotQuestId(slot);
+                        if (!questId || botAI->lowPriorityQuest.count(questId))
+                            continue;
+                        std::vector<POIInfo> poi;
+                        if (GetQuestPOIPosAndObjectiveIdx(questId, poi, true))
+                            quests.push_back(questId);
+                    }
+                    if (quests.empty())
+                        return false;
+                    const uint32 questId = quests[urand(0, static_cast<uint32>(quests.size()) - 1)];
+                    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                    if (!quest)
+                        return false;
+                    info.ChangeToDoQuest(questId, quest);
+                    return true;
+                }
+                case RPG_TRAVEL_FLIGHT:
+                {
+                    uint32 entry = 0;
+                    WorldPosition pos;
+                    std::vector<uint32> path;
+                    if (!SelectRandomFlightTaxiNode(entry, pos, path))
+                        return false;
+                    info.ChangeToTravelFlight(entry, pos, std::move(path));
+                    return true;
+                }
+                case RPG_REST:
+                    info.ChangeToRest();
+                    bot->SetStandState(UNIT_STAND_STATE_SIT);
+                    return true;
+                case RPG_OUTDOOR_PVP:
+                    if (!CheckRpgStatusAvailable(status))
+                        return false;
+                    info.ChangeToOutdoorPvp();
+                    return true;
+                default:
+                    return false;
+            }
         }
     };
 
