@@ -68,4 +68,13 @@ public:
     void OnPlayerAchievementComplete(Player* player, AchievementEntry const* achievement) override;
 };
 
+// Keeps the set of guilds with a human member current when one joins.
+class AutopilotGuildScript : public GuildScript
+{
+public:
+    AutopilotGuildScript();
+
+    void OnAddMember(Guild* guild, Player* player, uint8& plRank) override;
+};
+
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_H

@@ -16,6 +16,7 @@
 #include "DatabaseEnv.h"
 #include "DBCStores.h"
 #include "Group.h"
+#include "Guild.h"
 #include "Item.h"
 #include "Log.h"
 #include "Map.h"
@@ -27,6 +28,7 @@
 
 #include "ChatHelper.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 #include "PlayerbotMgr.h"
 #include "RandomPlayerbotMgr.h"
 
@@ -46,6 +48,11 @@ namespace
     // Config. Written on the world thread by Autopilot_LoadConfig; the map
     // threads only ever read `enable` (a bool: a benign racy read).
     // ----------------------------------------------------------------------
+    enum class Tier : uint8_t { Dormant, Background, Foreground };
+
+    // How far a real player's presence reaches when deciding a bot's tier.
+    enum class Scope : uint8_t { Range, Zone, Map, World, Always };
+
     struct Config
     {
         bool     enable            = false;
@@ -77,7 +84,17 @@ namespace
         uint32_t maxConcurrentPlans      = 2;
         uint32_t decisionIntervalMinutes = 15;      // foreground
         uint32_t goalRefreshMinutes      = 90;      // background
-        float    foregroundRange         = 0.0f;    // 0 = same zone
+        float    foregroundRange         = 100.0f;  // yards, for Scope::Range
+
+        // Reach: who gets LLM time. Defaults keep it to bots near people.
+        Scope    foregroundScope         = Scope::Zone;
+        Scope    backgroundScope         = Scope::Map;
+        Tier     minimumTier             = Tier::Dormant;
+
+        // Guilds with a human member.
+        bool     selectRealPlayerGuilds  = false;
+        Tier     realGuildTier           = Tier::Background;
+        uint32_t realGuildRefreshMinutes = 10;
         uint32_t planTimeoutSeconds      = 300;
         std::string promptTemplate;
 
@@ -97,8 +114,6 @@ namespace
         MODE_ON    = 1,   // a GM forced it on
         MODE_OFF   = 2,   // a GM forced it off
     };
-
-    enum class Tier : uint8_t { Dormant, Background, Foreground };
 
     const char* TierName(Tier t)
     {
@@ -183,6 +198,7 @@ namespace
     std::unordered_map<uint64_t, Online> g_online;
     std::vector<uint64_t>                g_roster;     // round-robin order
     std::unordered_set<uint64_t>         g_realOnline; // real players, for tiers
+    std::unordered_set<uint32_t>         g_realGuilds; // guilds with a human member, online or not
     size_t                               g_cursor        = 0;
     uint32_t                             g_enrolledCount = 0;
     uint32_t                             g_cappedCount   = 0;   // enrolled via a capped rule
@@ -192,6 +208,7 @@ namespace
     bool     g_tablesOk    = false;
     uint32_t g_sweepTimer  = 0;
     uint32_t g_flushTimer  = 0;
+    uint32_t g_guildTimer  = 0;
 
     // Counters for `.ollama autopilot status`.
     uint64_t g_statPolicy  = 0;
@@ -424,32 +441,109 @@ namespace
         return s;
     }
 
-    // Who is watching. O(real players), from our own login roster rather than
-    // a walk over every online character. World thread, g_mutex held.
+    // Does this real player put the bot within `scope`?
+    bool InScope(Scope scope, Player* bot, Player* p)
+    {
+        switch (scope)
+        {
+            case Scope::Always:
+            case Scope::World:  return true;
+            case Scope::Map:    return p->GetMapId() == bot->GetMapId();
+            case Scope::Zone:   return p->GetMapId() == bot->GetMapId() && p->GetZoneId() == bot->GetZoneId();
+            case Scope::Range:  return p->GetMapId() == bot->GetMapId() &&
+                                       bot->GetDistance(p) <= g_cfg.foregroundRange;
+        }
+        return false;
+    }
+
+    // Who is watching, and how much LLM time that earns. O(real players),
+    // from our own login roster rather than a walk over every online
+    // character. World thread, g_mutex held.
+    //
+    // The defaults keep the LLM for bots near people. The scopes and floors
+    // let an operator with the hardware or the API budget widen that, up to
+    // every enrolled bot planning in the foreground.
     Tier ComputeTier(Player* bot)
     {
-        bool sameMap = false;
+        Tier tier = Tier::Dormant;
+        auto raise = [&tier](Tier t) { if (t > tier) tier = t; };
+
+        if (g_cfg.backgroundScope == Scope::Always)
+            raise(Tier::Background);
+        if (g_cfg.foregroundScope == Scope::Always)
+            raise(Tier::Foreground);
+
         for (uint64_t guid : g_realOnline)
         {
+            if (tier == Tier::Foreground)
+                break;
+
             Player* p = ObjectAccessor::FindPlayer(ObjectGuid(guid));
             if (!p || !p->IsInWorld())
                 continue;
 
+            // A guildmate who is online can hear about it in guild chat.
             if (bot->GetGuildId() && p->GetGuildId() == bot->GetGuildId())
-                return Tier::Foreground;
-
-            if (p->GetMapId() != bot->GetMapId())
-                continue;
-            sameMap = true;
-
-            // Not `near`: windows.h defines that as a macro.
-            const bool nearby = g_cfg.foregroundRange > 0.0f
-                                    ? bot->GetDistance(p) <= g_cfg.foregroundRange
-                                    : p->GetZoneId() == bot->GetZoneId();
-            if (nearby)
-                return Tier::Foreground;
+                raise(Tier::Foreground);
+            else if (InScope(g_cfg.foregroundScope, bot, p))
+                raise(Tier::Foreground);
+            else if (InScope(g_cfg.backgroundScope, bot, p))
+                raise(Tier::Background);
         }
-        return sameMap ? Tier::Background : Tier::Dormant;
+
+        raise(g_cfg.minimumTier);
+        if (bot->GetGuildId() && g_realGuilds.count(bot->GetGuildId()))
+            raise(g_cfg.realGuildTier);
+
+        return tier;
+    }
+
+    bool IsBotAccount(uint32_t accountId)
+    {
+        return sPlayerbotAIConfig.IsInRandomAccountList(accountId) ||
+               sRandomPlayerbotMgr.IsAddClassAccount(accountId);
+    }
+
+    // A real-player guild changed: bots already online re-run the rules on
+    // their next visit, so a newly founded guild picks up its bots without a
+    // relog. g_mutex held.
+    void OnRealGuildsChanged()
+    {
+        if (!g_cfg.selectRealPlayerGuilds)
+            return;
+        for (auto& [guid, ob] : g_online)
+            ob.evaluated = false;
+    }
+
+    // Which guilds have a human member, online or not. A member is human
+    // when its account is neither a random-bot nor an addclass account -- a
+    // human's own alt bots count, since the account is theirs. Asynchronous:
+    // one row per (guild, account) pair, a few thousand at most.
+    void RefreshRealGuilds()
+    {
+        g_callbacks.AddCallback(CharacterDatabase.AsyncQuery(
+            "SELECT DISTINCT gm.guildid, c.account FROM guild_member gm "
+            "JOIN characters c ON c.guid = gm.guid")
+            .WithCallback([](QueryResult result)
+            {
+                std::unordered_set<uint32_t> guilds;
+                if (result)
+                {
+                    do
+                    {
+                        Field* f = result->Fetch();
+                        if (!IsBotAccount(f[1].Get<uint32>()))
+                            guilds.insert(f[0].Get<uint32>());
+                    } while (result->NextRow());
+                }
+
+                std::lock_guard<std::mutex> lock(g_mutex);
+                if (guilds != g_realGuilds)
+                {
+                    g_realGuilds.swap(guilds);
+                    OnRealGuildsChanged();
+                }
+            }));
     }
 
     // ----------------------------------------------------------------------
@@ -960,6 +1054,12 @@ namespace
             return "";
         if (g_cfg.includeNames.count(name))
             return "name";
+
+        // Bots that share a guild with a human are always in, whatever their
+        // level, and never count against MaxEnrolled: they are the ones a
+        // player actually lives alongside.
+        if (g_cfg.selectRealPlayerGuilds && bot->GetGuildId() && g_realGuilds.count(bot->GetGuildId()))
+            return "realguild";
 
         // A master's request is sticky once granted, and a marker we did not
         // put there is a request. Neither is bound by the level band: both are
@@ -1820,9 +1920,37 @@ void Autopilot_LoadConfig()
     c.maxConcurrentPlans      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.MaxConcurrentPlans", 2));
     c.decisionIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DecisionIntervalMinutes", 15));
     c.goalRefreshMinutes      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 90));
-    c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 0.0f);
+    c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
+
+    auto parseScope = [](const std::string& key, const char* fallback, Scope def)
+    {
+        const std::string v = Lower(sConfigMgr->GetOption<std::string>(key, fallback));
+        if (v == "range")  return Scope::Range;
+        if (v == "zone")   return Scope::Zone;
+        if (v == "map")    return Scope::Map;
+        if (v == "world")  return Scope::World;
+        if (v == "always") return Scope::Always;
+        LOG_ERROR("module.ollamachat", "[Ollama Chat] {}: '{}' is not range/zone/map/world/always.", key, v);
+        return def;
+    };
+    auto parseTier = [](const std::string& key, const char* fallback, Tier def)
+    {
+        const std::string v = Lower(sConfigMgr->GetOption<std::string>(key, fallback));
+        if (v == "dormant")    return Tier::Dormant;
+        if (v == "background") return Tier::Background;
+        if (v == "foreground") return Tier::Foreground;
+        LOG_ERROR("module.ollamachat", "[Ollama Chat] {}: '{}' is not dormant/background/foreground.", key, v);
+        return def;
+    };
+
+    c.foregroundScope         = parseScope("OllamaChat.Autopilot.ForegroundScope", "zone", Scope::Zone);
+    c.backgroundScope         = parseScope("OllamaChat.Autopilot.BackgroundScope", "map", Scope::Map);
+    c.minimumTier             = parseTier("OllamaChat.Autopilot.MinimumTier", "dormant", Tier::Dormant);
+    c.selectRealPlayerGuilds  = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Select.RealPlayerGuilds", false);
+    c.realGuildTier           = parseTier("OllamaChat.Autopilot.RealPlayerGuildTier", "background", Tier::Background);
+    c.realGuildRefreshMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.RealPlayerGuildRefreshMinutes", 10));
 
     c.guardDeaths             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.Deaths", 3);
     c.guardDeathWindowMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Guard.DeathWindowMinutes", 15));
@@ -1924,6 +2052,9 @@ void Autopilot_Load()
 
     LOG_INFO("server.loading", "[Ollama Chat] Autopilot: loaded {} rows, {} enrolled.",
              g_rows.size(), g_enrolledCount);
+
+    // Lands in Autopilot_Update before the first bots log in.
+    RefreshRealGuilds();
 }
 
 bool Autopilot_IsActive()
@@ -1953,6 +2084,15 @@ void Autopilot_Update(uint32_t diff)
     {
         g_flushTimer = 0;
         Autopilot_SaveAll();
+    }
+
+    // Catches humans leaving guilds and guilds disbanding; joins and logins
+    // are picked up immediately by the hooks.
+    g_guildTimer += diff;
+    if (g_guildTimer >= g_cfg.realGuildRefreshMinutes * 60 * 1000)
+    {
+        g_guildTimer = 0;
+        RefreshRealGuilds();
     }
 
     // Finished plans are applied even if autopilot was switched off in the
@@ -2059,6 +2199,8 @@ void AutopilotPlayerScript::OnPlayerLogin(Player* player)
     if (!OllamaIsBotPlayer(player))
     {
         g_realOnline.insert(guid);
+        if (player->GetGuildId() && g_realGuilds.insert(player->GetGuildId()).second)
+            OnRealGuildsChanged();
         return;
     }
 
@@ -2067,6 +2209,21 @@ void AutopilotPlayerScript::OnPlayerLogin(Player* player)
     g_online[guid] = Online();
     if (std::find(g_roster.begin(), g_roster.end(), guid) == g_roster.end())
         g_roster.push_back(guid);
+}
+
+AutopilotGuildScript::AutopilotGuildScript()
+    : GuildScript("AutopilotGuildScript", { GUILDHOOK_ON_ADD_MEMBER }) { }
+
+void AutopilotGuildScript::OnAddMember(Guild* guild, Player* player, uint8& /*plRank*/)
+{
+    // A human joining (or founding) a guild makes its bots eligible now
+    // rather than at the next refresh.
+    if (!guild || !player || OllamaIsBotPlayer(player))
+        return;
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_realGuilds.insert(guild->GetId()).second)
+        OnRealGuildsChanged();
 }
 
 void AutopilotPlayerScript::OnPlayerLogout(Player* player)

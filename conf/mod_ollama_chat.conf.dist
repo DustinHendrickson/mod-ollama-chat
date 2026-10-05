@@ -2086,6 +2086,23 @@ OllamaChat.Autopilot.Select.Guilds = ""
 #        Default: "" (none)
 OllamaChat.Autopilot.Select.Accounts = ""
 
+#    OllamaChat.Autopilot.Select.RealPlayerGuilds
+#        Enroll every bot in a guild that has a human member, online or not.
+#        A human's own alt bots count as human members, because the account
+#        is theirs. These bots ignore the level band and do not count against
+#        MaxEnrolled, so a player's guild is always alive. The guild list is
+#        refreshed every RealPlayerGuildRefreshMinutes. A human logging in or
+#        joining a guild takes effect at once. Pair with RealPlayerGuildTier
+#        to decide how much LLM time they get.
+#        Default: 0
+OllamaChat.Autopilot.Select.RealPlayerGuilds = 0
+
+#    OllamaChat.Autopilot.RealPlayerGuildRefreshMinutes
+#        How often to re-read which guilds have a human member (one async
+#        query over guild_member).
+#        Default: 10
+OllamaChat.Autopilot.RealPlayerGuildRefreshMinutes = 10
+
 #    OllamaChat.Autopilot.Select.Include
 #    OllamaChat.Autopilot.Select.Exclude
 #        Comma-separated character names. Include always enrolls (it ignores
@@ -2225,11 +2242,14 @@ OllamaChat.Autopilot.WithRealPlayer = 1
 # ----------------------------------------------
 #
 # Each bot gets a tier, worked out from where the real players are:
-#   foreground  a real player is near (see ForegroundRange) or in its guild:
-#               the LLM chooses its activity every DecisionIntervalMinutes
-#   background  a real player is on the same map: the LLM is asked every
-#               GoalRefreshMinutes, and the policy fills in between
-#   dormant     no real player on its map: policy only, zero LLM calls
+#   foreground  a real player is within ForegroundScope (default: same zone),
+#               or a guildmate is online: the LLM chooses its activity every
+#               DecisionIntervalMinutes
+#   background  a real player is within BackgroundScope (default: same map):
+#               the LLM is asked every GoalRefreshMinutes, and the policy
+#               fills in between
+#   dormant     otherwise: policy only, zero LLM calls
+# MinimumTier and RealPlayerGuildTier raise the floor (see below).
 # Every plan spends one token from a shared hourly budget. When the budget is
 # empty, bots carry on under the playstyle policy. Planning is also refused
 # while the shared request queue is more than half full, so chat replies
@@ -2260,11 +2280,47 @@ OllamaChat.Autopilot.MaxConcurrentPlans = 2
 OllamaChat.Autopilot.DecisionIntervalMinutes = 15
 OllamaChat.Autopilot.GoalRefreshMinutes = 90
 
+#    OllamaChat.Autopilot.ForegroundScope
+#    OllamaChat.Autopilot.BackgroundScope
+#        How far a real player's presence reaches. A bot within ForegroundScope
+#        of any online real player is foreground, otherwise within
+#        BackgroundScope is background, otherwise dormant.
+#          range   within ForegroundRange yards, same map
+#          zone    same zone
+#          map     same map / continent
+#          world   anywhere, as long as one real player is online
+#          always  every enrolled bot, even with nobody online
+#        Widening these is how to give the LLM to more bots, if you have the
+#        hardware or the API budget. Raise LlmCallsPerHour and
+#        MaxConcurrentPlans to match, or the extra bots just queue for the
+#        same budget and fall back to the policy.
+#          Light (default):    zone / map
+#          Busy realm:         map / world
+#          Everything thinks:  world / always   (or MinimumTier = background)
+#        Defaults: "zone" and "map"
+OllamaChat.Autopilot.ForegroundScope = "zone"
+OllamaChat.Autopilot.BackgroundScope = "map"
+
 #    OllamaChat.Autopilot.ForegroundRange
-#        Yards within which a real player makes a bot foreground.
-#        0 = anywhere in the same zone.
-#        Default: 0
-OllamaChat.Autopilot.ForegroundRange = 0
+#        Yards for ForegroundScope = range.
+#        Default: 100
+OllamaChat.Autopilot.ForegroundRange = 100
+
+#    OllamaChat.Autopilot.MinimumTier
+#        A floor for every enrolled bot: dormant, background or foreground.
+#        "background" means every enrolled bot gets an LLM plan at least every
+#        GoalRefreshMinutes, budget permitting, wherever it is.
+#        "foreground" means every one gets one every DecisionIntervalMinutes.
+#        That is the most expensive setting there is.
+#        Default: "dormant"
+OllamaChat.Autopilot.MinimumTier = "dormant"
+
+#    OllamaChat.Autopilot.RealPlayerGuildTier
+#        A floor for bots in a guild that has a human member, whether or not
+#        that human is online (see Select.RealPlayerGuilds). Their guildmates
+#        are always foreground while the human is online.
+#        Default: "background"
+OllamaChat.Autopilot.RealPlayerGuildTier = "background"
 
 #    OllamaChat.Autopilot.PlanTimeoutSeconds
 #        A plan that has not come back after this long is abandoned, and the
