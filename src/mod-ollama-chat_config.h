@@ -43,8 +43,28 @@ extern uint32_t   g_EventChatterMaxBotsPerPlayer;
 // --------------------------------------------
 // Ollama LLM API Configuration
 // --------------------------------------------
+
+// Which wire format OllamaChat.Url speaks. Everything in the module still
+// calls this "Ollama"; the provider only changes how one request is encoded
+// and decoded in mod-ollama-chat_api.cpp.
+enum class OllamaProvider : uint8_t
+{
+    Ollama = 0,     // Ollama's native /api/generate
+    OpenAI,         // OpenAI Chat Completions format: OpenAI, OpenRouter, Groq,
+                    // Mistral, DeepSeek, xAI, Gemini (compat endpoint), LM Studio,
+                    // vLLM, llama.cpp server, and Ollama's own /v1/chat/completions
+    Anthropic,      // Anthropic Messages API (Claude)
+};
+
+OllamaProvider OllamaProvider_Parse(const std::string& text);
+const char*    OllamaProvider_Name(OllamaProvider provider);
+
 extern std::string g_OllamaUrl;
 extern std::string g_OllamaModel;
+extern OllamaProvider g_OllamaProvider;
+extern std::string g_OllamaApiKey;            // never log this
+extern std::string g_OllamaApiKeyHeader;      // empty = provider default header
+extern int32_t     g_OllamaVerifyCertificates; // -1 auto (on when ApiKey set), 0 off, 1 on
 extern uint32_t    g_OllamaNumPredict;
 extern float       g_OllamaTemperature;
 extern float       g_OllamaTopP;
@@ -165,6 +185,8 @@ extern uint32_t g_CapabilityProbeTimeoutSeconds;
 // HTTP / dispatcher
 // --------------------------------------------
 extern uint32_t g_HttpTimeoutSeconds;
+extern uint32_t g_RateLimitRetries;          // retries on HTTP 429/503/529
+extern uint32_t g_RateLimitMaxWaitSeconds;   // cap on one back-off sleep
 extern uint32_t g_DispatchWorkerThreads;
 extern uint32_t g_MaxQueueDepth;
 

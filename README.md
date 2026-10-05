@@ -30,6 +30,9 @@
 - **Ollama LLM Integration:**  
   Bots generate chat responses by querying an external Ollama API endpoint. This enables natural and contextually appropriate in-game dialogue.
 
+- **Other LLM Providers:**  
+  Not limited to Ollama. Set `OllamaChat.Provider` to `openai` for anything that speaks the OpenAI Chat Completions format (OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Gemini, LM Studio, vLLM, llama.cpp) or to `anthropic` for Claude. See [Using Other LLM Providers](#using-other-llm-providers-openai-openrouter-claude).
+
 - **Player Bot Personalities:**  
   When enabled, each bot is assigned a personality type (e.g., Gamer, Roleplayer, Trickster) that modifies its chat style. Personalities influence prompt generation and result in varied, immersive responses.
 
@@ -161,7 +164,7 @@ export OLLAMA_HOST=0.0.0.0
 ollama serve
 ```
 
-This binds the server to all network interfaces, allowing connections from other machines on your network. Update the `OllamaChat.ApiEndpoint` in `mod-ollama-chat.conf` to use the IP address of the machine running Ollama (e.g., `http://192.168.1.100:11434`).
+This binds the server to all network interfaces, allowing connections from other machines on your network. Update the `OllamaChat.Url` in `mod-ollama-chat.conf` to use the IP address of the machine running Ollama (e.g., `http://192.168.1.100:11434`).
 
 > [!WARNING]
 > Exposing Ollama to the network may pose security risks. Ensure your firewall allows traffic on port 11434 only from trusted networks, and consider additional security measures if exposing to the internet.
@@ -178,7 +181,7 @@ You can find available models at [ollama.com/library](https://ollama.com/library
 
 ### Connecting the Module
 
-The module connects to the Ollama API via the configuration in `mod-ollama-chat.conf`. The default endpoint is `http://localhost:11434`. If your Ollama server is running on a different host or port, update the `OllamaChat.ApiEndpoint` setting.
+The module connects to the Ollama API via the configuration in `mod-ollama-chat.conf`. The default endpoint is `http://localhost:11434`. If your Ollama server is running on a different host or port, update the `OllamaChat.Url` setting.
 
 ### Checking if Ollama is Running
 
@@ -189,6 +192,119 @@ curl http://localhost:11434/api/tags
 ```
 
 This should return a JSON response listing available models. If you get a connection error, ensure the server is started and the endpoint is correct.
+
+## Using Other LLM Providers (OpenAI, OpenRouter, Claude)
+
+Ollama is the default, but it is not required. The only Ollama-specific part
+of the module is how a single request is encoded, so any service that speaks
+one of two common API formats can be used instead. Four settings in
+`mod-ollama-chat.conf` control this:
+
+| Setting | Meaning |
+|---|---|
+| `OllamaChat.Provider` | `ollama` (default), `openai`, or `anthropic` |
+| `OllamaChat.Url` | The full URL of the provider's generation endpoint |
+| `OllamaChat.Model` | The model name as the provider publishes it |
+| `OllamaChat.ApiKey` | The provider's API key. Leave empty for local servers that need none |
+| `OllamaChat.ApiKeyHeader` | Optional. Only for services with their own header name, such as Azure OpenAI (`api-key`) |
+
+`openai` means the **OpenAI Chat Completions format**, which is the de facto
+standard and is spoken by far more than OpenAI: OpenRouter, Groq, Together,
+Mistral, DeepSeek, xAI, Google Gemini (through its OpenAI-compatible
+endpoint), LM Studio, vLLM, llama.cpp server, and Ollama's own
+`/v1/chat/completions` route all accept it. `anthropic` is the native Claude
+Messages API. Claude is also reachable through OpenRouter using `openai`.
+
+### Examples
+
+**OpenAI**
+
+```ini
+OllamaChat.Provider = openai
+OllamaChat.Url      = https://api.openai.com/v1/chat/completions
+OllamaChat.Model    = gpt-4o-mini
+OllamaChat.ApiKey   = sk-...
+```
+
+**OpenRouter** (one key, access to many models from many vendors)
+
+```ini
+OllamaChat.Provider = openai
+OllamaChat.Url      = https://openrouter.ai/api/v1/chat/completions
+OllamaChat.Model    = openai/gpt-4o-mini
+OllamaChat.ApiKey   = sk-or-...
+```
+
+**Anthropic (Claude)**
+
+```ini
+OllamaChat.Provider = anthropic
+OllamaChat.Url      = https://api.anthropic.com/v1/messages
+OllamaChat.Model    = claude-haiku-4-5-20251001
+OllamaChat.ApiKey   = sk-ant-...
+```
+
+**LM Studio** (local, no key needed)
+
+```ini
+OllamaChat.Provider = openai
+OllamaChat.Url      = http://localhost:1234/v1/chat/completions
+OllamaChat.Model    = <the model id LM Studio shows in its server tab>
+```
+
+### Steps
+
+1. Edit the four settings above in `mod-ollama-chat.conf`.
+2. Restart `worldserver`, or run `.ollama reload` in game or `ollama reload`
+   on the console.
+3. Run `.ollama status`. The first line now shows the provider and whether a
+   key is set (the key itself is never printed).
+4. Run `.ollama test hello` to send one request and see the reply, or the
+   provider's error message if something is wrong (bad key, wrong model name,
+   wrong URL).
+
+### What to know
+
+- **HTTPS requires an OpenSSL build.** The CMake output says
+  `[mod-ollama-chat] OpenSSL found - HTTPS support enabled` when it is, and
+  `.ollama status` shows `HTTPS: available`. Without it, an `https://` URL is
+  reported as an error at startup and every request fails. On Windows install
+  OpenSSL (for example `vcpkg install openssl` or the Win64 OpenSSL installer)
+  and re-run CMake; on Linux install `libssl-dev` or `openssl-devel`.
+- **Certificates are verified when a key is set.** By default the module skips
+  TLS certificate checks (so self-signed reverse proxies in front of a local
+  Ollama keep working) but turns them on whenever `OllamaChat.ApiKey` is
+  non-empty, since a key should never travel over an unverified connection.
+  `OllamaChat.VerifyCertificates` overrides this either way.
+- **API keys.** Every hosted provider needs one; put it in `OllamaChat.ApiKey`.
+  The module sends it as a bearer token for OpenAI format and as
+  `x-api-key` for Anthropic; `OllamaChat.ApiKeyHeader` overrides the header
+  name for services like Azure OpenAI. A rejected key (HTTP 401/403) is
+  reported once in the log with what to check.
+- **Cost and rate limits.** Random chatter and event chatter across many bots
+  adds up fast on a metered API, and hosted providers answer bursts with
+  HTTP 429. The module waits and retries a bounded number of times
+  (`OllamaChat.RateLimitRetries`, honouring the provider's `Retry-After`,
+  capped by `OllamaChat.RateLimitMaxWaitSeconds`) and logs the first
+  occurrence. Start with `OllamaChat.EnableRandomChatter = 0` and a low
+  `OllamaChat.MaxConcurrentQueries`, and watch the provider's usage page before
+  opening it up.
+- **Settings that do not apply are not sent.** `NumCtx`, `NumThreads`,
+  `RepeatPenalty`, `MinP` and `TopK` have no equivalent in the OpenAI format;
+  Anthropic additionally has no `TopP`, `Seed`, or penalties. `NumPredict`
+  works everywhere (Anthropic requires a cap, so `0` becomes 1024 there).
+- **Think mode.** There is no capability probe for these providers, since
+  that would be a billed request. Under `ThinkMode = auto` reasoning is never
+  requested. Under `on` it is requested on every call (`reasoning_effort` for
+  OpenAI format, an extended-thinking budget for Anthropic) and switched off
+  for the session if the provider rejects it.
+- **Self-healing parameters.** Newer OpenAI models reject `max_tokens` in
+  favour of `max_completion_tokens`, and OpenAI reasoning models reject
+  explicit sampling values. Both are detected from the first rejection, logged
+  once, and the request is retried immediately, so no reply is lost.
+- **Keep the key private.** Treat `mod-ollama-chat.conf` like
+  `worldserver.conf`: readable only by the account running the server, and
+  never committed to a repository.
 
 ## Configuration Options
 
@@ -448,6 +564,11 @@ that, logs it once, and retries without it. A latency guard
 (`OllamaChat.ThinkMaxLatencyMs`) backs think mode off for the session if it
 proves too slow for chat. You do not need to restart after swapping models —
 `.ollama reload` re-probes.
+
+With a non-Ollama provider (`OllamaChat.Provider = openai` or `anthropic`)
+nothing is probed, because the only way to ask would be a billed request.
+`auto` then never requests reasoning; `on` requests it on every call and backs
+off for the session if the provider rejects it.
 
 ## Threading Model
 

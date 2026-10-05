@@ -469,9 +469,13 @@ bool OllamaChatConfigCommand::HandleOllamaStatusCommand(ChatHandler* handler)
     const GovernorStats       gov      = Governor_GetStats();
 
     handler->PSendSysMessage("|cff00ff00[Ollama Chat] Status|r");
-    handler->PSendSysMessage("Module: {}   Endpoint: {}   Model: {}",
+    // The API key is deliberately not shown here.
+    handler->PSendSysMessage("Module: {}   Provider: {}   Endpoint: {}   Model: {}   ApiKey: {}   HTTPS: {}",
                              g_Enable ? "enabled" : "DISABLED",
-                             g_OllamaUrl, g_OllamaModel);
+                             OllamaProvider_Name(g_OllamaProvider),
+                             g_OllamaUrl, g_OllamaModel,
+                             g_OllamaApiKey.empty() ? "not set" : "set",
+                             OllamaHttp_TlsAvailable() ? "available" : "NOT BUILT (no OpenSSL)");
     handler->PSendSysMessage("Think: {}", OllamaCapability_StatusText());
 
     handler->PSendSysMessage("Dispatcher: {} workers, {} queued, {} in flight, {} awaiting delivery",
