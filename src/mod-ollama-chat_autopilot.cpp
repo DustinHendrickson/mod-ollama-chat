@@ -1006,10 +1006,17 @@ namespace
 
     // NewRpg teleports a bot to a far destination it has been stuck short of
     // for 90 seconds. Give up on the walk before that, and tell the model.
-    void CheckStuck(PlayerbotAI* ai, uint64_t guid, Online& ob, const Situation& sit)
+    void CheckStuck(Player* bot, PlayerbotAI* ai, uint64_t guid, Online& ob, const Situation& sit)
     {
         if (!g_cfg.noTeleport || !sit.CanUseNonCombat() || sit.inCombat || !AutopilotRpg_IsStuck(ai, 60 * 1000))
             return;
+
+        // On a routed errand, route again from here first (twice at most).
+        if (AutopilotCommands_Reroute(bot, ai, ob.errand))
+        {
+            RecordEvent(guid, "stuck", "rerouting to " + ob.errand.label);
+            return;
+        }
 
         AutopilotRpg_Abandon(ai);
         ++g_statStuck;
@@ -1817,7 +1824,7 @@ namespace
 
         if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
         {
-            CheckStuck(ai, guid, ob, sit);
+            CheckStuck(bot, ai, guid, ob, sit);
 
             // A walk the model sent the bot on: keep it walking, and use the
             // service on arrival. Finishing or failing is a moment to ask the

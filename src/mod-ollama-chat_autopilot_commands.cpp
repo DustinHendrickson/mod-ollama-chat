@@ -50,6 +50,10 @@ namespace
     std::string              g_reference;
     std::vector<std::string> g_denied;
 
+    // NewRpg walks straight to anything under 70 yards (its pathFinderDis);
+    // keep a margin.
+    constexpr float kDirectWalk = 60.0f;
+
     std::string Lower(std::string s)
     {
         std::transform(s.begin(), s.end(), s.begin(),
@@ -89,7 +93,18 @@ namespace
                             const std::string& label, AutopilotErrand& errand, uint32_t now)
     {
         EnsureNewRpg(ai);
-        AutopilotRpg_GoTo(ai, place.map, place.x, place.y, place.z);
+
+        // Within playerbots' own reach a plain walk does; further than that
+        // the bot follows a navmesh route, handed over a node at a time.
+        errand.routed = bot->GetDistance(place.x, place.y, place.z) > kDirectWalk;
+        errand.issued = SIZE_MAX;
+        if (errand.routed)
+        {
+            AutopilotRoute_Begin(bot, place.map, place.x, place.y, place.z, errand.route);
+            AutopilotRoute_Extend(bot, errand.route);
+        }
+        else
+            AutopilotRpg_GoTo(ai, place.map, place.x, place.y, place.z);
 
         errand.active    = true;
         errand.map       = place.map;
@@ -126,6 +141,8 @@ namespace
 
 void AutopilotCommands_Load()
 {
+    AutopilotRoute_LoadConfig();
+
     g_reference = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.CommandReference", "");
     if (g_reference.empty())
         g_reference = kDefaultReference;
@@ -256,9 +273,51 @@ std::string AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, Autopil
 
     if (bot->GetDistance(errand.x, errand.y, errand.z) > 25.0f)
     {
+        if (bot->IsInCombat() || AutopilotRpg_IsTravelling(ai))
+            return "";
+        const bool walking = AutopilotRpg_CurrentStatus(ai) == AutopilotRpg_StatusFromName("go camp");
+
+        if (errand.routed)
+        {
+            AutopilotRoute& route = errand.route;
+            AutopilotRoute_Extend(bot, route);
+
+            if (route.failed)
+            {
+                if (route.why != "no mmaps")
+                {
+                    errand.active = false;
+                    return SafeFormat("could not find a way to {} ({})", errand.label, route.why);
+                }
+                // No navmesh on this server: walk it playerbots' way.
+                errand.routed = false;
+                AutopilotRpg_GoTo(ai, errand.map, errand.x, errand.y, errand.z);
+                return "";
+            }
+
+            // Hand over the next node; again if NewRpg wandered off it.
+            AutopilotRoutePoint node;
+            if (AutopilotRoute_Next(bot, route, node))
+            {
+                if (route.next != errand.issued || !walking)
+                {
+                    AutopilotRpg_GoTo(ai, errand.map, node.x, node.y, node.z);
+                    errand.issued = route.next;
+                }
+                return "";
+            }
+
+            // Nothing built ahead yet: wait for the next visit.
+            if (!route.complete)
+                return "";
+
+            // Route walked but not quite there: finish on foot below.
+            errand.routed = false;
+            errand.issued = SIZE_MAX;
+        }
+
         // Keep walking: NewRpg may have moved on to something else.
-        if (!bot->IsInCombat() && !AutopilotRpg_IsTravelling(ai) &&
-            AutopilotRpg_CurrentStatus(ai) != AutopilotRpg_StatusFromName("go camp"))
+        if (!walking)
             AutopilotRpg_GoTo(ai, errand.map, errand.x, errand.y, errand.z);
         return "";
     }
@@ -294,4 +353,18 @@ std::string AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, Autopil
         default:
             return "arrived at " + errand.label;
     }
+}
+
+bool AutopilotCommands_Reroute(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+{
+    if (!errand.active || !errand.routed || errand.route.rebuilds >= 2 || bot->GetMapId() != errand.map)
+        return false;
+
+    // Forget the walk NewRpg was stuck on, so its stuck counter starts over,
+    // and route again from here; the next visit hands over the first node.
+    AutopilotRpg_Abandon(ai);
+    AutopilotRoute_Rebuild(bot, errand.route);
+    AutopilotRoute_Extend(bot, errand.route);
+    errand.issued = SIZE_MAX;
+    return true;
 }

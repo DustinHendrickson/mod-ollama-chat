@@ -110,6 +110,34 @@ core APIs; nothing requires changing another repository.
 the server", …) is stored and shown in the next prompt, so a failed order
 leads to a different one.
 
+## Long walks
+
+NewRpg's `MoveFarTo` walks a plain pathfinding `MoveTo` only under 70 yards
+(`pathFinderDis`). Further than that it uses one mmap query (smooth paths cap
+near 300 yards) or random forward samples. After 90 seconds without progress
+it teleports.
+
+A `goto` further than 60 yards therefore follows a route
+(`mod-ollama-chat_autopilot_route.cpp`). This is mod-city-siege's two-pass
+design (`CitySiegePathing.cpp`), built lazily:
+
+1. **Corridor.** `findStraightPath` from the walk cursor to the destination.
+   The corners are XY guidance only.
+2. **Walk.** Smooth `PathGenerator` legs toward each corner, at most 120
+   yards, halved until one fits. Each aim is re-seated on the ground under
+   the walking height. Steep ground and water are costed; lava and slime are
+   excluded.
+3. **Thin** the dense points to nodes about 28 yards apart, keeping turns.
+4. **Hand over** one node at a time with NewRpg `go camp`. Each node is well
+   inside 70 yards.
+
+Building stops once about 12 nodes lie ahead of the bot, and each visit
+spends at most `Route.QueriesPerVisit` queries. mmap tiles load with their
+grid, so a failure far ahead of the bot is retried once the bot is near.
+Stuck at 60 s means the route is rebuilt from the bot (twice). After that,
+the errand fails and the LLM is told. Without mmaps, it falls back to
+`MoveFarTo`.
+
 ## Situations
 
 | Situation | Orders carried out | On entry | On exit |

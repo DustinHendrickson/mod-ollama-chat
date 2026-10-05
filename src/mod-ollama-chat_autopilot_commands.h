@@ -1,6 +1,8 @@
 #ifndef MOD_OLLAMA_CHAT_AUTOPILOT_COMMANDS_H
 #define MOD_OLLAMA_CHAT_AUTOPILOT_COMMANDS_H
 
+#include "mod-ollama-chat_autopilot_route.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -44,6 +46,12 @@ struct AutopilotErrand
     uint8_t     service   = 0;      // AutopilotService
     std::string label;              // "the repair vendor Corina Steele"
     uint32_t    startedAt = 0;
+
+    // Walks longer than playerbots can manage alone follow a navmesh route,
+    // one node at a time (mod-ollama-chat_autopilot_route.h).
+    bool           routed = false;
+    AutopilotRoute route;
+    size_t         issued = SIZE_MAX;   // node last handed to the bot
 };
 
 void AutopilotCommands_Load();
@@ -68,5 +76,9 @@ bool AutopilotCommands_IsDenied(const std::string& command);
 // Advance an errand: on arrival, use the service. Returns a diary line when
 // the errand finished or failed this visit, else "".
 std::string AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, uint32_t now);
+
+// The bot got stuck on the way: build the route again from where it stands.
+// False when there is no route to rebuild, or it has been rebuilt enough.
+bool AutopilotCommands_Reroute(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand);
 
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_COMMANDS_H

@@ -211,6 +211,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   again, or the next death is revived (and teleported) at once. NewRpg's
   90-second stuck teleport is avoided with `AutopilotRpg_Abandon`
   (`SetMoveFarTo(WorldPosition())` + idle) at 60 seconds.
+- **Long `goto` walks follow a navmesh route** (`mod-ollama-chat_autopilot_route.cpp`,
+  ported from mod-city-siege's `CitySiegePathing.cpp`). NewRpg `MoveFarTo`
+  only walks straight under 70 yards (`pathFinderDis`); past that it guesses
+  and then teleports. The route is built lazily, a few queries per visit and a
+  few hundred yards ahead, because mmap tiles load only with their grid: a
+  query far ahead of the bot can fail just because the tile is not loaded, so
+  a failure counts only once the bot is near it.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`

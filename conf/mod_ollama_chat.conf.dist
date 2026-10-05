@@ -2236,6 +2236,35 @@ OllamaChat.Autopilot.CorpseRunMinutes = 10
 #        Default: 1
 OllamaChat.Autopilot.NoRandomize = 1
 
+#    OllamaChat.Autopilot.Route.QueriesPerVisit
+#        Long walks. Playerbots walks straight only to points under 70 yards
+#        away; further than that it guesses, and after 90 seconds stuck it
+#        teleports. So a `goto` further than 60 yards follows a route built
+#        on the server's navmesh (mmaps), the way mod-city-siege routes its
+#        armies: a corridor for which way round obstacles to go, then
+#        ground-following legs, thinned to nodes the bot is handed one at a
+#        time. The route is built a few hundred yards ahead of the bot as it
+#        walks, because navmesh tiles only load with their map grid.
+#        This is how many navmesh queries one visit may spend building it.
+#        Without mmaps, walks fall back to playerbots' own movement.
+#        Default: 6
+OllamaChat.Autopilot.Route.QueriesPerVisit = 6
+
+#    OllamaChat.Autopilot.Route.NodeSpacing
+#        Yards between route nodes (8-60). Keep it well under 70.
+#        Default: 28
+OllamaChat.Autopilot.Route.NodeSpacing = 28
+
+#    OllamaChat.Autopilot.Route.SteepCost
+#    OllamaChat.Autopilot.Route.WaterCost
+#        How much the route avoids steep ground and water, as a cost
+#        multiplier (1-1000). High enough to prefer roads and bridges; a
+#        ramp or ford that is the only way still gets used. Lava and slime
+#        are never crossed.
+#        Default: 25 and 8
+OllamaChat.Autopilot.Route.SteepCost = 25
+OllamaChat.Autopilot.Route.WaterCost = 8
+
 # ----------------------------------------------
 # When the LLM is asked, and the budget
 # ----------------------------------------------

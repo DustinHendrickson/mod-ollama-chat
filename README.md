@@ -689,6 +689,14 @@ re-gear the bot and, at level 1–2 or the level cap, give it a new level
 somewhere else. `AiPlayerbot.AutoTeleportForLevel` in `playerbots.conf` is
 separate; turn it off for full coverage.
 
+**Long walks.** Playerbots walks straight only to points under 70 yards away.
+Past that it guesses, and when it gets stuck it teleports. So a `goto`
+further than 60 yards follows a route built on the server's navmesh, the
+same way mod-city-siege routes its armies, and the bot is handed one node
+(about 28 yards) at a time. The route is built a few hundred yards ahead as
+the bot walks, and is rebuilt if it gets stuck. It needs mmaps; without
+them, walks fall back to playerbots' own movement. Same continent only.
+
 **Handing back.** Before its first strategy change, the bot's strategies are
 recorded and saved in the database. When the bot is turned off or autopilot
 is disabled, the bot goes back to exactly that.
