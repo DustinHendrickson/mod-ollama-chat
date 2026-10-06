@@ -2753,16 +2753,8 @@ namespace
 
     void SendInactiveReasons(ChatHandler* handler)
     {
-        if (!g_Enable)
-            handler->SendSysMessage("  - OllamaChat.Enable is 0");
-        if (!g_cfg.enable)
-            handler->SendSysMessage("  - OllamaChat.Autopilot.Enable is 0");
-        if (!g_EnableChatBotSnapshotTemplate)
-            handler->SendSysMessage("  - OllamaChat.EnableChatBotSnapshotTemplate is 0 (required)");
-        if (!g_tablesOk)
-            handler->SendSysMessage("  - autopilot tables could not be set up at startup (see \"Autopilot schema\" lines in the server log)");
-        if (!AutopilotStrategy_IsRegistered())
-            handler->SendSysMessage("  - the 'autopilot' playerbots strategy failed to register (see startup log)");
+        for (const std::string& why : Autopilot_InactiveReasons())
+            handler->SendSysMessage("  - " + why);
     }
 
     // Look up an enrolled, online bot for a control command. g_mutex held.
@@ -3216,11 +3208,6 @@ void Autopilot_LoadConfig()
     for (auto& [guid, ob] : g_online)
         ob.evaluated = false;
 
-    if (g_cfg.enable && !g_EnableChatBotSnapshotTemplate)
-        LOG_WARN("module.ollamachat",
-                 "[Ollama Chat] OllamaChat.Autopilot.Enable is on, but autopilot needs "
-                 "OllamaChat.EnableChatBotSnapshotTemplate = 1. Autopilot stays off.");
-
     // With NoHandouts the whole level-up maintenance, its teleport included,
     // is dropped for enrolled bots by the marker strategy.
     if (g_cfg.enable && g_cfg.noTeleport && !g_cfg.noHandouts && sPlayerbotAIConfig.autoTeleportForLevel)
@@ -3376,8 +3363,21 @@ void Autopilot_Load()
 
 bool Autopilot_IsActive()
 {
-    return g_Enable && g_cfg.enable && g_EnableChatBotSnapshotTemplate && g_tablesOk &&
-           AutopilotStrategy_IsRegistered();
+    return g_Enable && g_cfg.enable && g_tablesOk && AutopilotStrategy_IsRegistered();
+}
+
+std::vector<std::string> Autopilot_InactiveReasons()
+{
+    std::vector<std::string> out;
+    if (!g_Enable)
+        out.push_back("OllamaChat.Enable is 0");
+    if (!g_cfg.enable)
+        out.push_back("OllamaChat.Autopilot.Enable is 0");
+    if (!g_tablesOk)
+        out.push_back("autopilot tables could not be set up at startup (see \"Autopilot tables\" in the server log)");
+    if (!AutopilotStrategy_IsRegistered())
+        out.push_back("the 'autopilot' playerbots strategy failed to register (see the startup log)");
+    return out;
 }
 
 void Autopilot_Update(uint32_t diff)

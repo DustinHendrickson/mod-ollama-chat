@@ -919,7 +919,6 @@ controllers.
    migrated at startup.
 2. In `mod_ollama_chat.conf`:
    ```ini
-   OllamaChat.EnableChatBotSnapshotTemplate = 1   # required
    OllamaChat.Autopilot.Enable = 1
    OllamaChat.Autopilot.Select.RandomBotPercent = 5
    OllamaChat.Autopilot.Debug = 1                 # log every plan and order

@@ -60,6 +60,8 @@ void Autopilot_SaveAll();
 
 // True when the feature is on and its prerequisites are met.
 bool Autopilot_IsActive();
+// Why Autopilot_IsActive() is false, one line per cause; empty when active.
+std::vector<std::string> Autopilot_InactiveReasons();
 
 // `.ollama autopilot ...`
 Acore::ChatCommands::ChatCommandTable const& Autopilot_CommandTable();

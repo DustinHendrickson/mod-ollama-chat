@@ -2022,7 +2022,7 @@ OllamaChat.FrequencyPenalty = -1000
 #   doing what it was last told.
 #
 #   Requires:
-#     - OllamaChat.EnableChatBotSnapshotTemplate = 1
+#     - OllamaChat.Enable = 1
 #     - the tables in data/sql/characters/base/2026_10_05_autopilot.sql
 #       (a table from an earlier draft is migrated at startup)
 #

@@ -465,6 +465,8 @@ namespace
         if (verb == "HELLO")
         {
             Send(player, SafeFormat("H\t{}\t{}", kVersion, Autopilot_IsActive() ? "active" : "inactive"));
+            for (const std::string& why : Autopilot_InactiveReasons())
+                Send(player, "M\tAutopilot is off: " + Clean(why));
             return;
         }
 
