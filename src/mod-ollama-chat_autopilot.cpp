@@ -114,6 +114,7 @@ namespace
         uint32_t alertDurabilityPct      = 20;
         uint32_t alertFreeBagSlots       = 2;
         uint32_t alertCooldownMinutes    = 30;
+        uint32_t alertIdleMinutes        = 5;       // no trip, no fight, not moving
 
         uint32_t goalStaleMinutes        = 120;
     };
@@ -255,6 +256,7 @@ namespace
         std::deque<uint32_t>     deathTimes;
         std::unordered_map<std::string, uint32_t> alertCooldown;   // kind -> may fire again at
         std::string              lastAlert;
+        uint32_t                 lastBusyAt  = 0;   // last seen on a trip, fighting or moving
         uint32_t                 lastAlertAt = 0;
 
         // Recent history, for prompts without a DB round trip.
@@ -1238,11 +1240,22 @@ namespace
             reason = "bags are full";
             kind   = "bags";
         }
+        else if (g_cfg.alertIdleMinutes > 0 && !ob.errand.active && ob.lastBusyAt &&
+                 now - ob.lastBusyAt >= g_cfg.alertIdleMinutes * 60 && ready("idle"))
+        {
+            // Nothing else steers an autopilot bot: standing around means it
+            // ran out of orders, so the model hears about it.
+            reason = SafeFormat("has been standing around with nothing to do for {}", Span(now - ob.lastBusyAt));
+            kind   = "idle";
+        }
 
         if (!kind)
             return;
 
-        ob.alertCooldown[kind] = now + g_cfg.alertCooldownMinutes * 60;
+        // Idle repeats on its own clock: a bot still idle after another
+        // IdleMinutes is worth another look, not half an hour's silence.
+        ob.alertCooldown[kind] = now + (std::string_view(kind) == "idle" ? g_cfg.alertIdleMinutes
+                                                                         : g_cfg.alertCooldownMinutes) * 60;
         ob.lastAlert   = reason;
         ob.lastAlertAt = now;
         ob.urgentPlan  = true;
@@ -1533,6 +1546,18 @@ namespace
         std::vector<std::string> results;
         if (ob && bot && ai && g_cfg.control)
             results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot), now);
+
+        // An order failed and the bot has no trip: it would stand there until
+        // the plan's minutes run out. Let the model try something else soon
+        // (it sees what failed in the results).
+        if (ob && !ob->errand.active &&
+            std::any_of(results.begin(), results.end(), [](const std::string& r)
+            {
+                const size_t arrow = r.find(" -> ");
+                const std::string what = arrow == std::string::npos ? r : r.substr(arrow + 4);
+                return what.rfind("done", 0) != 0 && what != "sent" && what.rfind("on the way", 0) != 0;
+            }))
+            ob->quickPlan = true;
         else if (!d.commands.empty())
         {
             for (const std::string& c : d.commands)
@@ -1852,6 +1877,10 @@ namespace
             ob.errand.trip.interrupted = true;
             return;
         }
+
+        // Busy: on a trip, in a fight, or moving under its own strategies.
+        if (!ob.lastBusyAt || ob.errand.active || sit.inCombat || bot->isMoving())
+            ob.lastBusyAt = now;
 
         CheckBoundaries(bot, guid, row, ob, sit, now);
         UpdateFacts(bot, ob, now);
@@ -2637,6 +2666,7 @@ void Autopilot_LoadConfig()
     c.alertDurabilityPct      = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.DurabilityPct", 20);
     c.alertFreeBagSlots       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.FreeBagSlots", 2);
     c.alertCooldownMinutes    = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.CooldownMinutes", 30));
+    c.alertIdleMinutes        = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Alert.IdleMinutes", 5);
 
     c.goalStaleMinutes        = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalStaleMinutes", 120);
 

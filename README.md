@@ -646,6 +646,7 @@ drop, a capped profession).
 | Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in | On its own |
 | Errands | `goto repair / vendor / trainer / profession / inn / flightmaster` goes there and uses it: repairs and sells junk, learns every affordable spell, sets the inn as home, or learns the flight point. `goto bank / auction` only goes there; at a bank, `bank <item>` stores items. Bots can't trade at the auction house | On its own |
 | Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
+| Hunting | `goto hunt` goes to the nearest group of monsters of the bot's level; `nc +grind` fights what is around it | On its own |
 | Upkeep | `talents`, `autogear`, `s gray`, `repair`, `maintenance` | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 

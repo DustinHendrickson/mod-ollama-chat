@@ -2169,6 +2169,11 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 #   goto zone <name>   any zone in the world. The bot walks, takes a flight
 #                      master when that saves real distance, and takes boats,
 #                      zeppelins and portals between continents.
+#                      A sub-area name (Goldshire) goes to its zone; a zone
+#                      with no friendly town goes to one of its graveyards.
+#   goto hunt          the nearest group of ordinary monsters of the bot's
+#                      level hostile to it (grind only fights what is right
+#                      around the bot)
 #   quest <id>         to where the quest's objective is (the nearest spawn
 #                      of a creature it still needs, or the quest's map
 #                      marker); once complete, to the NPC who takes it in,
@@ -2493,6 +2498,16 @@ OllamaChat.Autopilot.Alert.FreeBagSlots = 2
 #    OllamaChat.Autopilot.Alert.CooldownMinutes
 #        Default: 30
 OllamaChat.Autopilot.Alert.CooldownMinutes = 30
+
+#    OllamaChat.Autopilot.Alert.IdleMinutes
+#        Nothing but the LLM steers an autopilot bot, so one standing around
+#        -- no trip, no fight, not moving -- for this long has run out of
+#        orders, and the LLM is asked what next. Repeats every IdleMinutes
+#        while the bot stays idle (not on CooldownMinutes). A plan whose
+#        order failed with no trip under way is also asked again after
+#        QuickReplanSeconds. 0 disables the idle check.
+#        Default: 5
+OllamaChat.Autopilot.Alert.IdleMinutes = 5
 
 # ----------------------------------------------
 # Diary and performance

@@ -4,6 +4,7 @@
 
 #include "CreatureData.h"
 #include "DBCStores.h"
+#include "GameGraveyard.h"
 #include "Log.h"
 #include "MapMgr.h"
 #include "ObjectMgr.h"
@@ -39,6 +40,17 @@ namespace
 
     // quest id -> creature entries that take it in.
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
+
+    // map id -> ordinary monsters, for hunting grounds: not elite, not
+    // critters, not NPCs with a role, attackable.
+    struct Mob
+    {
+        float    x = 0.0f, y = 0.0f, z = 0.0f;
+        uint32_t entry   = 0;
+        uint32_t faction = 0;
+        uint8_t  minLevel = 0, maxLevel = 0;
+    };
+    std::unordered_map<uint32_t, std::vector<Mob>> g_mobs;
 
     constexpr uint32_t kServiceMask =
         UNIT_NPC_FLAG_REPAIR | UNIT_NPC_FLAG_VENDOR_MASK | UNIT_NPC_FLAG_TRAINER_CLASS |
@@ -139,6 +151,7 @@ void AutopilotWorld_Build()
     g_spawns.clear();
     g_byEntry.clear();
     g_questEnders.clear();
+    g_mobs.clear();
 
     if (QuestRelations const* enders = sObjectMgr->GetCreatureQuestInvolvedRelationMap())
         for (auto const& [creatureEntry, questId] : *enders)
@@ -152,6 +165,12 @@ void AutopilotWorld_Build()
         CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(data.id);
         if (!t)
             continue;
+
+        if (!t->npcflag && !data.npcflag && t->rank == CREATURE_ELITE_NORMAL && t->type != CREATURE_TYPE_CRITTER &&
+            !(t->unit_flags & (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC)))
+            g_mobs[data.mapid].push_back(Mob{ data.posX, data.posY, data.posZ, data.id, t->faction,
+                                              t->minlevel, t->maxlevel });
+
         const uint32_t flags = (t->npcflag | data.npcflag) & kServiceMask;
         if (!flags)
             continue;
@@ -236,8 +255,40 @@ bool AutopilotWorld_ZonePlace(Player* bot, uint32_t zoneId, AutopilotPlace& out,
     }
     if (!best)
     {
-        why = "no friendly town or camp found in that zone";
-        return false;
+        // No friendly NPC in the zone's map rectangle (a wild zone, or one
+        // the world map does not chart): use a graveyard linked to it. Every
+        // zone has one, it is somewhere a walk can end, and links carry the
+        // faction it serves.
+        GraveyardStruct const* grave = nullptr;
+        float graveDist = 0.0f;
+        for (auto const& [id, g] : sGraveyard->GetGraveyardData())
+        {
+            if (g.Map != area->mapid)
+                continue;
+            GraveyardData const* link = sGraveyard->FindGraveyardData(id, zoneId);
+            if (!link || !link->IsNeutralOrFriendlyToTeam(bot->GetTeamId()))
+                continue;
+            const float d = std::hypot(g.x - cx, g.y - cy);
+            if (!grave || d < graveDist)
+            {
+                grave     = &g;
+                graveDist = d;
+            }
+        }
+        if (!grave)
+        {
+            why = "no friendly town, camp or graveyard found in that zone";
+            return false;
+        }
+
+        out.map      = grave->Map;
+        out.x        = grave->x;
+        out.y        = grave->y;
+        out.z        = grave->z;
+        out.entry    = 0;
+        out.name     = "the graveyard";
+        out.distance = grave->Map == bot->GetMapId() ? bot->GetDistance(grave->x, grave->y, grave->z) : 0.0f;
+        return true;
     }
 
     out.map      = area->mapid;
@@ -258,25 +309,46 @@ uint32_t AutopilotWorld_FindZone(const std::string& name, std::string& display)
     if (want.empty())
         return 0;
 
-    uint32_t partial = 0;
+    // Exact zone name, then an exact sub-area name (Goldshire, Dun Algaz:
+    // models name places, not just zones) resolved to its zone, then a
+    // partial zone name.
+    uint32_t sub = 0, partial = 0;
+    std::string subDisplay, partialDisplay;
     for (uint32_t i = 0; i < sAreaTableStore.GetNumRows(); ++i)
     {
         AreaTableEntry const* area = sAreaTableStore.LookupEntry(i);
-        if (!area || area->zone != 0 || !area->area_name[0] || !*area->area_name[0])
+        if (!area || !area->area_name[0] || !*area->area_name[0])
             continue;
 
         const std::string have = Lower(area->area_name[0]);
-        if (have == want)
+        if (area->zone == 0)
         {
-            display = area->area_name[0];
-            return area->ID;
+            if (have == want)
+            {
+                display = area->area_name[0];
+                return area->ID;
+            }
+            if (!partial && (have.find(want) != std::string::npos || want.find(have) != std::string::npos))
+            {
+                partial        = area->ID;
+                partialDisplay = area->area_name[0];
+            }
         }
-        if (!partial && (have.find(want) != std::string::npos || want.find(have) != std::string::npos))
+        else if (!sub && have == want)
         {
-            partial = area->ID;
-            display = area->area_name[0];
+            if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(area->zone))
+            {
+                sub        = zone->ID;
+                subDisplay = SafeFormat("{} ({})", area->area_name[0], zone->area_name[0]);
+            }
         }
     }
+    if (sub)
+    {
+        display = subDisplay;
+        return sub;
+    }
+    display = partialDisplay;
     return partial;
 }
 
@@ -369,4 +441,58 @@ const std::vector<uint32_t>& AutopilotWorld_QuestEnders(uint32_t questId)
     static const std::vector<uint32_t> kNone;
     auto it = g_questEnders.find(questId);
     return it == g_questEnders.end() ? kNone : it->second;
+}
+
+bool AutopilotWorld_HuntingGround(Player* bot, AutopilotPlace& out)
+{
+    auto it = g_mobs.find(bot->GetMapId());
+    FactionTemplateEntry const* mine = bot->GetFactionTemplateEntry();
+    if (it == g_mobs.end() || !mine)
+        return false;
+
+    // Monsters a player of this level would hunt: up to four levels below,
+    // one above, hostile to the bot. Not right on top of it (whatever is
+    // there, its grind strategy already sees).
+    const int32_t level = static_cast<int32_t>(bot->GetLevel());
+    std::vector<std::pair<float, const Mob*>> fit;
+    for (const Mob& m : it->second)
+    {
+        if (m.maxLevel < level - 4 || m.minLevel > level + 1)
+            continue;
+        FactionTemplateEntry const* theirs = sFactionTemplateStore.LookupEntry(m.faction);
+        if (!theirs || !theirs->IsHostileTo(*mine))
+            continue;
+        const float d = bot->GetDistance(m.x, m.y, m.z);
+        if (d < 40.0f)
+            continue;
+        fit.emplace_back(d, &m);
+    }
+    if (fit.empty())
+        return false;
+
+    // A hunting ground, not a lone straggler: the nearest monster with at
+    // least three more of them within 40 yards.
+    std::sort(fit.begin(), fit.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    const size_t pool = std::min<size_t>(fit.size(), 400);
+    const Mob* best = nullptr;
+    for (size_t i = 0; i < pool && !best; ++i)
+    {
+        uint32_t nearby = 0;
+        for (size_t j = 0; j < pool && nearby < 3; ++j)
+            if (j != i && std::hypot(fit[i].second->x - fit[j].second->x, fit[i].second->y - fit[j].second->y) < 40.0f)
+                ++nearby;
+        if (nearby >= 3)
+            best = fit[i].second;
+    }
+    if (!best)
+        best = fit.front().second;
+
+    out.map      = bot->GetMapId();
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = best->entry;
+    out.name     = SafeFormat("{} (level {}-{})", NameOf(best->entry), uint32_t(best->minLevel), uint32_t(best->maxLevel));
+    out.distance = bot->GetDistance(best->x, best->y, best->z);
+    return true;
 }

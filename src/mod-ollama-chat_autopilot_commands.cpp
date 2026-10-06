@@ -42,6 +42,8 @@ namespace
         "bank -<item> takes one out; they cannot trade at the auction house)\n"
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
         "portals, and fly between flight points they have learned\n"
+        "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
+        "around them, so send them here to fight)\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
         "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself\n"
         "- talents : spend talent points; autogear : equip the best gear they have; s gray : sell junk to a "
@@ -264,6 +266,20 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
     if (StartsWithWord(lower, "goto"))
     {
         const std::string what = Trim(lower.substr(4));
+
+        // Grind only fights what is around the bot; this is how it goes
+        // somewhere with monsters worth fighting.
+        if (what == "hunt" || what == "hunting" || what == "hunting ground" || what == "grind" || what == "mobs")
+        {
+            AutopilotPlace place;
+            if (!AutopilotWorld_HuntingGround(bot, place))
+                return "no monsters of their level found on this continent";
+            if (errand.active)
+                AutopilotCommands_StopErrand(ai, errand);
+            return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 25.0f,
+                               "a hunting ground: " + place.name, now);
+        }
+
         AutopilotService service;
         if (!StartsWithWord(what, "zone") && AutopilotService_FromName(what, service))
         {
