@@ -359,7 +359,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   grind and the combat engine take it first. Within 25 yd,
   `DoSpecificAction("attack anything")` starts the fight, even with grind
   off and past the travelling hold. With none in sight, it walks to the next
-  spawn of a needed creature at least 35 yd away. It ends when the
+  spawn of a needed creature at least 35 yd away. While anything else is
+  attacking the bot, the mark is cleared so it fights back first: the mark
+  counts as an attacker, so it could otherwise pull the marked mob too. It ends when the
   objective is done or after `QuestHuntMinutes`, and the target is cleared.
   Grind on its own takes the *nearest* mob; quest need only counts for its
   out-of-range picks while rpg is active, which autopilot turns off.

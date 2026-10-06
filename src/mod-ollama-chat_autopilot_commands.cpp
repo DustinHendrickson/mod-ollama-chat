@@ -1369,11 +1369,27 @@ namespace
                 return u;
         }
 
-        if (bot->IsInCombat() || bot->IsNonMeleeSpellCast(false))
-            return u;   // fighting (quest target first) or opening something
-
         const std::vector<uint32_t> creatures = needs.Creatures();
         const std::vector<uint32_t> objects   = needs.Objects();
+
+        if (bot->IsInCombat())
+        {
+            // Fight back first, as a player would. The quest mark counts as
+            // an attacker to playerbots, so while something else is hitting
+            // the bot it could still pick the marked mob and pull it too.
+            for (Unit* attacker : bot->getAttackers())
+            {
+                Creature* c = attacker ? attacker->ToCreature() : nullptr;
+                if (!c || !Contains(creatures, c->GetEntry()))
+                {
+                    AutopilotBot_ClearQuestTarget(ai);
+                    break;
+                }
+            }
+            return u;
+        }
+        if (bot->IsNonMeleeSpellCast(false))
+            return u;   // opening something
 
         Creature* creature = nullptr;
         float creatureDist = 0.0f;
