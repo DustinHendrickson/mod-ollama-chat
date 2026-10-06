@@ -60,6 +60,7 @@ struct AutopilotErrand
     // points -- until the objective is done or OllamaChat.Autopilot.QuestHuntMinutes.
     bool                hunting   = false;
     uint32_t            huntUntil = 0;
+    uint32_t            lastUseAt = 0;      // last time it used an objective object
 };
 
 void AutopilotCommands_Load();

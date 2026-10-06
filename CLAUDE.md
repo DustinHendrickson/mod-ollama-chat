@@ -313,9 +313,17 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   (`SatisfyQuestClass`/`SatisfyQuestRace`), and `abandon <id>` drops one
   through `HandleQuestLogRemoveQuest` (playerbots' `drop` needs a master).
   Finished quests show who takes them and where (`DescribeQuestEnder`).
-- **A kill quest is hunted, not just visited.** A `quest` errand with
-  creatures still needed turns into a hunt on arrival (`errand.hunting`,
-  `Hunt` in commands.cpp). The nearest needed creature that is alive,
+- **A quest objective is worked, not just visited.** `NeedsOf` lists what a
+  quest still needs: creatures to kill (`RequiredNpcOrGo > 0`), objects to
+  use (`< 0`), and the creatures and objects that give missing items
+  (`creature_questitem` / `gameobject_questitem`, reverse-indexed in
+  `AutopilotWorld_Build`, which also indexes spawn points of quest
+  gameobjects only). An object to use is used through
+  `HandleGameObjectUseOpcode` + `HandleGameobjectReportUse`, like the client.
+  An object holding an item goes into playerbots' `"available loot"` stack,
+  which its loot strategy opens. A `quest` errand with anything needed turns
+  into a hunt on arrival (`errand.hunting`, `Hunt` in commands.cpp). For
+  creatures: The nearest needed creature that is alive,
   attackable, untapped and in sight goes into playerbots'
   `"prioritized targets"`, which `AttackersValue` counts as an attacker, so
   grind and the combat engine take it first. Within 25 yd,

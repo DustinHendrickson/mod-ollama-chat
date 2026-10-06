@@ -55,6 +55,11 @@ void AutopilotBot_SetQuestTarget(PlayerbotAI* ai, uint64_t targetGuid);
 void AutopilotBot_ClearQuestTarget(PlayerbotAI* ai);
 bool AutopilotBot_EngageQuestTarget(PlayerbotAI* ai);
 
+// An object holding a quest item: into playerbots' loot stack, which its loot
+// strategy walks to and opens (taking what the bot needs). Without the loot
+// strategy on, its loot actions are run directly. World thread.
+void AutopilotBot_LootObject(PlayerbotAI* ai, uint64_t objectGuid);
+
 // --------------------------------------------------------------------------
 // Moving a bot for the autopilot. World thread only.
 //

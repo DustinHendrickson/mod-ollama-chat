@@ -12,12 +12,14 @@
 #include "SharedDefines.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "QuestDef.h"
 #include "Trainer.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
@@ -39,6 +41,17 @@ namespace
         float    x = 0.0f, y = 0.0f, z = 0.0f;
     };
     std::unordered_map<uint32_t, std::vector<SpawnAt>> g_byEntry;
+
+    // Gameobjects a quest can need: ones an objective says to use, and ones
+    // that hold a quest item. Only these are indexed (all spawns would be
+    // large), by entry.
+    std::unordered_map<uint32_t, std::vector<SpawnAt>> g_goByEntry;
+
+    // Quest item -> the creatures that drop it and the objects that hold it
+    // (creature_questitem, gameobject_questitem).
+    std::unordered_map<uint32_t, std::vector<uint32_t>> g_itemFromCreatures;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> g_itemFromObjects;
+    const std::vector<uint32_t> kNone;
 
     // quest id -> creature entries that take it in.
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
@@ -110,6 +123,13 @@ namespace
         return std::to_string(entry);
     }
 
+    std::string ObjectNameOf(uint32_t entry)
+    {
+        if (GameObjectTemplate const* t = sObjectMgr->GetGameObjectTemplate(entry))
+            return t->name;
+        return std::to_string(entry);
+    }
+
     bool InZone(uint32_t zoneId, float x, float y)
     {
         float zx = x, zy = y;
@@ -153,11 +173,34 @@ void AutopilotWorld_Build()
     g_spawns.clear();
     g_byEntry.clear();
     g_questEnders.clear();
+    g_goByEntry.clear();
+    g_itemFromCreatures.clear();
+    g_itemFromObjects.clear();
     g_mobs.clear();
 
     if (QuestRelations const* enders = sObjectMgr->GetCreatureQuestInvolvedRelationMap())
         for (auto const& [creatureEntry, questId] : *enders)
             g_questEnders[questId].push_back(creatureEntry);
+
+    // Quest sources: who drops a quest item, what holds one, what an
+    // objective says to use.
+    std::unordered_set<uint32_t> questObjects;
+    for (auto const& [entry, items] : *sObjectMgr->GetCreatureQuestItemMap())
+        for (uint32_t item : items)
+            g_itemFromCreatures[item].push_back(entry);
+    for (auto const& [entry, items] : *sObjectMgr->GetGameObjectQuestItemMap())
+    {
+        questObjects.insert(entry);
+        for (uint32_t item : items)
+            g_itemFromObjects[item].push_back(entry);
+    }
+    for (auto const& [questId, quest] : sObjectMgr->GetQuestTemplates())
+        for (uint8 i = 0; quest && i < QUEST_OBJECTIVES_COUNT; ++i)
+            if (quest->RequiredNpcOrGo[i] < 0)
+                questObjects.insert(uint32_t(-quest->RequiredNpcOrGo[i]));
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+        if (questObjects.count(data.id))
+            g_goByEntry[data.id].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
 
     size_t count = 0;
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
@@ -526,32 +569,40 @@ std::string AutopilotWorld_ZonesForLevel(Player* bot)
     return out;
 }
 
-bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& entries, float minDistance,
-                                AutopilotPlace& out)
+bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& creatures,
+                                const std::vector<uint32_t>& objects, float minDistance, AutopilotPlace& out)
 {
     const SpawnAt* best = nullptr;
     uint32_t bestEntry = 0;
+    bool bestIsObject = false;
     float bestDist = 0.0f;
-    for (uint32_t entry : entries)
+    auto scan = [&](const std::unordered_map<uint32_t, std::vector<SpawnAt>>& index,
+                    const std::vector<uint32_t>& entries, bool isObject)
     {
-        auto it = g_byEntry.find(entry);
-        if (it == g_byEntry.end())
-            continue;
-        for (const SpawnAt& s : it->second)
+        for (uint32_t entry : entries)
         {
-            if (s.map != bot->GetMapId())
+            auto it = index.find(entry);
+            if (it == index.end())
                 continue;
-            const float d = bot->GetDistance(s.x, s.y, s.z);
-            if (d < minDistance)
-                continue;
-            if (!best || d < bestDist)
+            for (const SpawnAt& s : it->second)
             {
-                best      = &s;
-                bestEntry = entry;
-                bestDist  = d;
+                if (s.map != bot->GetMapId())
+                    continue;
+                const float d = bot->GetDistance(s.x, s.y, s.z);
+                if (d < minDistance)
+                    continue;
+                if (!best || d < bestDist)
+                {
+                    best         = &s;
+                    bestEntry    = entry;
+                    bestIsObject = isObject;
+                    bestDist     = d;
+                }
             }
         }
-    }
+    };
+    scan(g_byEntry, creatures, false);
+    scan(g_goByEntry, objects, true);
     if (!best)
         return false;
     out.map      = best->map;
@@ -559,9 +610,21 @@ bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& entrie
     out.y        = best->y;
     out.z        = best->z;
     out.entry    = bestEntry;
-    out.name     = NameOf(bestEntry);
+    out.name     = bestIsObject ? ObjectNameOf(bestEntry) : NameOf(bestEntry);
     out.distance = bestDist;
     return true;
+}
+
+const std::vector<uint32_t>& AutopilotWorld_CreaturesDropping(uint32_t item)
+{
+    auto it = g_itemFromCreatures.find(item);
+    return it == g_itemFromCreatures.end() ? kNone : it->second;
+}
+
+const std::vector<uint32_t>& AutopilotWorld_ObjectsHolding(uint32_t item)
+{
+    auto it = g_itemFromObjects.find(item);
+    return it == g_itemFromObjects.end() ? kNone : it->second;
 }
 
 bool AutopilotWorld_NearestSpawn(Player* bot, uint32_t entry, AutopilotPlace& out)

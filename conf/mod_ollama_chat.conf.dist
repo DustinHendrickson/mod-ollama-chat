@@ -2298,11 +2298,13 @@ OllamaChat.Autopilot.NoTeleport = 1
 OllamaChat.Autopilot.CorpseRunMinutes = 10
 
 #    OllamaChat.Autopilot.QuestHuntMinutes
-#        A quest order with creatures still to kill does not end on arrival:
-#        the bot hunts them -- the nearest one it still needs first (through
-#        playerbots' own prioritized targets, so its combat AI fights it), and
-#        on to the next place they spawn when none are around -- until the
-#        objective is done or this many minutes pass. The model hears the
+#        A quest order with something still needed does not end on arrival:
+#        the bot works the objective, nearest need first -- creatures to kill
+#        (through playerbots' own prioritized targets, so its combat AI fights
+#        them), objects the quest says to use (used as the client does), and
+#        the creatures and objects that give its items (opened by playerbots'
+#        looting, so keep loot on) -- moving on to where more are when none
+#        are around, until the objective is done or this many minutes pass. The model hears the
 #        count either way. 0 = end on arrival, as before.
 #        Default: 20
 OllamaChat.Autopilot.QuestHuntMinutes = 20

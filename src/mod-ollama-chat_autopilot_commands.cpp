@@ -5,6 +5,8 @@
 
 #include "Config.h"
 #include "Creature.h"
+#include "GameObject.h"
+#include "ItemTemplate.h"
 #include "Log.h"
 #include "Map.h"
 #include "ObjectMgr.h"
@@ -56,9 +58,10 @@ namespace
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
         "around them, so send them here to fight)\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
-        "and turn it in. With creatures still to kill, they stay there and hunt them, the nearest needed one "
-        "first, until the objective is done (or a while has passed; you hear the count). For items to collect "
-        "or gather, turn on what the objective needs (loot, gather) yourself. When a quest ready to "
+        "and turn it in. On arrival they stay and work the objective, the nearest thing needed first: "
+        "creatures to kill, objects to use, and the creatures and objects that give the quest's items "
+        "(keep loot on so they pick the items up), until it is done or a while has passed; you hear the "
+        "count. When a quest ready to "
         "turn in offers rewards to choose from (listed under it), pick one: quest <id> reward <n>. Each quest "
         "ready to turn in says who takes it and where: one on another continent is a long trip, so weigh it\n"
         "- abandon <id> : drop a quest from the log, as a player does with one not worth the trip or not for "
@@ -167,22 +170,78 @@ namespace
     // Where to go for a quest that is not done yet: the nearest spawn of a
     // creature it still needs killed or spoken to, else the quest's own map
     // marker for an objective.
-    bool QuestObjectivePlace(Player* bot, Quest const* quest, AutopilotPlace& out, std::string& what)
+    // What a quest still needs from the world, by kind: creatures to kill
+    // (or speak to), objects to use, and the creatures and objects that give
+    // the items still missing.
+    struct QuestNeeds
     {
+        std::vector<uint32_t> kill;
+        std::vector<uint32_t> use;
+        std::vector<uint32_t> lootCreatures;
+        std::vector<uint32_t> lootObjects;
+
+        bool Any() const { return !kill.empty() || !use.empty() || !lootCreatures.empty() || !lootObjects.empty(); }
+        std::vector<uint32_t> Creatures() const
+        {
+            std::vector<uint32_t> out = kill;
+            out.insert(out.end(), lootCreatures.begin(), lootCreatures.end());
+            return out;
+        }
+        std::vector<uint32_t> Objects() const
+        {
+            std::vector<uint32_t> out = use;
+            out.insert(out.end(), lootObjects.begin(), lootObjects.end());
+            return out;
+        }
+    };
+
+    QuestNeeds NeedsOf(Player* bot, Quest const* quest)
+    {
+        QuestNeeds n;
         const uint16 slot = QuestSlot(bot, quest->GetQuestId());
+        if (slot >= MAX_QUEST_LOG_SIZE)
+            return n;
+        auto add = [](std::vector<uint32_t>& list, uint32_t entry)
+        {
+            if (std::find(list.begin(), list.end(), entry) == list.end())
+                list.push_back(entry);
+        };
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
-            const int32 npcOrGo = quest->RequiredNpcOrGo[i];
-            if (npcOrGo <= 0 || !quest->RequiredNpcOrGoCount[i])
+            const int32 entry = quest->RequiredNpcOrGo[i];
+            if (entry && quest->RequiredNpcOrGoCount[i] &&
+                bot->GetQuestSlotCounter(slot, i) < quest->RequiredNpcOrGoCount[i])
+                add(entry > 0 ? n.kill : n.use, uint32_t(entry > 0 ? entry : -entry));
+        }
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            const uint32 item = quest->RequiredItemId[i];
+            if (!item || bot->GetItemCount(item, true) >= quest->RequiredItemCount[i])
                 continue;
-            if (slot < MAX_QUEST_LOG_SIZE && bot->GetQuestSlotCounter(slot, i) >= quest->RequiredNpcOrGoCount[i])
-                continue;
-            if (AutopilotWorld_NearestSpawn(bot, uint32_t(npcOrGo), out))
+            for (uint32_t c : AutopilotWorld_CreaturesDropping(item))
+                add(n.lootCreatures, c);
+            for (uint32_t o : AutopilotWorld_ObjectsHolding(item))
+                add(n.lootObjects, o);
+        }
+        return n;
+    }
+
+    bool QuestObjectivePlace(Player* bot, Quest const* quest, AutopilotPlace& out, std::string& what)
+    {
+        // The nearest of what it still needs: a creature to kill, an object to
+        // use, or a creature or object that gives a missing item.
+        const QuestNeeds needs = NeedsOf(bot, quest);
+        if (AutopilotWorld_SpawnBeyond(bot, needs.Creatures(), needs.Objects(), 0.0f, out))
+        {
+            what = out.name;
+            return true;
+        }
+        for (uint32_t entry : needs.kill)   // only on another continent
+            if (AutopilotWorld_NearestSpawn(bot, entry, out))
             {
                 what = out.name;
                 return true;
             }
-        }
 
         if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(quest->GetQuestId()))
         {
@@ -497,24 +556,7 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 
 namespace
 {
-    // Creatures a quest still needs killed (or spoken to), by entry.
-    std::vector<uint32_t> NeededCreatures(Player* bot, Quest const* quest)
-    {
-        std::vector<uint32_t> out;
-        const uint16 slot = QuestSlot(bot, quest->GetQuestId());
-        if (slot >= MAX_QUEST_LOG_SIZE)
-            return out;
-        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
-        {
-            const int32 entry = quest->RequiredNpcOrGo[i];
-            if (entry > 0 && quest->RequiredNpcOrGoCount[i] &&
-                bot->GetQuestSlotCounter(slot, i) < quest->RequiredNpcOrGoCount[i])
-                out.push_back(uint32_t(entry));
-        }
-        return out;
-    }
-
-    // "Kobold Vermin 3/8"
+    // "Kobold Vermin 3/8, Gold Dust 2/10"
     std::string HuntProgress(Player* bot, Quest const* quest)
     {
         std::string out;
@@ -522,11 +564,28 @@ namespace
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT && slot < MAX_QUEST_LOG_SIZE; ++i)
         {
             const int32 entry = quest->RequiredNpcOrGo[i];
-            if (entry <= 0 || !quest->RequiredNpcOrGoCount[i])
+            if (!entry || !quest->RequiredNpcOrGoCount[i])
                 continue;
-            CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(uint32_t(entry));
-            out += SafeFormat("{}{} {}/{}", out.empty() ? "" : ", ", t ? t->Name : std::to_string(entry),
-                              bot->GetQuestSlotCounter(slot, i), quest->RequiredNpcOrGoCount[i]);
+            std::string name = std::to_string(entry);
+            if (entry > 0)
+            {
+                if (CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(uint32_t(entry)))
+                    name = t->Name;
+            }
+            else if (GameObjectTemplate const* t = sObjectMgr->GetGameObjectTemplate(uint32_t(-entry)))
+                name = t->name;
+            out += SafeFormat("{}{} {}/{}", out.empty() ? "" : ", ", name, bot->GetQuestSlotCounter(slot, i),
+                              quest->RequiredNpcOrGoCount[i]);
+        }
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            const uint32 item = quest->RequiredItemId[i];
+            if (!item)
+                continue;
+            ItemTemplate const* t = sObjectMgr->GetItemTemplate(item);
+            out += SafeFormat("{}{} {}/{}", out.empty() ? "" : ", ", t ? t->Name1 : std::to_string(item),
+                              std::min<uint32_t>(bot->GetItemCount(item, true), quest->RequiredItemCount[i]),
+                              quest->RequiredItemCount[i]);
         }
         return out;
     }
@@ -540,9 +599,16 @@ namespace
         u.note         = std::move(note);
     }
 
-    // A player on a kill quest: the nearest creature still needed, attacked
-    // first; none around, walk to where more of them stand. Ends when the
-    // objective is done or the time runs out (the model hears the progress).
+    bool Contains(const std::vector<uint32_t>& list, uint32_t entry)
+    {
+        return std::find(list.begin(), list.end(), entry) != list.end();
+    }
+
+    // A player working a quest: the nearest thing it still needs first -- a
+    // creature to kill (or that drops a quest item), an object to use, or one
+    // that holds a quest item -- and, with none around, on to where more of
+    // them are. Ends when the objective is done or the time runs out (the
+    // model hears the progress either way).
     AutopilotErrandUpdate Hunt(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, uint32_t now)
     {
         AutopilotErrandUpdate u;
@@ -556,16 +622,16 @@ namespace
             return u;
         }
 
-        const std::vector<uint32_t> needed = NeededCreatures(bot, quest);
-        if (needed.empty())
+        const QuestNeeds needs = NeedsOf(bot, quest);
+        if (!needs.Any())
         {
-            EndHunt(ai, errand, u, SafeFormat("nothing left to kill for {} ({}); the rest needs items or something else",
+            EndHunt(ai, errand, u, SafeFormat("nothing more to find for {} here ({}); the rest is something else",
                                               quest->GetTitle(), HuntProgress(bot, quest)));
             return u;
         }
         if (now >= errand.huntUntil)
         {
-            EndHunt(ai, errand, u, SafeFormat("hunted for {} for {} minutes, not done yet: {}", quest->GetTitle(),
+            EndHunt(ai, errand, u, SafeFormat("worked on {} for {} minutes, not done yet: {}", quest->GetTitle(),
                                               g_huntMinutes, HuntProgress(bot, quest)));
             return u;
         }
@@ -578,43 +644,104 @@ namespace
                 return u;
         }
 
-        if (bot->IsInCombat())
-            return u;   // the combat engine has it, quest target first
+        if (bot->IsInCombat() || bot->IsNonMeleeSpellCast(false))
+            return u;   // fighting (quest target first) or opening something
 
-        std::list<Creature*> nearby;
-        bot->GetCreatureListWithEntryInGrid(nearby, needed, 50.0f);
-        Creature* target = nullptr;
-        float best = 0.0f;
-        for (Creature* c : nearby)
+        const std::vector<uint32_t> creatures = needs.Creatures();
+        const std::vector<uint32_t> objects   = needs.Objects();
+
+        Creature* creature = nullptr;
+        float creatureDist = 0.0f;
         {
-            if (!c || !c->IsAlive() || !bot->IsValidAttackTarget(c) ||
-                (c->hasLootRecipient() && !c->isTappedBy(bot)) || !bot->IsWithinLOSInMap(c))
-                continue;
-            const float d = bot->GetDistance(c);
-            if (!target || d < best)
+            std::list<Creature*> nearby;
+            bot->GetCreatureListWithEntryInGrid(nearby, creatures, 50.0f);
+            for (Creature* c : nearby)
             {
-                target = c;
-                best   = d;
+                if (!c || !c->IsAlive() || !bot->IsValidAttackTarget(c) ||
+                    (c->hasLootRecipient() && !c->isTappedBy(bot)) || !bot->IsWithinLOSInMap(c))
+                    continue;
+                const float d = bot->GetDistance(c);
+                if (!creature || d < creatureDist)
+                {
+                    creature     = c;
+                    creatureDist = d;
+                }
             }
         }
 
-        if (target)
+        GameObject* object = nullptr;
+        float objectDist = 0.0f;
+        if (!objects.empty())
         {
-            AutopilotBot_SetQuestTarget(ai, target->GetGUID().GetRawValue());
-            if (best > 25.0f)
+            std::list<GameObject*> nearby;
+            bot->GetGameObjectListWithEntryInGrid(nearby, objects, 50.0f);
+            for (GameObject* o : nearby)
+            {
+                if (!o || !o->isSpawned() || o->GetGoState() != GO_STATE_READY ||
+                    o->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) || !bot->IsWithinLOSInMap(o))
+                    continue;
+                const float d = bot->GetDistance(o);
+                if (!object || d < objectDist)
+                {
+                    object     = o;
+                    objectDist = d;
+                }
+            }
+        }
+
+        if (creature && (!object || creatureDist <= objectDist))
+        {
+            AutopilotBot_SetQuestTarget(ai, creature->GetGUID().GetRawValue());
+            if (creatureDist > 25.0f)
             {
                 if (!AutopilotMove_IsMoving(ai))
-                    AutopilotMove_To(ai, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), true);
+                    AutopilotMove_To(ai, creature->GetPositionX(), creature->GetPositionY(),
+                                     creature->GetPositionZ(), true);
             }
             else
                 AutopilotBot_EngageQuestTarget(ai);
             return u;
         }
 
-        // None in sight: on to the next place they spawn.
+        if (object)
+        {
+            AutopilotBot_ClearQuestTarget(ai);
+            if (Contains(needs.lootObjects, object->GetEntry()))
+            {
+                // Holds a quest item: playerbots' looting walks to it and
+                // opens it, taking what the bot needs.
+                if (objectDist > 20.0f && !AutopilotMove_IsMoving(ai))
+                    AutopilotMove_To(ai, object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), true);
+                else
+                    AutopilotBot_LootObject(ai, object->GetGUID().GetRawValue());
+                return u;
+            }
+            // An objective says to use it: step up and use it, as the client
+            // does (use, then report use).
+            if (objectDist > INTERACTION_DISTANCE - 1.0f)
+            {
+                if (!AutopilotMove_IsMoving(ai))
+                    AutopilotMove_To(ai, object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), true);
+                return u;
+            }
+            if (now - errand.lastUseAt >= 3)
+            {
+                errand.lastUseAt = now;
+                AutopilotMove_Stop(ai);
+                WorldPacket use(CMSG_GAMEOBJ_USE, 8);
+                use << object->GetGUID();
+                bot->GetSession()->HandleGameObjectUseOpcode(use);
+                WorldPacket report(CMSG_GAMEOBJ_REPORT_USE, 8);
+                report << object->GetGUID();
+                bot->GetSession()->HandleGameobjectReportUse(report);
+            }
+            return u;
+        }
+
+        // Nothing in sight: on to the next place they are.
         AutopilotBot_ClearQuestTarget(ai);
         AutopilotPlace place;
-        if (!AutopilotWorld_SpawnBeyond(bot, needed, 35.0f, place))
+        if (!AutopilotWorld_SpawnBeyond(bot, creatures, objects, 35.0f, place))
         {
             EndHunt(ai, errand, u, SafeFormat("found no more of what {} needs nearby: {}", quest->GetTitle(),
                                               HuntProgress(bot, quest)));
@@ -663,7 +790,7 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             // Creatures to kill: stay and hunt them, as a player would.
             Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
             if (quest && g_huntMinutes && bot->GetQuestStatus(errand.questId) == QUEST_STATUS_INCOMPLETE &&
-                !NeededCreatures(bot, quest).empty())
+                NeedsOf(bot, quest).Any())
             {
                 errand.active    = true;
                 errand.hunting   = true;

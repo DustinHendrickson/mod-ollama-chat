@@ -9,6 +9,7 @@
 #include "NamedObjectContext.h"
 #include "Creature.h"
 #include "LastMovementValue.h"
+#include "LootObjectStack.h"
 #include "MotionMaster.h"
 #include "PathGenerator.h"
 #include "PlayerbotAI.h"
@@ -225,6 +226,19 @@ bool AutopilotBot_EngageQuestTarget(PlayerbotAI* ai)
     // them -- first. Run directly, so it works with grind off too, and past the
     // travelling hold (multipliers do not touch DoSpecificAction).
     return ai && ai->DoSpecificAction("attack anything", Event(), true);
+}
+
+void AutopilotBot_LootObject(PlayerbotAI* ai, uint64_t objectGuid)
+{
+    if (!ai)
+        return;
+    if (LootObjectStack* stack = ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get())
+        stack->Add(ObjectGuid(objectGuid));
+    if (!ai->HasStrategy("loot", BOT_STATE_NON_COMBAT))
+    {
+        ai->DoSpecificAction("loot", Event(), true);
+        ai->DoSpecificAction("open loot", Event(), true);
+    }
 }
 
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai)
