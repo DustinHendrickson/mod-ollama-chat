@@ -273,6 +273,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   loot, achievements), which lock it again. A plain mutex there crashed or
   hung the server. Hooks must keep to updating existing entries, never
   inserting or erasing, so the sweep's references stay valid.
+- **Errand orders (`goto`, `quest`) run one at a time, in the order the model
+  gave them.** `RunCommands` starts the first and queues the rest in
+  `Online::errandQueue`; `StepErrand` starts the next when one ends, and asks
+  the model again only when the queue is empty. Running them all at once made
+  each replace the last, so only the final order ever happened. A plan with
+  any errand replaces the queue.
 - **Every order goes through `AutopilotCommands_Normalize` and
   `AutopilotCommands_IsDenied`.** The deny check refuses playerbots' command
   separator and `#` prefixes, which `HandleCommand` would otherwise split or

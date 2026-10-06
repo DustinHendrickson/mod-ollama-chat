@@ -69,6 +69,10 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 // wipe and the autopilot re-issues.
 bool AutopilotCommands_IsStrategyChange(const std::string& command);
 
+// True for "goto ..." and "quest ..." -- orders that send the bot somewhere.
+// One runs at a time; the rest of a plan's errands wait their turn.
+bool AutopilotCommands_IsErrand(const std::string& command);
+
 // On the operator's deny-list (OllamaChat.Autopilot.DeniedCommands). An entry
 // matches whole leading words: "nc +pvp" denies exactly that change, "nc"
 // every out-of-combat strategy change.

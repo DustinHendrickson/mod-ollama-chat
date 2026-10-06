@@ -249,6 +249,9 @@ namespace
 
         // A walk to a service or a zone, from `goto`.
         AutopilotErrand errand;
+        // The model's later goto/quest orders from the same plan, run in turn
+        // as each errand ends (one plan can say "turn in, then train, then hunt").
+        std::deque<std::string> errandQueue;
         AutopilotTrip   corpseTrip;     // a ghost walking back to its body
         uint32_t        corpseRetryAt = 0;  // after a corpse run that could not be made
         uint32_t        nextTaxiLook = 0;   // when to look for a flight master nearby
@@ -580,6 +583,7 @@ namespace
         {
             AutopilotCommands_StopErrand(ai, ob->errand);
             ob->errand = AutopilotErrand();
+            ob->errandQueue.clear();
             // A dead bot may be on a held revive from an earlier session too.
             if (bot && (ob->reviveHeld || !bot->IsAlive()) && sRandomPlayerbotMgr.IsRandomBot(bot))
                 sRandomPlayerbotMgr.SetValue(bot->GetGUID().GetCounter(), "revive", 0);
@@ -888,6 +892,7 @@ namespace
                 AutopilotCommands_StopErrand(ai, ob.errand);
                 g_aboard.erase(ai->GetBot()->GetGUID().GetRawValue());
             }
+            ob.errandQueue.clear();   // the model is asked afresh once the bot is its own again
             if (!ob.ncReplay)
             {
                 if (!row.baseline.empty())
@@ -909,6 +914,16 @@ namespace
                                          uint32_t now)
     {
         std::vector<std::string> results;
+
+        // Errands run one at a time, in the order given. A plan that gives any
+        // replaces the ones still waiting from the last plan; one that only
+        // adjusts strategies leaves the errand and its queue alone.
+        const bool newErrands = std::any_of(commands.begin(), commands.end(), [](const std::string& c)
+                                            { return AutopilotCommands_IsErrand(AutopilotCommands_Normalize(c)); });
+        if (newErrands)
+            ob.errandQueue.clear();
+        bool errandStarted = false;
+
         for (const std::string& raw : commands)
         {
             const std::string command = AutopilotCommands_Normalize(raw);
@@ -963,13 +978,22 @@ namespace
                     else
                         result = "done";
                 }
+                else if (AutopilotCommands_IsErrand(command) && errandStarted)
+                {
+                    // Running it now would replace the errand just started.
+                    ob.errandQueue.push_back(command);
+                    result = SafeFormat("queued ({} in line)", ob.errandQueue.size());
+                }
                 else
                 {
                     result = AutopilotCommands_Run(bot, ai, command, ob.errand, now);
+                    if (AutopilotCommands_IsErrand(command) && ob.errand.active)
+                        errandStarted = true;
                 }
             }
 
-            const bool ran = result.rfind("done", 0) == 0 || result == "sent" || result.rfind("on the way", 0) == 0;
+            const bool ran = result.rfind("done", 0) == 0 || result == "sent" || result.rfind("on the way", 0) == 0 ||
+                             result.rfind("queued", 0) == 0;
             ++(ran ? g_statCommands : g_statRefused);
             results.push_back(command + " -> " + result);
         }
@@ -1444,6 +1468,13 @@ namespace
         ctx.activity         = DescribeActivity(bot, ob);
         if (ob.errand.active)
             ctx.errand = SafeFormat("(for {})", Span(now - ob.errand.startedAt));
+        if (!ob.errandQueue.empty())
+        {
+            std::string queued;
+            for (const std::string& q : ob.errandQueue)
+                queued += (queued.empty() ? "" : "; ") + q;
+            ctx.errand += (ctx.errand.empty() ? "" : " ") + std::string("then, in order: ") + queued;
+        }
         ctx.questLog    = DescribeQuestLog(bot);
         ctx.services    = AutopilotWorld_DescribeServices(bot);
         ctx.zones       = AutopilotWorld_ZonesForLevel(bot);
@@ -1952,8 +1983,22 @@ namespace
             row.lastResults.push_back(u.note);
             if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
                 row.lastResults.erase(row.lastResults.begin());
-            row.dirty    = true;
-            ob.quickPlan = true;
+            row.dirty = true;
+
+            // The model's next order in line, if any; ask it again only once
+            // they are all done (or none of the rest could start).
+            while (!ob.errand.active && !ob.errandQueue.empty())
+            {
+                const std::string next = ob.errandQueue.front();
+                ob.errandQueue.pop_front();
+                const std::string result = next + " -> " + AutopilotCommands_Run(bot, ai, next, ob.errand, now);
+                RecordEvent(guid, "order", result);
+                row.lastResults.push_back(result);
+                if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
+                    row.lastResults.erase(row.lastResults.begin());
+            }
+            if (!ob.errand.active)
+                ob.quickPlan = true;
         }
 
         if (ob.errand.active && AutopilotTravel_IsTimeCritical(ob.errand.trip))
@@ -3578,8 +3623,12 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
         Kv(out, "goal", row.goal.Active() ? Goal_Describe(bot, row.goal, Counters(row)) : std::string());
         Kv(out, "last reason", row.lastReason);
         Kv(out, "model's strategies", row.strategies.empty() ? std::string() : FormatStrategies(row.strategies));
+        Kv(out, "errand now", ob.errand.active ? DescribeActivity(bot, ob) : std::string("none"));
+        for (size_t i = 0; i < ob.errandQueue.size(); ++i)
+            Kv(out, SafeFormat("queued {}", i + 1), ob.errandQueue[i]);
+        // As reported when given; the errand line above is live.
         for (const std::string& r : row.lastResults)
-            Kv(out, "order", r);
+            Kv(out, "ordered", r);
 
         Head(out, "Watchdogs");
         Kv(out, "last alert", ob.lastAlert.empty() ? std::string()
@@ -3613,6 +3662,8 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
             if (ob.errand.questId)
                 Kv(out, "quest", std::to_string(ob.errand.questId));
         }
+        for (size_t i = 0; i < ob.errandQueue.size(); ++i)
+            Kv(out, SafeFormat("then {}", i + 1), ob.errandQueue[i]);
         Head(out, "Trip");
         TripLines(bot, ob.errand.trip, now, out);
         if (ob.corpseTrip.active || ob.corpseRetryAt > now)

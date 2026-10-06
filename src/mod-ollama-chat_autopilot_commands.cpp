@@ -48,7 +48,11 @@ namespace
         "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself\n"
         "- talents : spend talent points; autogear : equip the best gear they have; s gray : sell junk to a "
         "vendor nearby; repair : repair at a vendor nearby\n"
-        "- follow / stay : follow the group leader or stay put\n";
+        "- follow / stay : follow the group leader or stay put\n"
+        "Orders that send them somewhere (goto, quest) are carried out one after another, in the order you "
+        "give them, so list them in the order they should happen. Each ends on arrival (goto hunt too: put it "
+        "last, or the next order leads them away from the monsters). New orders of that kind replace any still "
+        "waiting.\n";
 
     const char* const kDefaultDenied =
         "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,"
@@ -240,6 +244,12 @@ bool AutopilotCommands_IsStrategyChange(const std::string& command)
 {
     const std::string c = Lower(Trim(command));
     return StartsWithWord(c, "nc") || StartsWithWord(c, "co");
+}
+
+bool AutopilotCommands_IsErrand(const std::string& command)
+{
+    const std::string c = Lower(Trim(command));
+    return StartsWithWord(c, "goto") || StartsWithWord(c, "quest");
 }
 
 std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::string& raw,
