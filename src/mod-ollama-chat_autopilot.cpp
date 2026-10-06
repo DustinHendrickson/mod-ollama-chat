@@ -74,7 +74,7 @@ namespace
 
         uint32_t sweepIntervalMs         = 1000;
         uint32_t botsPerSweep            = 25;
-        uint32_t snapshotIntervalMinutes = 30;
+        uint32_t snapshotIntervalMinutes = 10;
         uint32_t flushIntervalSeconds    = 60;
         uint32_t snapshotRetention       = 500;
         uint32_t eventRetention          = 300;
@@ -2569,7 +2569,7 @@ void Autopilot_LoadConfig()
 
     c.sweepIntervalMs         = std::max<uint32_t>(100, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.SweepIntervalMs", 1000));
     c.botsPerSweep            = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.BotsPerSweep", 25));
-    c.snapshotIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.SnapshotIntervalMinutes", 30));
+    c.snapshotIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.SnapshotIntervalMinutes", 10));
     c.flushIntervalSeconds    = std::max<uint32_t>(5, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.FlushIntervalSeconds", 60));
     c.snapshotRetention       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.SnapshotRetention", 500);
     c.eventRetention          = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.EventRetention", 300);

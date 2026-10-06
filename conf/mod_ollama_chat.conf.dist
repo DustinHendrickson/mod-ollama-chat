@@ -2507,9 +2507,14 @@ OllamaChat.Autopilot.BotsPerSweep = 25
 
 #    OllamaChat.Autopilot.SnapshotIntervalMinutes
 #        Minutes between progress snapshots per enrolled bot (plus one on
-#        first enrollment, each level up, and logout).
-#        Default: 30
-OllamaChat.Autopilot.SnapshotIntervalMinutes = 30
+#        first enrollment, each level up, and logout). The prompt always reads
+#        the bot's live state; snapshots are the history behind it -- the
+#        trend the LLM sees (the last 12 make up that window, so 10 minutes
+#        is two hours) and the diary. Each is one small row, written in
+#        batches, and old ones are thinned (hourly after a day, daily after a
+#        week).
+#        Default: 10
+OllamaChat.Autopilot.SnapshotIntervalMinutes = 10
 
 #    OllamaChat.Autopilot.FlushIntervalSeconds
 #        Seconds between batched database writes. Minimum 5.
