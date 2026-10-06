@@ -315,10 +315,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   CorpseRunMinutes, dungeon-finder proposals are accepted by
   `AutopilotServerScript::OnPacketSent` + `AnswerLfgProposals`, and
   `maintenance` / `autogear` / `bis` / `cheat` orders are refused. Global
-  `AiPlayerbot.BotCheats` (food) and the standalone level reset module
-  cannot be lifted per bot from here.
-- **The level-bracket shield is a `character_social` row.** Both bracket
-  implementations skip a bot that is anyone's friend (`flags = 1`).
+  `AiPlayerbot.BotCheats` (food) and playerbots' level reset at the cap
+  (`AiPlayerbot.ResetBotLevel.*`, which ignores friend lists) cannot be
+  lifted per bot from here.
+- **The level-bracket shield is a `character_social` row.** Playerbots'
+  `RandomBotLevelMgr` (`AiPlayerbot.LevelBrackets.*`; the old standalone
+  brackets module is no longer used) skips a bot that is anyone's friend
+  (`flags = 1`) while `IgnoreFriendListed` is on (the default).
   `SyncBracketShield` writes `(guid 0, friend = bot, flags 1, note 'ollama
   autopilot')` for enrolled bots as their rows save, deletes it when they
   leave, and `Autopilot_Load` rebuilds all of ours at startup. Guid 0 is no

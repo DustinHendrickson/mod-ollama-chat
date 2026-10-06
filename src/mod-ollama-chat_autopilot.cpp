@@ -2400,10 +2400,10 @@ namespace
         return true;
     }
 
-    // Level brackets (mod-player-bot-level-brackets, and playerbots' own
-    // RandomBotLevelMgr) move random bots to another level by re-rolling them,
-    // but leave alone any bot on someone's friend list (character_social,
-    // flags 1). A row owned by guid 0 -- no character, so nobody's list shows
+    // Playerbots' level brackets (RandomBotLevelMgr) move random bots to
+    // another level by re-rolling them, but leave alone any bot on someone's
+    // friend list (character_social, flags 1, with
+    // AiPlayerbot.LevelBrackets.IgnoreFriendListed on). A row owned by guid 0 -- no character, so nobody's list shows
     // it -- with our note puts an enrolled bot there without touching those
     // modules.
     constexpr const char* kSocialNote = "ollama autopilot";

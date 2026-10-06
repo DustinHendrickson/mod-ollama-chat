@@ -2302,8 +2302,8 @@ OllamaChat.Autopilot.CorpseRunMinutes = 10
 #        re-gears them and, below level 3 or at the level cap, rolls them a
 #        new level somewhere else -- undoing whatever the LLM was working on.
 #        Held from startup, before any bot logs in. Also keeps enrolled bots
-#        out of level-bracket re-rolls (mod-player-bot-level-brackets and
-#        playerbots' own), which skip friend-listed bots: each enrolled bot
+#        out of playerbots' level-bracket re-rolls (AiPlayerbot.LevelBrackets,
+#        with its IgnoreFriendListed on), which skip friend-listed bots: each enrolled bot
 #        gets a character_social row owned by guid 0 (no character, so on
 #        nobody's list) with the note "ollama autopilot".
 #        Default: 1

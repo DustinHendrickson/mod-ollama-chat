@@ -769,10 +769,10 @@ a player. For enrolled bots only, playerbots' handouts are switched off:
 - **Orders:** `maintenance`, `autogear` and `bis` are refused.
 
 Enrolled random bots also stay logged in across restarts
-(`OllamaChat.Autopilot.KeepOnline`). They are also kept out of level-bracket
-re-rolls (`mod-player-bot-level-brackets`, and playerbots' own level
-brackets). Those skip any bot on a friend list, so autopilot adds a row for
-each enrolled bot to `character_social`. The row is owned by guid 0, which
+(`OllamaChat.Autopilot.KeepOnline`). They are also kept out of playerbots'
+level-bracket re-rolls (`AiPlayerbot.LevelBrackets.*`). Those skip any bot
+on a friend list (with `LevelBrackets.IgnoreFriendListed`, on by default),
+so autopilot adds a row for each enrolled bot to `character_social`. The row is owned by guid 0, which
 isn't a character, so it shows on nobody's friend list. It carries the note
 `ollama autopilot`, is rebuilt at startup and is removed when the bot leaves
 autopilot.
@@ -781,9 +781,10 @@ Some things this module can't change per bot:
 
 - **Free eating and drinking:** playerbots' global `AiPlayerbot.BotCheats`
   `food` cheat. Remove `food` there if you want bots to buy their food.
-- **Reset at max level:** `mod-player-bot-reset` puts a random bot back to
-  level 1 when it reaches 80. Add enrolled bots to its
-  `ResetBotLevel.ExcludeNames` to stop that.
+- **Reset at max level:** playerbots' `AiPlayerbot.ResetBotLevel.*` (off by
+  default) puts a random bot back to a low level at the cap. It doesn't
+  check friend lists. If you turn it on, add enrolled bots to
+  `AiPlayerbot.ResetBotLevel.ExcludeNames`.
 
 **Autopilot doesn't control:**
 
