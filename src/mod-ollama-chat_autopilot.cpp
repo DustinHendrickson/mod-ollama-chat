@@ -22,6 +22,7 @@
 #include "Guild.h"
 #include "Item.h"
 #include "Log.h"
+#include "GameTime.h"
 #include "Map.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
@@ -1102,7 +1103,10 @@ namespace
         if (!corpse || corpse->GetMapId() != bot->GetMapId())
             return;   // died in an instance: playerbots' own handling
 
-        if (bot->GetExactDist2d(corpse) <= 20.0f)
+        // The core reclaims within CORPSE_RECLAIM_RADIUS (39 yd, in 3D), once
+        // its delay is up; the handler simply ignores an early try, so this
+        // repeats each visit until the game allows it.
+        if (bot->GetExactDist(corpse) <= 35.0f)
         {
             if (ob.corpseTrip.active)
                 AutopilotTravel_Stop(ai, ob.corpseTrip);
@@ -3674,6 +3678,22 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
                                                    Ago(ob.deadSince, now), YesNo(ob.reviveHeld),
                                                    YesNo(ob.corpseTrip.active))
                                       : std::string());
+        if (bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+            if (Corpse* corpse = bot->GetCorpse())
+            {
+                // The core refuses a reclaim until the ghost time plus a delay
+                // that grows with recent deaths (30 s, 60 s, 120 s) has passed.
+                const time_t ready = corpse->GetGhostTime() +
+                                     bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP);
+                const time_t gameNow = GameTime::GetGameTime().count();
+                const std::string where = corpse->GetMapId() != bot->GetMapId()
+                    ? std::string("body on another map")
+                    : SafeFormat("body {:.0f} yd away", bot->GetExactDist2d(corpse));
+                Kv(out, "resurrect", ready > gameNow
+                    ? SafeFormat("{} | the game allows it in {}s (delay grows with recent deaths)", where,
+                                 uint32_t(ready - gameNow))
+                    : where + " | allowed now");
+            }
         Kv(out, "last hour", RewardSummary(ob, now));
         for (const auto& [at, text] : ob.temptations)
             Kv(out, "tempted " + Ago(at, now), text);
