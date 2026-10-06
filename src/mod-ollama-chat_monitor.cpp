@@ -330,10 +330,44 @@ namespace
     // Camera
     // ----------------------------------------------------------------------
 
-    void ReleaseView(Player* watcher)
+    // Watchers whose old viewpoint could not be found from a map thread; the
+    // world tick clears them (it may touch the seer on whatever map it is).
+    std::vector<uint64_t> g_pendingRelease;   // under g_watchMutex
+
+    // Give the watcher its own camera back. GetViewpoint only finds the seer on
+    // the watcher's own map, and while PLAYER_FARSIGHT still holds a guid the
+    // core refuses any new viewpoint (AddGuidValue), so a seer that moved to
+    // another map, or logged out, used to leave the camera stuck for good.
+    // From a map thread (onWorldThread = false) such a case is deferred.
+    void ReleaseView(Player* watcher, bool onWorldThread = true)
     {
         if (WorldObject* view = watcher->GetViewpoint())
+        {
             watcher->SetViewpoint(view, false);
+            return;
+        }
+
+        const ObjectGuid stale = watcher->GetGuidValue(PLAYER_FARSIGHT);
+        if (!stale)
+        {
+            if (watcher->GetSeer() != watcher)
+                watcher->SetSeer(watcher);
+            return;
+        }
+
+        if (!onWorldThread)
+        {
+            std::lock_guard<std::mutex> lock(g_watchMutex);
+            g_pendingRelease.push_back(watcher->GetGUID().GetRawValue());
+            return;
+        }
+
+        // What SetViewpoint(view, false) does, without needing to find it here.
+        watcher->SetSeer(watcher);
+        if (stale.IsPlayer() && !watcher->GetVehicle())
+            if (Player* seer = ObjectAccessor::FindConnectedPlayer(stale))
+                seer->RemovePlayerFromVision(watcher);
+        watcher->SetGuidValue(PLAYER_FARSIGHT, ObjectGuid::Empty);
     }
 
     void SendWatch(Player* watcher, const char* state, uint64_t bot, const std::string& note)
@@ -347,11 +381,14 @@ namespace
         {
             std::lock_guard<std::mutex> lock(g_watchMutex);
             auto it = g_watches.find(watcher->GetGUID().GetRawValue());
-            if (it == g_watches.end())
-                return;
-            bot = it->second.bot;
-            g_watches.erase(it);
+            if (it != g_watches.end())
+            {
+                bot = it->second.bot;
+                g_watches.erase(it);
+            }
         }
+        // Always release and always answer: the addon's button must never be
+        // left saying "Stop camera" with nothing on the server to stop.
         ReleaseView(watcher);
         SendWatch(watcher, "off", bot, note);
     }
@@ -503,7 +540,9 @@ namespace
                 Note(player, bot->GetName() + " is inside an instance.");
                 return;
             }
-            ReleaseView(player);
+            // Going somewhere yourself ends any camera follow; otherwise the
+            // follow tick would pull you straight back to the bot you watched.
+            StopWatching(player, "you teleported to " + bot->GetName());
             player->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 1.0f,
                                bot->GetOrientation());
             return;
@@ -528,6 +567,24 @@ void Monitor_Update(uint32_t diff)
     if (g_watchTimer < 1000)
         return;
     g_watchTimer = 0;
+
+    // Cameras a map thread could not release (their seer was elsewhere).
+    std::vector<uint64_t> pending;
+    {
+        std::lock_guard<std::mutex> lock(g_watchMutex);
+        pending.swap(g_pendingRelease);
+    }
+    for (uint64_t guid : pending)
+        if (Player* watcher = ObjectAccessor::FindConnectedPlayer(ObjectGuid(guid)))
+        {
+            if (watcher->IsInWorld() && !watcher->IsBeingTeleported())
+                ReleaseView(watcher);
+            else
+            {
+                std::lock_guard<std::mutex> lock(g_watchMutex);   // mid-teleport: next tick
+                g_pendingRelease.push_back(guid);
+            }
+        }
 
     const uint32_t now = uint32_t(std::time(nullptr));
     std::vector<std::pair<uint64_t, Watch>> watches;
@@ -609,7 +666,7 @@ bool OllamaMonitorScript::OnPlayerBeforeTeleport(Player* player, uint32 /*mapid*
     }
 
     if (isWatcher)
-        ReleaseView(player);   // re-applied once the watcher has arrived
+        ReleaseView(player, false);   // map thread; re-applied once the watcher has arrived
 
     for (uint64_t watcherGuid : watchers)
     {

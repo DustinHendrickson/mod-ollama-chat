@@ -407,5 +407,12 @@ and shows them, so a new fact needs no client change.
   that map. `OnPlayerLogout` releases it on logout. `Monitor_Update`
   re-applies it, and teleports the watcher along when the map differs, but
   never into an instance (`TeleportTo` cannot pick the bot's instance id).
+- **A stale `PLAYER_FARSIGHT` locks the camera.** `GetViewpoint` only finds
+  the seer on the watcher's own map, and the core refuses any new viewpoint
+  while the field holds a guid (`AddGuidValue`). So `ReleaseView` clears the
+  field, the seer link and the shared-vision entry itself when the seer is
+  elsewhere. From a map thread it defers that to `Monitor_Update`. `UNWATCH`
+  always releases and always answers, and `GOTO` ends the follow first, or
+  the follow tick pulls the watcher back.
 - Personality is read from `g_BotPersonalityList` directly, because
   `GetBotPersonality` assigns and saves one when missing.
