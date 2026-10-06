@@ -2315,6 +2315,21 @@ namespace
             handler->SendSysMessage("  live: " + DescribeLiveStrategies(ai));
             handler->SendSysMessage("  now: " + DescribeActivity(bot, ob) +
                                     (ob.reviveHeld ? " | corpse run" : ""));
+
+            // What fighting looks like from the server's side: whether the
+            // core counts the bot in combat, who is attacking it, and which
+            // of playerbots' engines is running.
+            const BotState state = ai->GetState();
+            std::string attackers;
+            for (Unit* u : bot->getAttackers())
+                if (u)
+                    attackers += (attackers.empty() ? "" : ", ") + u->GetName();
+            handler->SendSysMessage(SafeFormat(
+                "  combat: {} | attacked by: {} | target: {} | playerbots engine: {} | moving: {}",
+                bot->IsInCombat() ? "yes" : "no", attackers.empty() ? std::string("nobody") : attackers,
+                bot->GetVictim() ? bot->GetVictim()->GetName() : std::string("none"),
+                state == BOT_STATE_COMBAT ? "combat" : state == BOT_STATE_DEAD ? "dead" : "non-combat",
+                bot->isMoving() ? "yes" : "no"));
         }
         for (const std::string& r : row.lastResults)
             handler->SendSysMessage("  order: " + r);

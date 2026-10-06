@@ -58,6 +58,8 @@ struct AutopilotRoute
     size_t   corner      = 0;
     uint32_t emptyLegs   = 0;   // corridor queries that got nowhere
     uint32_t stalls      = 0;   // corridors used up without progress, in a row
+    float    corridorReach  = 250.0f;  // shortened while the far end's tile is not loaded
+    bool     corridorToDest = false;   // the current corridor ends at the destination
     AutopilotRoutePoint legStart;   // the walk cursor when the corridor was made
 
     // Pass 2: where the walk has got to, and the step being tried.

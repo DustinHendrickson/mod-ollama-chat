@@ -328,13 +328,23 @@ namespace
         trip.tSampleAt    = 0;
     }
 
-    bool PlanFlight(Player* bot, const AutopilotTrip& trip, AutopilotLeg& walk, AutopilotLeg& fly)
+    // A flight point the bot may fly to: discovered, as for a player, or any
+    // when playerbots gives the bot its taxi cheat (AiPlayerbot.BotCheats) --
+    // the same rule playerbots' own flight code follows.
+    bool KnowsNode(Player* bot, uint32_t node)
+    {
+        return bot->isTaxiCheater() || bot->m_taxi.IsTaximaskNodeKnown(node);
+    }
+
+    // Walk to the nearest flight master and fly to the flight point nearest
+    // `dest`, when that clearly beats walking.
+    bool PlanFlight(Player* bot, const AutopilotTravelPoint& dest, AutopilotLeg& walk, AutopilotLeg& fly)
     {
         TravelMgr::FlightMasterInfo const* fm = sTravelMgr.GetNearestFlightMasterInfo(bot);
         if (!fm || !fm->taxiNodeId || fm->pos.GetMapId() != bot->GetMapId())
             return false;
 
-        const float total  = DistTo(bot, trip.dest);
+        const float total  = DistTo(bot, dest);
         const float toFm   = bot->GetExactDist2d(fm->pos.GetPositionX(), fm->pos.GetPositionY());
         const uint8 mount  = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 0;
 
@@ -344,9 +354,9 @@ namespace
         {
             TaxiNodesEntry const* n = sTaxiNodesStore.LookupEntry(i);
             // Only flight points the bot has discovered, as for a player.
-            if (!n || n->map_id != trip.dest.map || !n->MountCreatureID[mount] || !bot->m_taxi.IsTaximaskNodeKnown(n->ID))
+            if (!n || n->map_id != dest.map || !n->MountCreatureID[mount] || !KnowsNode(bot, n->ID))
                 continue;
-            const float d = Dist2D(n->x, n->y, trip.dest.x, trip.dest.y);
+            const float d = Dist2D(n->x, n->y, dest.x, dest.y);
             if (!bestNode || d < bestDist)
             {
                 bestNode = n->ID;
@@ -365,7 +375,7 @@ namespace
         // Every stop on the way must be known too; the first one is learned on
         // talking to the flight master.
         for (size_t i = 1; i < path.size(); ++i)
-            if (!bot->m_taxi.IsTaximaskNodeKnown(path[i]))
+            if (!KnowsNode(bot, path[i]))
                 return false;
 
         walk.type   = AutopilotLegType::Walk;
@@ -396,6 +406,19 @@ namespace
                 return SafeFormat("no boat, zeppelin or portal {} can take leads from {} toward {}",
                                   bot->GetTeamId() == TEAM_ALLIANCE ? "the Alliance" : "the Horde",
                                   MapName(bot->GetMapId()), MapName(trip.dest.map));
+
+            // Far from the dock or portal: fly there first if it saves real
+            // distance (Westfall to the Stormwind docks), then plan again.
+            {
+                AutopilotLeg walk, fly;
+                const AutopilotTravelPoint start = Start(*c);
+                if (g_tc.flights && !trip.noFlight && !trip.flown && DistTo(bot, start) > g_tc.flightMinYards &&
+                    PlanFlight(bot, start, walk, fly))
+                {
+                    trip.legs = { walk, fly };
+                    return "";
+                }
+            }
 
             if (c->kind != CrossKind::Transport)
             {
@@ -456,7 +479,7 @@ namespace
 
         AutopilotLeg walk, fly;
         if (g_tc.flights && !trip.noFlight && !trip.flown && DistTo(bot, trip.dest) > g_tc.flightMinYards &&
-            PlanFlight(bot, trip, walk, fly))
+            PlanFlight(bot, trip.dest, walk, fly))
         {
             trip.legs = { walk, fly };
             return "";

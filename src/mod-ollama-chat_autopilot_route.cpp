@@ -36,6 +36,8 @@ namespace
     constexpr float    TILES_LOADED  = 90.0f;   // nearer the bot than this, a failure is real
     constexpr uint32_t MAX_STALLS    = 3;
     constexpr float    HAND_AHEAD    = 55.0f;   // one pathfinding query covers it easily
+    constexpr float    CORRIDOR_MAX  = 250.0f;  // how far ahead one corridor query aims
+    constexpr float    CORRIDOR_MIN  = 40.0f;   // shortest reach before "not loaded" is final
 
     float D2(const AutopilotRoutePoint& a, const AutopilotRoutePoint& b)
     {
@@ -116,7 +118,22 @@ namespace
         r.corridor.clear();
         r.corner = 0;
 
-        if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, r.dest.x, r.dest.y, r.dest.z, false))
+        // Aim at most corridorReach ahead, never straight at a far destination:
+        // the core answers any query whose end lies on a navmesh tile that is
+        // not loaded (most of the map, away from players) with a straight-line
+        // shortcut marked NOT_USING_PATH -- which used to read as "no mmaps"
+        // and sent the bot in a beeline over the mountains.
+        AutopilotRoutePoint target = r.dest;
+        const float toDest = D2(r.cursor, r.dest);
+        r.corridorToDest = toDest <= r.corridorReach;
+        if (!r.corridorToDest)
+        {
+            const float t = r.corridorReach / toDest;
+            target = Reseat(bot->GetMap(), { r.cursor.x + (r.dest.x - r.cursor.x) * t,
+                                             r.cursor.y + (r.dest.y - r.cursor.y) * t, r.cursor.z }, r.cursor.z);
+        }
+
+        if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, target.x, target.y, target.z, false))
         {
             r.why = "invalid coordinates";
             return Step::Fail;
@@ -125,9 +142,26 @@ namespace
         const PathType type = generator.GetPathType();
         if (type & PATHFIND_NOT_USING_PATH)
         {
-            r.why = "no mmaps";
-            return Step::Fail;
+            // Truly no navmesh only if even a step beside the cursor has none.
+            PathGenerator probe(bot);
+            probe.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, r.cursor.x + 2.0f, r.cursor.y, r.cursor.z, false);
+            ++r.queries;
+            if (probe.GetPathType() & PATHFIND_NOT_USING_PATH)
+            {
+                r.why = "no mmaps";
+                return Step::Fail;
+            }
+
+            // The far end's tile is not loaded yet: aim nearer and try again.
+            if (r.corridorReach > CORRIDOR_MIN)
+            {
+                r.corridorReach = std::max(CORRIDOR_MIN, r.corridorReach * 0.5f);
+                return Step::Progress;   // corridor still empty: the next query retries
+            }
+            r.why = "the way ahead is not loaded yet";
+            return Step::Exhausted;
         }
+        r.corridorReach = CORRIDOR_MAX;
         if (type & (PATHFIND_NOPATH | PATHFIND_SHORTCUT))
         {
             r.why = "no path on the navmesh";
@@ -182,6 +216,15 @@ namespace
     // corridor is used up), shortening the reach until a query fits.
     Step WalkStep(Player* bot, AutopilotRoute& r)
     {
+        // A corridor that stops short of the destination is followed by the
+        // next one, not by a straight line at a destination far away.
+        if (r.corner >= r.corridor.size() && !r.corridorToDest)
+        {
+            r.corridor.clear();
+            r.corner = 0;
+            return Step::Progress;
+        }
+
         const bool toDest = r.corner >= r.corridor.size();
         const AutopilotRoutePoint aim = Reseat(bot->GetMap(), toDest ? r.dest : r.corridor[r.corner], r.cursor.z);
         const float remaining = D2(r.cursor, aim);
@@ -283,6 +326,7 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
             if (step == Step::Exhausted)
             {
                 r.corridor.push_back(r.dest);
+                r.corridorToDest = true;
                 step = Step::Progress;
             }
         }
