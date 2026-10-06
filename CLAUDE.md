@@ -226,6 +226,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   at the first step it finds too steep, a river bank included, and a bot
   handed that stub stood at the bank for good. The retry without it stays on
   the bot filter.
+- **The walk waits for casts.** Playerbots never starts a spell with a cast
+  time while the bot moves, and a move order cancels a cast in progress. So
+  `Control` holds the walk while the bot casts (and 2 s after, for a chained
+  buff), and stops a long walk for 2 s every 30 s so upkeep such as a pet
+  summon gets its moment. That is movement pacing; what to do is still the
+  model's and playerbots'.
 - **Autopilot's walk yields to combat.** It runs as an escort spline that a
   caster cannot cast through; any visit (and a per-sweep check for walking
   bots) that finds the bot attacked stops it (`AutopilotMove_Yield`).

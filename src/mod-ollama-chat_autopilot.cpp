@@ -256,6 +256,8 @@ namespace
         uint32_t        corpseRetryAt = 0;  // after a corpse run that could not be made
         uint32_t        nextTaxiLook = 0;   // when to look for a flight master nearby
         uint32_t        lastCombatAt = 0;   // last seen fighting or attacked
+        uint32_t        castHoldUntil = 0;  // the walk waits while the bot casts
+        uint32_t        walkingSince  = 0;  // continuous walking, for the upkeep pause
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -2059,13 +2061,42 @@ namespace
         // After the fight, give it a few seconds (loot, a heal), and never
         // walk off while the bot sits to eat or drink.
         const bool threatened = sit.inCombat || !bot->getAttackers().empty();
+
+        // Casting (a pet summoned, a buff renewed): let it finish, as a player
+        // would, and give the next one in a chain a moment to start. A move
+        // order now would cancel it, and playerbots never starts a spell with
+        // a cast time while the bot is moving -- so its upkeep happens only in
+        // the pauses the walk leaves it.
+        if (bot->IsNonMeleeSpellCast(false) || bot->HasUnitState(UNIT_STATE_CASTING))
+            ob.castHoldUntil = now + 2;
+
+        // The walk hands on the next route point before the bot reaches the
+        // last, so it never stands still on its own. Every half minute of
+        // walking, stop for a couple of seconds -- the moment a player takes
+        // to summon a pet or renew a buff -- and wait out any cast it starts.
+        // Only on foot on open ground, never at a dock or aboard.
+        if (ob.errand.active && bot->isMoving() && !AutopilotTravel_IsTimeCritical(ob.errand.trip))
+        {
+            if (!ob.walkingSince)
+                ob.walkingSince = now;
+            else if (now - ob.walkingSince >= 30)
+            {
+                AutopilotMove_Stop(ai);
+                ob.castHoldUntil = now + 2;
+                ob.walkingSince  = 0;
+            }
+        }
+        else if (!bot->isMoving())
+            ob.walkingSince = 0;
+
         if (threatened)
         {
             ob.lastCombatAt = now;
             AutopilotMove_Yield(ai);
             ob.errand.trip.interrupted = true;
         }
-        else if (g_cfg.control && sit.CanUseNonCombat() && now - ob.lastCombatAt >= 4 && !bot->IsSitState())
+        else if (g_cfg.control && sit.CanUseNonCombat() && now - ob.lastCombatAt >= 4 && !bot->IsSitState() &&
+                 now >= ob.castHoldUntil)
             StepErrand(bot, ai, guid, row, ob, now);
 
         // A plan that never came back (provider down, server restarted the
@@ -3637,6 +3668,7 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
                                                    : ob.lastAlert + " (" + Ago(ob.lastAlertAt, now) + ")");
         Kv(out, "last busy", ob.lastBusyAt ? Ago(ob.lastBusyAt, now) : std::string());
         Kv(out, "last fight", ob.lastCombatAt ? Ago(ob.lastCombatAt, now) : std::string());
+        Kv(out, "walk held", ob.castHoldUntil > now ? "yes - waiting out a cast or an upkeep pause" : "no");
         Kv(out, "teleport hold", ob.teleportDeferredAt ? "pushed back " + Ago(ob.teleportDeferredAt, now) : std::string());
         Kv(out, "death", ob.deadSince ? SafeFormat("dead {} | revive held {} | corpse run {}",
                                                    Ago(ob.deadSince, now), YesNo(ob.reviveHeld),

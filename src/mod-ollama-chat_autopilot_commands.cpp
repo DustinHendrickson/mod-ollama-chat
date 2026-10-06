@@ -37,7 +37,9 @@ namespace
         "exist; change them only if you are sure.\n"
         "ORDERS:\n"
         "- goto <service> : go to the nearest repair, vendor, trainer, profession, inn or flightmaster and use "
-        "it (repair and sell junk, learn new spells, make the inn their home, learn the flight point there); or "
+        "it (repair and sell junk, make the inn their home, learn the flight point there). trainer = their "
+        "own class trainer, for new spells and ranks as they level; profession = a profession trainer, useful "
+        "only for a profession they already have (it teaches nothing else); or "
         "to the nearest bank or auction house (they only go there; at a bank, bank <item> stores an item and "
         "bank -<item> takes one out; they cannot trade at the auction house)\n"
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
@@ -477,7 +479,14 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 return u;
             }
             const uint32_t learned = LearnFromTrainer(bot, npc);
-            u.note = SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
+            if (learned)
+                u.note = SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
+            else if (static_cast<AutopilotService>(errand.service) == AutopilotService::Profession)
+                u.note = "nothing to learn at " + errand.label +
+                         ": they have no profession it teaches, or know all it offers at their skill "
+                         "(for new class spells, goto trainer)";
+            else
+                u.note = "nothing new to learn at " + errand.label + " at this level";
             return u;
         }
         case AutopilotService::FlightMaster:
