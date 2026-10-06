@@ -253,6 +253,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `AutopilotCommands_IsDenied`.** The deny check refuses playerbots' command
   separator and `#` prefixes, which `HandleCommand` would otherwise split or
   strip past a leading-words check.
+- **The autopilot tables are repaired at startup**
+  (`mod-ollama-chat_autopilot_schema.cpp`): missing tables created, missing
+  columns added, short VARCHARs widened, columns from earlier drafts dropped.
+  The core's updater runs the SQL file once per content change and only as
+  `CREATE TABLE IF NOT EXISTS`, so it never fixed a table an earlier draft
+  made. Change a column in both places.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`

@@ -2,6 +2,7 @@
 #include "mod-ollama-chat_autopilot_commands.h"
 #include "mod-ollama-chat_autopilot_goals.h"
 #include "mod-ollama-chat_autopilot_planner.h"
+#include "mod-ollama-chat_autopilot_schema.h"
 #include "mod-ollama-chat_autopilot_strategy.h"
 #include "mod-ollama-chat_autopilot_world.h"
 #include "mod-ollama-chat_config.h"
@@ -2201,7 +2202,7 @@ namespace
         if (!g_EnableChatBotSnapshotTemplate)
             handler->SendSysMessage("  - OllamaChat.EnableChatBotSnapshotTemplate is 0 (required)");
         if (!g_tablesOk)
-            handler->SendSysMessage("  - autopilot tables are missing or out of date (apply data/sql/characters/base/2026_10_05_autopilot.sql)");
+            handler->SendSysMessage("  - autopilot tables could not be set up at startup (see \"Autopilot schema\" lines in the server log)");
         if (!AutopilotStrategy_IsRegistered())
             handler->SendSysMessage("  - the 'autopilot' playerbots strategy failed to register (see startup log)");
     }
@@ -2654,54 +2655,14 @@ void Autopilot_Load()
     AutopilotWorld_Build();
     AutopilotTravel_Build();
 
-    g_tablesOk = false;
-    if (QueryResult result = CharacterDatabase.Query(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() "
-            "AND table_name IN ('mod_ollama_chat_autopilot', 'mod_ollama_chat_autopilot_snapshots', "
-            "'mod_ollama_chat_autopilot_events')"))
-        g_tablesOk = (*result)[0].Get<uint64>() == 3;
-
-    auto hasColumn = [](const char* column)
-    {
-        QueryResult r = CharacterDatabase.Query(SafeFormat(
-            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-            "AND table_name = 'mod_ollama_chat_autopilot' AND column_name = '{}'", column));
-        return r && (*r)[0].Get<uint64>() > 0;
-    };
-
-    // The draft before the LLM gave orders kept an rpg focus and a playbook,
-    // and recorded "before" per strategy. Move it to this layout in place:
-    // the model's strategy choices keep their format; the old "before" does
-    // not, so it is dropped (bots are handed back to playerbots' defaults).
-    if (g_tablesOk && !hasColumn("last_results") && hasColumn("rpg") && hasColumn("playbook"))
-    {
-        CharacterDatabase.DirectExecute(
-            "ALTER TABLE mod_ollama_chat_autopilot DROP COLUMN rpg, DROP COLUMN playbook, "
-            "MODIFY strategies VARCHAR(2000) NOT NULL DEFAULT '', "
-            "ADD COLUMN last_results VARCHAR(2000) NOT NULL DEFAULT '' AFTER strategies, "
-            "MODIFY baseline VARCHAR(4000) NOT NULL DEFAULT ''");
-        CharacterDatabase.DirectExecute("UPDATE mod_ollama_chat_autopilot SET baseline = ''");
-        LOG_INFO("server.loading", "[Ollama Chat] Autopilot: migrated mod_ollama_chat_autopilot to the "
-                 "orders layout.");
-    }
-
-    if (g_tablesOk)
-    {
-        // Columns changed while the table was still unreleased; a database
-        // set up from an even earlier draft needs the file re-applied.
-        if (QueryResult result = CharacterDatabase.Query(
-                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                "AND table_name = 'mod_ollama_chat_autopilot' AND column_name IN ('profile', 'last_results', 'baseline')"))
-            g_tablesOk = (*result)[0].Get<uint64>() == 3;
-    }
-
+    // Bring the tables to the current layout, whatever draft made them (the
+    // core's updater only ever runs the SQL file's CREATE TABLE IF NOT EXISTS).
+    std::string problem;
+    g_tablesOk = AutopilotSchema_Ensure(problem);
     if (!g_tablesOk)
     {
-        if (g_cfg.enable)
-            LOG_ERROR("server.loading",
-                      "[Ollama Chat] Autopilot tables are missing or out of date; drop "
-                      "mod_ollama_chat_autopilot and apply data/sql/characters/base/2026_10_05_autopilot.sql. "
-                      "Autopilot stays off.");
+        LOG_ERROR("server.loading", "[Ollama Chat] Autopilot tables could not be set up: {}. Autopilot stays off.",
+                  problem);
         return;
     }
 

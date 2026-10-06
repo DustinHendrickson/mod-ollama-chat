@@ -20,9 +20,11 @@
 -- Times are unix seconds so the downsampling buckets are plain integer
 -- division and do not depend on the server time zone.
 --
--- A table created from an earlier draft of this file is migrated in place at
--- startup; if that is not possible the worldserver log says to drop it and
--- apply this file again.
+-- The worldserver also checks these tables at startup and repairs them to
+-- this layout (mod-ollama-chat_autopilot_schema.cpp: missing tables created,
+-- missing columns added, columns from earlier drafts dropped), because the
+-- updater never re-runs a CREATE TABLE IF NOT EXISTS against an existing
+-- table. Keep the two in step.
 
 CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     bot_guid BIGINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -31,7 +33,7 @@ CREATE TABLE IF NOT EXISTS mod_ollama_chat_autopilot (
     source VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Which rule or command enrolled it',
     style VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Playstyle in a few words, written by the LLM',
     outlook VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'in-character, player or metagamer, chosen by the LLM',
-    profile TEXT NOT NULL COMMENT 'Who the character is, written by the LLM',
+    profile TEXT NULL COMMENT 'Who the character is, written by the LLM',
     kills_total INT UNSIGNED NOT NULL DEFAULT 0,
     deaths_total INT UNSIGNED NOT NULL DEFAULT 0,
     quests_total INT UNSIGNED NOT NULL DEFAULT 0,
