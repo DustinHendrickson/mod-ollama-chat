@@ -675,6 +675,73 @@ sizeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 SetCompact(false)
 
 -- ---------------------------------------------------------------------------
+-- Minimap button: left-click shows or hides the window, right-click switches
+-- full / log only, drag moves it around the minimap's edge.
+-- ---------------------------------------------------------------------------
+
+local mini = CreateFrame("Button", "OllamaMonitorMinimapButton", Minimap)
+mini:SetSize(31, 31)
+mini:SetFrameStrata("MEDIUM")
+mini:SetFrameLevel(8)
+mini:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+mini:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+mini:RegisterForDrag("LeftButton")
+
+local miniIcon = mini:CreateTexture(nil, "BACKGROUND")
+miniIcon:SetSize(20, 20)
+miniIcon:SetPoint("TOPLEFT", 7, -5)
+miniIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+miniIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+local miniBorder = mini:CreateTexture(nil, "OVERLAY")
+miniBorder:SetSize(53, 53)
+miniBorder:SetPoint("TOPLEFT")
+miniBorder:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+
+local function PlaceMinimapButton()
+    local angle = math.rad((OllamaMonitorDB and OllamaMonitorDB.minimapAngle) or 200)
+    mini:ClearAllPoints()
+    mini:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * 80, math.sin(angle) * 80)
+end
+M.PlaceMinimapButton = PlaceMinimapButton
+
+mini:SetScript("OnDragStart", function(self)
+    self:SetScript("OnUpdate", function()
+        local mx, my = Minimap:GetCenter()
+        local cx, cy = GetCursorPosition()
+        local scale = Minimap:GetEffectiveScale()
+        OllamaMonitorDB = OllamaMonitorDB or {}
+        OllamaMonitorDB.minimapAngle = math.deg(math.atan2(cy / scale - my, cx / scale - mx))
+        PlaceMinimapButton()
+    end)
+end)
+mini:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+
+mini:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+        SetCompact(not M.compact)
+        frame:Show()
+    elseif frame:IsShown() then
+        frame:Hide()
+    else
+        frame:Show()
+    end
+end)
+mini:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:AddLine("Ollama Monitor")
+    GameTooltip:AddLine("Left-click: show / hide", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Right-click: full window / log only", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Drag: move this button", 0.8, 0.8, 0.8)
+    if M.watching then
+        GameTooltip:AddLine("Camera on " .. (M.watchName or "?"), 0.4, 1, 0.4)
+    end
+    GameTooltip:Show()
+end)
+mini:SetScript("OnLeave", function() GameTooltip:Hide() end)
+PlaceMinimapButton()
+
+-- ---------------------------------------------------------------------------
 -- Events and slash command
 -- ---------------------------------------------------------------------------
 
@@ -693,6 +760,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         end
         M.page = OllamaMonitorDB.page or "overview"
         if OllamaMonitorDB.compact then M.SetCompact(true) end
+        M.PlaceMinimapButton()   -- the saved angle has only now been loaded
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)

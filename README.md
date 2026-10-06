@@ -441,7 +441,9 @@ bots are doing, live, without reading logs.
 
 **Install:** copy the `addon/OllamaMonitor` folder into your client's
 `Interface/AddOns` folder. Log in on an account at
-`OllamaChat.Monitor.MinSecurity` (administrator by default), then type `/om`.
+`OllamaChat.Monitor.MinSecurity` (administrator by default), then type `/om`
+or click the spyglass button on the minimap (left-click shows or hides the
+window, right-click switches to log only, drag to move it).
 
 **The window:**
 - **Left:** every online autopilot bot, with its class, level and what it is
