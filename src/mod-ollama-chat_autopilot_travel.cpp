@@ -6,6 +6,8 @@
 #include "Creature.h"
 #include "DBCStores.h"
 #include "GameObject.h"
+#include "GameObjectModel.h"
+#include "ModelIgnoreFlags.h"
 #include "Log.h"
 #include "Map.h"
 #include "MapMgr.h"
@@ -228,34 +230,61 @@ namespace
         return still;
     }
 
-    // A point on the deck, nearest the bot. The transport's model is in the
-    // map's dynamic collision: probe heights in rings around its centre and
-    // keep points that the core itself counts as on this transport. Decks
-    // differ (a zeppelin's gondola is not under its centre), hence the rings.
-    bool Deck(Player* bot, MotionTransport* t, AutopilotTravelPoint& out)
+    // A point on the deck to walk onto.
+    //
+    // Cast rays straight down at the ship's own model -- the test the core
+    // itself uses for "standing on a transport" (Map::GetTransportForPos). A
+    // terrain height query does not reliably see a moving ship's model and
+    // finds the sea or the pier under it instead, which is how a bot once
+    // ended up riding beneath the hull.
+    //
+    // A ray from above meets the masts, yards and sails first, so every
+    // surface under each probe is collected, and the deck is the one nearest
+    // the height of the pier the bot is boarding from (`boardZ`). Probes run
+    // in rings around the ship's centre, because decks differ (a zeppelin's
+    // gondola is not under its centre); among equally good surfaces the one
+    // nearest the bot wins.
+    bool Deck(Player* bot, MotionTransport* t, float boardZ, AutopilotTravelPoint& out)
     {
-        Map* map = t->GetMap();
-        if (!map)
+        if (!t->m_model)
             return false;
 
-        bool found = false;
-        float bestDist = 0.0f;
-        for (float r : { 0.0f, 4.0f, 8.0f, 12.0f, 16.0f })
+        const float top    = t->GetPositionZ() + 40.0f;
+        const float bottom = t->GetPositionZ() - 20.0f;
+
+        bool  found     = false;
+        float bestScore = 0.0f;
+        for (float r : { 0.0f, 3.0f, 6.0f, 9.0f, 12.0f, 16.0f })
         {
             for (int k = 0; k < (r == 0.0f ? 1 : 8); ++k)
             {
                 const float a = float(k) * float(M_PI) / 4.0f;
                 const float x = t->GetPositionX() + r * std::cos(a);
                 const float y = t->GetPositionY() + r * std::sin(a);
-                const float h = map->GetHeight(bot->GetPhaseMask(), x, y, t->GetPositionZ() + 30.0f, true, 60.0f);
-                if (h <= INVALID_HEIGHT || map->GetTransportForPos(bot->GetPhaseMask(), x, y, h + 0.5f, nullptr) != t)
-                    continue;
-                const float d = bot->GetExactDist2d(x, y);
-                if (!found || d < bestDist)
+
+                float from = top;
+                for (int layer = 0; layer < 6 && from > bottom; ++layer)
                 {
-                    out      = { t->GetMapId(), x, y, h + 0.5f };
-                    bestDist = d;
-                    found    = true;
+                    float dist = from - bottom;
+                    const G3D::Ray ray(G3D::Vector3(x, y, from), G3D::Vector3(0.0f, 0.0f, -1.0f));
+                    if (!t->m_model->intersectRay(ray, dist, false, bot->GetPhaseMask(), VMAP::ModelIgnoreFlags::Nothing))
+                        break;
+                    const float z = from - dist;
+                    from = z - 0.5f;   // look for the next surface below this one
+
+                    // Somewhere to stand: the core must count it as on this ship.
+                    if (bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), x, y, z + 0.5f, nullptr) != t)
+                        continue;
+
+                    // Height mismatch with the pier dominates; distance from
+                    // the bot breaks ties between decks at the right height.
+                    const float score = std::fabs(z - boardZ) * 10.0f + bot->GetExactDist2d(x, y);
+                    if (!found || score < bestScore)
+                    {
+                        out       = { t->GetMapId(), x, y, z + 0.5f };
+                        bestScore = score;
+                        found     = true;
+                    }
                 }
             }
         }
@@ -628,6 +657,7 @@ namespace
         {
             trip.boarded    = false;   // walking on starts over at the next docking
             trip.deckProbed = false;
+            trip.deckFound  = false;   // the next docking may sit a little differently
             // Wait ashore; keep playerbots from wandering off meanwhile.
             if (bot->GetExactDist2d(leg.land.x, leg.land.y) > 15.0f && !AutopilotMove_IsMoving(ai))
                 AutopilotMove_To(ai, leg.land.x, leg.land.y, leg.land.z, true);
@@ -637,36 +667,31 @@ namespace
         }
 
         // Docked: walk straight onto the deck (it is not on the navmesh).
-        // Probed once per docking: the ship does not move while docked.
-        if (!trip.deckProbed)
+        // Probed until a deck is found, then kept for this docking: the ship
+        // does not move while docked.
+        if (!trip.deckFound)
         {
-            trip.deckFound  = Deck(bot, t, trip.deck);
+            trip.deckFound = Deck(bot, t, leg.land.z, trip.deck);
+            if (!trip.deckFound && !trip.deckProbed)
+                note = "could not find a way onto the deck of " + leg.label + "; waiting for it to dock again";
             trip.deckProbed = true;
         }
-        if (trip.deckFound)
+        if (!trip.deckFound)
         {
-            const AutopilotTravelPoint& deck = trip.deck;
-            if (!AutopilotMove_IsMoving(ai) || !trip.boarded)
-            {
-                AutopilotMove_To(ai, deck.x, deck.y, deck.z, false);
-                trip.boarded = true;   // here: "on the way up the gangway"
-            }
+            // Never board blind: attaching a bot that is not standing on the
+            // deck carries it along beside or under the hull. Wait ashore;
+            // BoatWaitMinutes ends the wait and the model is told.
+            AutopilotMove_Hold(ai, 5000, false);
             return LegResult::Going;
         }
 
-        // No deck point found by probing: an odd model. Walk to the ship and,
-        // once alongside, make the bot a passenger where it stands -- it rides
-        // along beside the deck rather than miss the crossing.
-        if (bot->GetExactDist2d(t->GetPositionX(), t->GetPositionY()) > 20.0f)
+        const AutopilotTravelPoint& deck = trip.deck;
+        if (!AutopilotMove_IsMoving(ai) || !trip.boarded)
         {
-            if (!AutopilotMove_IsMoving(ai))
-                AutopilotMove_To(ai, t->GetPositionX(), t->GetPositionY(), t->GetPositionZ(), false);
-            return LegResult::Going;
+            AutopilotMove_To(ai, deck.x, deck.y, deck.z, false);
+            trip.boarded = true;   // here: "on the way up the gangway"
         }
-        t->AddPassenger(bot, true);
-        bot->StopMovingOnCurrentPos();
-        note = "boarded " + leg.label;
-        return LegResult::Done;
+        return LegResult::Going;
     }
 
     LegResult Ride(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
