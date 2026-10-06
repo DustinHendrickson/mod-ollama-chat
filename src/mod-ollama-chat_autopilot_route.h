@@ -57,6 +57,8 @@ struct AutopilotRoute
     std::vector<AutopilotRoutePoint> corridor;
     size_t   corner      = 0;
     uint32_t emptyLegs   = 0;   // corridor queries that got nowhere
+    uint32_t stalls      = 0;   // corridors used up without progress, in a row
+    AutopilotRoutePoint legStart;   // the walk cursor when the corridor was made
 
     // Pass 2: where the walk has got to, and the step being tried.
     AutopilotRoutePoint cursor;
@@ -92,8 +94,11 @@ void AutopilotRoute_Rebuild(Player* bot, AutopilotRoute& route);
 // spending at most the configured number of navmesh queries.
 void AutopilotRoute_Extend(Player* bot, AutopilotRoute& route);
 
-// The node the bot should walk to now, skipping ones it has reached. False
-// while nothing is built ahead yet, or once the last node is reached.
-bool AutopilotRoute_Next(Player* bot, AutopilotRoute& route, AutopilotRoutePoint& out);
+// The node the bot should walk to now: the farthest built node within about
+// 55 yards, so one move covers a couple of nodes (one pathfinding query
+// covers that easily) and a bot visited rarely does not stop at every node.
+// `index` gets its position. False while nothing is built ahead yet, or once
+// the last node is reached.
+bool AutopilotRoute_Next(Player* bot, AutopilotRoute& route, AutopilotRoutePoint& out, size_t& index);
 
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_ROUTE_H

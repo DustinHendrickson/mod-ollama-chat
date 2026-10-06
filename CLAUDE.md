@@ -225,8 +225,10 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   a failure counts only once the bot is near it.
 - **Travel** (`mod-ollama-chat_autopilot_travel.cpp`) plans legs and replans
   after every flight or crossing. Flights call `ActivateTaxiPathTo` directly
-  with a path from TravelMgr's flight-master cache and `FindTaxiPath`; this
-  core needs no known nodes, only money. Crossings between continents are
+  with a path from TravelMgr's flight-master cache and `FindTaxiPath`. The
+  core does not check the taxi mask, so autopilot does: only discovered nodes
+  (`m_taxi.IsTaximaskNodeKnown`) are flown to, and `goto flightmaster`
+  discovers one. Crossings between continents are
   indexed at startup: boats and zeppelins from `TransportMgr` templates (stop
   key frames), the Dark Portal from `GetAllAreaTriggerTeleports`, and city
   portals from spellcaster/goober gameobjects whose spell has a
@@ -241,6 +243,16 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   stop and not moving since the last look.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
+- **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it
+  while acting on the world (a quest turned in, a spell learned), and the core
+  fires our own progress hooks for that on the same thread (level up, rare
+  loot, achievements), which lock it again. A plain mutex there crashed or
+  hung the server. Hooks must keep to updating existing entries, never
+  inserting or erasing, so the sweep's references stay valid.
+- **Every order goes through `AutopilotCommands_Normalize` and
+  `AutopilotCommands_IsDenied`.** The deny check refuses playerbots' command
+  separator and `#` prefixes, which `HandleCommand` would otherwise split or
+  strip past a leading-words check.
 - **PlayerScript progress hooks run on map threads**, several at once. They
   may read only the player they were handed plus mutex-guarded module state.
   `Autopilot_Update` runs in `WorldScript::OnUpdate`, after `MapMgr::Update`

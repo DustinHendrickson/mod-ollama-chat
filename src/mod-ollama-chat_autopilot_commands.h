@@ -74,6 +74,9 @@ bool AutopilotCommands_IsStrategyChange(const std::string& command);
 // every out-of-combat strategy change.
 bool AutopilotCommands_IsDenied(const std::string& command);
 
+// Trimmed, without a leading "/". Every order goes through this first.
+std::string AutopilotCommands_Normalize(const std::string& raw);
+
 struct AutopilotErrandUpdate
 {
     std::string note;        // a diary line, or ""

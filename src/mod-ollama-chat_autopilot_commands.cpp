@@ -12,8 +12,10 @@
 #include "QuestDef.h"
 #include "SharedDefines.h"
 #include "Trainer.h"
+#include "WorldSession.h"
 
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 
 #include <algorithm>
 #include <cctype>
@@ -35,9 +37,10 @@ namespace
         "exist; change them only if you are sure.\n"
         "ORDERS:\n"
         "- goto <service> : go to the nearest repair, vendor, trainer, profession, inn, flightmaster, bank or "
-        "auction and use it (repair and sell junk, learn new spells, make the inn their home)\n"
-        "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take flight masters, "
-        "boats and zeppelins as needed\n"
+        "auction and use it (repair and sell junk, learn new spells, make the inn their home, learn the flight "
+        "point there)\n"
+        "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
+        "portals, and fly between flight points they have learned\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
         "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself\n"
         "- talents : spend talent points; autogear : equip the best gear they have; s gray : sell junk to a "
@@ -209,7 +212,25 @@ const std::string& AutopilotCommands_Reference() { return g_reference; }
 
 bool AutopilotCommands_IsDenied(const std::string& command)
 {
-    return Denied(Lower(Trim(command)));
+    const std::string c = Lower(Trim(command));
+
+    // Playerbots splits one whisper into several commands on its separator
+    // and strips "#w " / "#p " style prefixes before running them, so either
+    // would slip a denied command past a leading-words check ("stay\reset").
+    // One order is one command.
+    const std::string& sep = sPlayerbotAIConfig.commandSeparator;
+    if ((!sep.empty() && c.find(sep) != std::string::npos) || (!c.empty() && c[0] == '#'))
+        return true;
+
+    return Denied(c);
+}
+
+std::string AutopilotCommands_Normalize(const std::string& raw)
+{
+    std::string command = Trim(raw);
+    while (!command.empty() && command[0] == '/')
+        command = Trim(command.substr(1));
+    return command;
 }
 
 bool AutopilotCommands_IsStrategyChange(const std::string& command)
@@ -221,13 +242,11 @@ bool AutopilotCommands_IsStrategyChange(const std::string& command)
 std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::string& raw,
                                   AutopilotErrand& errand, uint32_t now)
 {
-    std::string command = Trim(raw);
-    if (!command.empty() && command[0] == '/')
-        command = Trim(command.substr(1));
-    const std::string lower = Lower(command);
+    const std::string command = AutopilotCommands_Normalize(raw);
+    const std::string lower   = Lower(command);
     if (lower.empty())
         return "empty";
-    if (Denied(lower))
+    if (AutopilotCommands_IsDenied(command))
         return "denied by the server";
 
     // --- autopilot orders ----------------------------------------------------
@@ -434,6 +453,17 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             u.note = SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
             return u;
         }
+        case AutopilotService::FlightMaster:
+            if (!npc)
+            {
+                u.note = "arrived, but " + errand.label + " was not there";
+                return u;
+            }
+            // Talking to a flight master is how a flight point is discovered;
+            // trips only fly between discovered ones.
+            bot->GetSession()->SendLearnNewTaxiNode(npc);
+            u.note = "arrived at " + errand.label + " and learned the flight point";
+            return u;
         case AutopilotService::Inn:
             if (!npc)
             {

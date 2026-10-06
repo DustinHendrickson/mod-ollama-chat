@@ -2230,6 +2230,8 @@ OllamaChat.Autopilot.QuickReplanSeconds = 60
 #        Let trips use flight masters. A flight is taken when walking to the
 #        flight master and from the landing is clearly shorter than walking
 #        the whole way, and the bot can pay for it; otherwise it walks.
+#        Only flight points the bot has discovered are used, as for a player;
+#        `goto flightmaster` discovers the one it walks to.
 #        Default: 1
 OllamaChat.Autopilot.Travel.Flights = 1
 
@@ -2249,6 +2251,12 @@ OllamaChat.Autopilot.Travel.FlightMinYards = 700
 #        on that crossing.
 #        Default: 20
 OllamaChat.Autopilot.Travel.BoatWaitMinutes = 20
+
+#    OllamaChat.Autopilot.Travel.RideMaxMinutes
+#        How long a bot stays aboard before giving up on reaching the far
+#        dock (a ship that never docks there, a route that loops).
+#        Default: 40
+OllamaChat.Autopilot.Travel.RideMaxMinutes = 40
 
 #    OllamaChat.Autopilot.Travel.StuckSeconds
 #        A walk with no real progress for this long is rebuilt from where the

@@ -37,8 +37,8 @@ namespace
         uint32_t boatWaitMin    = 20;
         uint32_t rideMaxMin     = 40;
         uint32_t stuckSeconds   = 45;
-        uint32_t maxPlans       = 8;
     };
+    constexpr uint32_t kMaxPlans = 8;   // replans per trip: each vehicle change is one
     TravelConfig g_tc;   // world thread only
 
     constexpr float kDirectWalk  = 60.0f;   // under NewRpg's own 70 yd straight walk
@@ -199,8 +199,10 @@ namespace
         Map* map = bot->GetMap();
         if (!map)
             return nullptr;
+        // No world object: that only adds a search for static transports
+        // (elevators), a grid search per call that boats do not need.
         Transport* t = map->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(),
-                                               bot->GetPositionZ(), bot);
+                                               bot->GetPositionZ(), nullptr);
         return t && t->GetEntry() == entry ? t->ToMotionTransport() : nullptr;
     }
 
@@ -246,7 +248,7 @@ namespace
                 const float x = t->GetPositionX() + r * std::cos(a);
                 const float y = t->GetPositionY() + r * std::sin(a);
                 const float h = map->GetHeight(bot->GetPhaseMask(), x, y, t->GetPositionZ() + 30.0f, true, 60.0f);
-                if (h <= INVALID_HEIGHT || map->GetTransportForPos(bot->GetPhaseMask(), x, y, h + 0.5f, bot) != t)
+                if (h <= INVALID_HEIGHT || map->GetTransportForPos(bot->GetPhaseMask(), x, y, h + 0.5f, nullptr) != t)
                     continue;
                 const float d = bot->GetExactDist2d(x, y);
                 if (!found || d < bestDist)
@@ -292,6 +294,8 @@ namespace
         trip.tookOff      = false;
         trip.boarded      = false;
         trip.stepping     = false;
+        trip.deckProbed   = false;
+        trip.deckFound    = false;
         trip.tSampleAt    = 0;
     }
 
@@ -310,7 +314,8 @@ namespace
         for (uint32_t i = 0; i < sTaxiNodesStore.GetNumRows(); ++i)
         {
             TaxiNodesEntry const* n = sTaxiNodesStore.LookupEntry(i);
-            if (!n || n->map_id != trip.dest.map || !n->MountCreatureID[mount])
+            // Only flight points the bot has discovered, as for a player.
+            if (!n || n->map_id != trip.dest.map || !n->MountCreatureID[mount] || !bot->m_taxi.IsTaximaskNodeKnown(n->ID))
                 continue;
             const float d = Dist2D(n->x, n->y, trip.dest.x, trip.dest.y);
             if (!bestNode || d < bestDist)
@@ -328,6 +333,11 @@ namespace
         std::vector<uint32_t> path = sTravelNodeMap.FindTaxiPath(fm->taxiNodeId, bestNode);
         if (path.size() < 2)
             return false;
+        // Every stop on the way must be known too; the first one is learned on
+        // talking to the flight master.
+        for (size_t i = 1; i < path.size(); ++i)
+            if (!bot->m_taxi.IsTaximaskNodeKnown(path[i]))
+                return false;
 
         walk.type   = AutopilotLegType::Walk;
         walk.to     = { fm->pos.GetMapId(), fm->pos.GetPositionX(), fm->pos.GetPositionY(), fm->pos.GetPositionZ() };
@@ -347,7 +357,7 @@ namespace
         trip.legs.clear();
         trip.leg = 0;
         ResetLeg(trip, now);
-        if (++trip.plans > g_tc.maxPlans)
+        if (++trip.plans > kMaxPlans)
             return "too many changes of plan on the way";
 
         if (bot->GetMapId() != trip.dest.map)
@@ -500,12 +510,13 @@ namespace
             else
             {
                 AutopilotRoutePoint node;
-                if (AutopilotRoute_Next(bot, route, node))
+                size_t index = 0;
+                if (AutopilotRoute_Next(bot, route, node, index))
                 {
-                    if (route.next != trip.issued || !AutopilotMove_IsMoving(ai))
+                    if (index != trip.issued || !AutopilotMove_IsMoving(ai))
                     {
                         AutopilotMove_To(ai, node.x, node.y, node.z, true);
-                        trip.issued = route.next;
+                        trip.issued = index;
                     }
                     return LegResult::Going;
                 }
@@ -615,7 +626,8 @@ namespace
         MotionTransport* t = FindTransport(bot->GetMap(), leg.entry);
         if (!DockedAt(trip, t, leg.to, now))
         {
-            trip.boarded = false;   // walking on starts over at the next docking
+            trip.boarded    = false;   // walking on starts over at the next docking
+            trip.deckProbed = false;
             // Wait ashore; keep playerbots from wandering off meanwhile.
             if (bot->GetExactDist2d(leg.land.x, leg.land.y) > 15.0f && !AutopilotMove_IsMoving(ai))
                 AutopilotMove_To(ai, leg.land.x, leg.land.y, leg.land.z, true);
@@ -625,9 +637,15 @@ namespace
         }
 
         // Docked: walk straight onto the deck (it is not on the navmesh).
-        AutopilotTravelPoint deck;
-        if (Deck(bot, t, deck))
+        // Probed once per docking: the ship does not move while docked.
+        if (!trip.deckProbed)
         {
+            trip.deckFound  = Deck(bot, t, trip.deck);
+            trip.deckProbed = true;
+        }
+        if (trip.deckFound)
+        {
+            const AutopilotTravelPoint& deck = trip.deck;
             if (!AutopilotMove_IsMoving(ai) || !trip.boarded)
             {
                 AutopilotMove_To(ai, deck.x, deck.y, deck.z, false);
@@ -766,10 +784,14 @@ namespace
             return LegResult::Fail;
         }
 
+        if (!bot->TeleportTo(tp->target_mapId, tp->target_X, tp->target_Y, tp->target_Z, tp->target_Orientation,
+                             TELE_TO_NOT_LEAVE_TRANSPORT))
+        {
+            note = "is not allowed through " + leg.label;
+            return LegResult::Fail;
+        }
         trip.tookOff      = true;
         trip.legStartedAt = now;
-        bot->TeleportTo(tp->target_mapId, tp->target_X, tp->target_Y, tp->target_Z, tp->target_Orientation,
-                        TELE_TO_NOT_LEAVE_TRANSPORT);
         return LegResult::Going;
     }
 
@@ -820,6 +842,7 @@ void AutopilotTravel_LoadConfig()
     c.flightMinYards = std::max(100.0f, sConfigMgr->GetOption<float>("OllamaChat.Autopilot.Travel.FlightMinYards", 700.0f));
     c.boatWaitMin    = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Travel.BoatWaitMinutes", 20));
     c.stuckSeconds   = std::max<uint32_t>(10, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Travel.StuckSeconds", 45));
+    c.rideMaxMin     = std::max<uint32_t>(5, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Travel.RideMaxMinutes", 40));
     g_tc = c;
 }
 
@@ -1003,14 +1026,20 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
     if (bot->IsBeingTeleported())
         return AutopilotTripState::Going;
 
-    // Not updated for a while (a fight, death, a reload): progress so far
-    // says nothing about being stuck, and a route walked from somewhere else
-    // may now lie behind the bot.
-    if (trip.lastUpdateAt && now - trip.lastUpdateAt > 10)
+    // Back from a fight or a death: progress so far says nothing about being
+    // stuck, and the route was built from somewhere else (a chase, a corpse
+    // run) and may now lie behind the bot. Only real interruptions count --
+    // on a busy realm the time between visits alone can be long.
+    if (trip.interrupted)
     {
+        trip.interrupted = false;
         trip.best   = FLT_MAX;
         trip.bestAt = now;
-        if (trip.routed)
+        // Rebuild only if the interruption pulled the bot off the route.
+        const AutopilotRoute& r = trip.route;
+        const bool offRoute = r.next < r.nodes.size() &&
+                              bot->GetExactDist2d(r.nodes[r.next].x, r.nodes[r.next].y) > 60.0f;
+        if (trip.routed && offRoute)
         {
             const uint32_t rebuilds = trip.route.rebuilds;
             AutopilotRoute_Rebuild(bot, trip.route);
@@ -1018,7 +1047,6 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
             trip.issued = SIZE_MAX;
         }
     }
-    trip.lastUpdateAt = now;
 
     for (int step = 0; step < 4; ++step)   // a leg may finish and the next start in one visit
     {

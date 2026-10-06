@@ -35,6 +35,7 @@ namespace
     constexpr float    NODE_REACHED  = 8.0f;    // the bot is at a node
     constexpr float    TILES_LOADED  = 90.0f;   // nearer the bot than this, a failure is real
     constexpr uint32_t MAX_STALLS    = 3;
+    constexpr float    HAND_AHEAD    = 55.0f;   // one pathfinding query covers it easily
 
     float D2(const AutopilotRoutePoint& a, const AutopilotRoutePoint& b)
     {
@@ -270,15 +271,12 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
         r.waiting = false;
     }
 
-    uint32_t stalls = 0;
-    AutopilotRoutePoint legStart = r.cursor;
-
     for (uint32_t spent = 0; spent < g_rc.queriesPerVisit; ++spent)
     {
         Step step;
         if (r.corridor.empty())
         {
-            legStart = r.cursor;
+            r.legStart = r.cursor;
             step = CorridorLeg(bot, r);
             // No corridor: aim the walk straight at the destination. Smooth
             // queries often get round what the straight query could not.
@@ -305,10 +303,10 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
         {
             // The corridor is used up short of the destination: ask for a new
             // one from here, unless the last one got us nowhere.
-            stalls = D2(legStart, r.cursor) < MIN_PROGRESS ? stalls + 1 : 0;
+            r.stalls = D2(r.legStart, r.cursor) < MIN_PROGRESS ? r.stalls + 1 : 0;
             r.corridor.clear();
             r.corner = 0;
-            if (stalls < MAX_STALLS)
+            if (r.stalls < MAX_STALLS)
                 continue;
             step = Step::Fail;
             if (r.why.empty())
@@ -334,7 +332,7 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
     }
 }
 
-bool AutopilotRoute_Next(Player* bot, AutopilotRoute& r, AutopilotRoutePoint& out)
+bool AutopilotRoute_Next(Player* bot, AutopilotRoute& r, AutopilotRoutePoint& out, size_t& index)
 {
     const AutopilotRoutePoint here = At(bot);
     while (r.next < r.nodes.size() && D2(here, r.nodes[r.next]) <= NODE_REACHED)
@@ -347,6 +345,10 @@ bool AutopilotRoute_Next(Player* bot, AutopilotRoute& r, AutopilotRoutePoint& ou
 
     if (r.next >= r.nodes.size())
         return false;
-    out = r.nodes[r.next];
+
+    index = r.next;
+    while (index + 1 < r.nodes.size() && D2(here, r.nodes[index + 1]) <= HAND_AHEAD)
+        ++index;
+    out = r.nodes[index];
     return true;
 }

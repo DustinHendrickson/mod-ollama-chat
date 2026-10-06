@@ -285,10 +285,16 @@ namespace
     };
 
     // Guards everything below. The world thread holds it for the sweep and
-    // commands; map threads hold it briefly in the progress hooks. Nothing
-    // called while holding it calls back into this file. Lock order is this
-    // mutex, then the progress queue's / memory's / planner's.
-    std::mutex                           g_mutex;
+    // commands; map threads hold it briefly in the progress hooks. Lock order
+    // is this mutex, then the progress queue's / memory's / planner's.
+    //
+    // Recursive on purpose: the sweep acts on the world (a quest turned in, a
+    // spell learned at a trainer) and the core fires our own progress hooks
+    // for it on the same thread -- level up, rare loot, an achievement --
+    // which lock this again. Those hooks only update fields of entries that
+    // already exist; they never insert or erase, so references the sweep
+    // holds into g_rows / g_online stay valid.
+    std::recursive_mutex                 g_mutex;
     std::unordered_map<uint64_t, Row>    g_rows;
     std::unordered_map<uint64_t, Online> g_online;
     std::vector<uint64_t>                g_roster;     // round-robin order
@@ -801,7 +807,7 @@ namespace
                     } while (result->NextRow());
                 }
 
-                std::lock_guard<std::mutex> lock(g_mutex);
+                std::lock_guard<std::recursive_mutex> lock(g_mutex);
                 if (guilds != g_realGuilds)
                 {
                     g_realGuilds.swap(guilds);
@@ -866,13 +872,23 @@ namespace
         // Joined a human's group, or walked into a dungeon: its movement is
         // someone else's now, so the out-of-combat engine goes back to what
         // the bot had before the model, and the walk in progress ends.
-        if (!sit.CanUseNonCombat() && !sit.dead && !ob.ncReplay)
+        //
+        // The trip ends whatever else happened this visit: joining a group or
+        // a dungeon usually comes with a playerbots reset too, and the trip
+        // must not be left frozen to resume long after the model moved on.
+        if (!sit.CanUseNonCombat() && !sit.dead)
         {
-            if (!row.baseline.empty())
-                RestoreEngine(ai, row.baseline, BOT_STATE_NON_COMBAT);
             if (ob.errand.active)
+            {
                 AutopilotCommands_StopErrand(ai, ob.errand);
-            ob.ncReplay = true;
+                g_aboard.erase(ai->GetBot()->GetGUID().GetRawValue());
+            }
+            if (!ob.ncReplay)
+            {
+                if (!row.baseline.empty())
+                    RestoreEngine(ai, row.baseline, BOT_STATE_NON_COMBAT);
+                ob.ncReplay = true;
+            }
         }
 
         if (ob.ncReplay && sit.CanUseNonCombat())
@@ -888,8 +904,9 @@ namespace
                                          uint32_t now)
     {
         std::vector<std::string> results;
-        for (const std::string& command : commands)
+        for (const std::string& raw : commands)
         {
+            const std::string command = AutopilotCommands_Normalize(raw);
             const bool strategy = AutopilotCommands_IsStrategyChange(command);
             const bool combat   = strategy && Lower(command).rfind("co", 0) == 0;
 
@@ -947,8 +964,7 @@ namespace
                 }
             }
 
-            const bool ran = result.rfind("done", 0) == 0 || result == "sent" || result.rfind("walking", 0) == 0 ||
-                             result.rfind("working", 0) == 0 || result.rfind("focus", 0) == 0;
+            const bool ran = result.rfind("done", 0) == 0 || result == "sent" || result.rfind("on the way", 0) == 0;
             ++(ran ? g_statCommands : g_statRefused);
             results.push_back(command + " -> " + result);
         }
@@ -1569,7 +1585,7 @@ namespace
                 std::vector<ProgressSnapshot> loaded;   // newest first
                 do { loaded.push_back(Progress_ReadSnapshot(result->Fetch(), guid)); } while (result->NextRow());
 
-                std::lock_guard<std::mutex> lock(g_mutex);
+                std::lock_guard<std::recursive_mutex> lock(g_mutex);
                 auto it = g_online.find(guid);
                 if (it == g_online.end())
                     return;
@@ -1601,7 +1617,7 @@ namespace
                     loaded.push_back(std::move(e));
                 } while (result->NextRow());
 
-                std::lock_guard<std::mutex> lock(g_mutex);
+                std::lock_guard<std::recursive_mutex> lock(g_mutex);
                 auto it = g_online.find(guid);
                 if (it == g_online.end())
                     return;
@@ -1837,7 +1853,10 @@ namespace
         // would happen.
         HoldTeleports(bot, guid, ob, sit, now);
         if (sit.dead)
+        {
+            ob.errand.trip.interrupted = true;
             return;
+        }
 
         CheckBoundaries(bot, guid, row, ob, sit, now);
         UpdateFacts(bot, ob, now);
@@ -1850,6 +1869,8 @@ namespace
 
         if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
             StepErrand(bot, ai, guid, row, ob, now);
+        else if (sit.inCombat)
+            ob.errand.trip.interrupted = true;
 
         // A plan that never came back (provider down, server restarted the
         // dispatcher) must not block the next one forever.
@@ -1933,7 +1954,7 @@ namespace
                 do { guids.push_back((*result)[0].Get<uint64>()); } while (result->NextRow());
 
                 {
-                    std::lock_guard<std::mutex> lock(g_mutex);
+                    std::lock_guard<std::recursive_mutex> lock(g_mutex);
                     ForgetRows(guids);
                 }
                 DeleteOrphans(guids);
@@ -2106,7 +2127,7 @@ namespace
             return;
 
         const uint64_t guid = player->GetGUID().GetRawValue();
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         auto it = g_rows.find(guid);
         if (it == g_rows.end() || !it->second.enrolled)
             return;
@@ -2154,7 +2175,7 @@ namespace
             return true;
 
         const uint64_t guid = bot->GetGUID().GetRawValue();
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
         Row& row  = g_rows[guid];
         row.mode  = mode;
@@ -2210,7 +2231,7 @@ namespace
     {
         if (!name)
         {
-            std::lock_guard<std::mutex> lock(g_mutex);
+            std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
             uint32_t onlineEnrolled = 0, withIdentity = 0;
             uint32_t tiers[3] = { 0, 0, 0 };
@@ -2263,7 +2284,7 @@ namespace
         Online ob;
         bool   hasRow = false;
         {
-            std::lock_guard<std::mutex> lock(g_mutex);
+            std::lock_guard<std::recursive_mutex> lock(g_mutex);
             if (auto it = g_rows.find(guid); it != g_rows.end())
             {
                 row    = it->second;
@@ -2348,7 +2369,7 @@ namespace
         uint32_t bots = 0, matched = 0, matchedCapped = 0, enrolledNow = 0;
         uint32_t tiers[3] = { 0, 0, 0 };
 
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         for (auto const& [ptrGuid, player] : ObjectAccessor::GetPlayers())
         {
             if (!player || !player->IsInWorld() || !OllamaIsBotPlayer(player))
@@ -2417,7 +2438,7 @@ namespace
         if (!bot)
             return true;
 
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         Row*    row = nullptr;
         Online* ob  = nullptr;
         if (!ControlTarget(handler, bot, row, ob))
@@ -2448,7 +2469,7 @@ namespace
         if (!bot)
             return true;
 
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         Row*    row = nullptr;
         Online* ob  = nullptr;
         if (!ControlTarget(handler, bot, row, ob))
@@ -2484,7 +2505,7 @@ namespace
         if (!bot)
             return true;
 
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         Row*    row = nullptr;
         Online* ob  = nullptr;
         if (!ControlTarget(handler, bot, row, ob))
@@ -2611,7 +2632,7 @@ void Autopilot_LoadConfig()
     AutopilotCommands_Load();
     AutopilotPlanner_ConfigureBudget(c.llmCallsPerHour, c.maxConcurrentPlans);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
     g_cfg = std::move(c);
 
     // Rules may have changed: re-evaluate every online bot on its next visit.
@@ -2703,7 +2724,7 @@ void Autopilot_Load()
         }
     }
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
     g_rows.clear();
     g_enrolledCount = 0;
     g_cappedCount   = 0;
@@ -2774,7 +2795,7 @@ bool Autopilot_IsActive()
 
 bool Autopilot_IsEnrolled(uint64_t botGuid)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
     auto it = g_rows.find(botGuid);
     return it != g_rows.end() && it->second.enrolled;
 }
@@ -2820,7 +2841,7 @@ void Autopilot_Update(uint32_t diff)
     // strategies on it indefinitely.
     if (g_wasActive && !active)
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         ReleaseAll();
     }
     g_wasActive = active;
@@ -2830,7 +2851,7 @@ void Autopilot_Update(uint32_t diff)
     if (!decisions.empty())
     {
         const uint32_t now = Progress_Now();
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         for (const AutopilotDecision& d : decisions)
         {
             if (active)
@@ -2849,7 +2870,7 @@ void Autopilot_Update(uint32_t diff)
     g_sweepTimer = 0;
 
     const uint32_t now = Progress_Now();
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     // Round-robin with a fixed budget: BotsPerSweep full visits (enrolled or
     // not yet evaluated bots), plus cheap checks of the rest -- a lookup and a
@@ -2896,7 +2917,7 @@ void Autopilot_SaveAll()
     uint32_t snapshotRetention;
     uint32_t eventRetention;
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
         SaveRowsLocked();
         snapshotRetention = g_cfg.snapshotRetention;
         eventRetention    = g_cfg.eventRetention;
@@ -2950,7 +2971,7 @@ void AutopilotPlayerScript::OnPlayerLogin(Player* player)
         return;
 
     const uint64_t guid = player->GetGUID().GetRawValue();
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     // Session test, not the AI lookup: the AI may not be attached yet (see
     // OllamaIsBotPlayer).
@@ -2975,7 +2996,7 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
         return;
 
     const uint64_t guid = player->GetGUID().GetRawValue();
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     g_realOnline.erase(guid);
     g_aboard.erase(guid);
@@ -3139,7 +3160,7 @@ void AutopilotPlayerScript::OnPlayerDeleteFromDB(CharacterDatabaseTransaction tr
                                "mod_ollama_chat_autopilot_events" })
         trans->Append(DeleteRowsSql(table, std::to_string(guid)));
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
     ForgetRows({ guid });
 }
 
@@ -3153,7 +3174,7 @@ void AutopilotGuildScript::OnAddMember(Guild* guild, Player* player, uint8& /*pl
     if (!guild || !player || OllamaIsBotPlayer(player))
         return;
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
     if (g_realGuilds.insert(guild->GetId()).second)
         OnRealGuildsChanged();
 }

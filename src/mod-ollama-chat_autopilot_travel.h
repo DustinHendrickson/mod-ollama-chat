@@ -94,12 +94,15 @@ struct AutopilotTrip
     bool                 tookOff = false;
     bool                 boarded = false;
     bool                 stepping = false;       // stepping off the deck
+    bool                 deckProbed = false;     // looked for a deck point this docking
+    bool                 deckFound  = false;
+    AutopilotTravelPoint deck;
 
     // Where the transport was at the last look, to tell when it has stopped.
     float                tx = 0.0f, ty = 0.0f;
     uint32_t             tSampleAt = 0;
 
-    uint32_t             lastUpdateAt = 0;       // to notice a gap (combat, death)
+    bool                 interrupted = false;    // a fight or a death paused the trip
 };
 
 void AutopilotTravel_LoadConfig();
