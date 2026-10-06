@@ -297,3 +297,28 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
 - **The planner's prompt template is filled by literal `{name}`
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
+
+## Monitor addon (`addon/OllamaMonitor`, `mod-ollama-chat_monitor.cpp`)
+
+A GM-only debug window. The client whispers itself on the addon channel
+(`OAPM\t<request>`); `OllamaMonitorScript::OnPlayerCanUseChat` takes it on
+the world thread and answers with addon whispers. Every page is formatted on
+the server as plain lines ("# Title", "key: value"). The client only colours
+and shows them, so a new fact needs no client change.
+
+- **State read for a page is copied out under its owner's mutex** through an
+  accessor (`Governor_GetBotDebug`, `Memory_GetDebug`, `Topics_GetDebug`,
+  `OllamaDispatch_GetTrace`, `AutopilotPlanner_LastExchange`,
+  `Autopilot_MonitorPage`). Never keep references across the lock.
+- **The chat trace and planner exchange are written by workers**, under
+  their own mutexes only. They are capped by bot count (256 and 48) so a
+  realm full of bots cannot grow them.
+- **The camera is `Player::SetViewpoint`, and it holds a raw pointer**
+  (`m_seer`) to the bot. It must be released before the bot leaves the
+  watcher's map or the world. `OnPlayerBeforeTeleport` releases it on the
+  map thread updating the bot, which is also the one updating any watcher on
+  that map. `OnPlayerLogout` releases it on logout. `Monitor_Update`
+  re-applies it, and teleports the watcher along when the map differs, but
+  never into an instance (`TeleportTo` cannot pick the bot's instance id).
+- Personality is read from `g_BotPersonalityList` directly, because
+  `GetBotPersonality` assigns and saves one when missing.

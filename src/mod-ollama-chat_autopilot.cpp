@@ -23,6 +23,7 @@
 #include "Item.h"
 #include "Log.h"
 #include "Map.h"
+#include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "QuestDef.h"
@@ -3323,4 +3324,342 @@ void AutopilotGuildScript::OnAddMember(Guild* guild, Player* player, uint8& /*pl
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     if (g_realGuilds.insert(guild->GetId()).second)
         OnRealGuildsChanged();
+}
+
+// ==========================================================================
+// Monitor addon pages. World thread (the addon bridge answers from the chat
+// handler, which runs in the session update).
+// ==========================================================================
+
+namespace
+{
+    const char* LegTypeName(AutopilotLegType t)
+    {
+        switch (t)
+        {
+            case AutopilotLegType::Walk:     return "walk";
+            case AutopilotLegType::Fly:      return "fly";
+            case AutopilotLegType::Board:    return "board";
+            case AutopilotLegType::Ride:     return "ride";
+            case AutopilotLegType::Approach: return "approach";
+            case AutopilotLegType::Trigger:  return "trigger";
+            case AutopilotLegType::Portal:   return "portal";
+        }
+        return "?";
+    }
+
+    const char* ErrandKindName(AutopilotErrandKind k)
+    {
+        switch (k)
+        {
+            case AutopilotErrandKind::Place:          return "place";
+            case AutopilotErrandKind::Service:        return "service";
+            case AutopilotErrandKind::QuestTurnIn:    return "quest turn-in";
+            case AutopilotErrandKind::QuestObjective: return "quest objective";
+        }
+        return "?";
+    }
+
+    const char* MotionName(MovementGeneratorType t)
+    {
+        switch (t)
+        {
+            case IDLE_MOTION_TYPE:     return "idle";
+            case RANDOM_MOTION_TYPE:   return "random";
+            case WAYPOINT_MOTION_TYPE: return "waypoint";
+            case CONFUSED_MOTION_TYPE: return "confused";
+            case CHASE_MOTION_TYPE:    return "chase";
+            case HOME_MOTION_TYPE:     return "home";
+            case FLIGHT_MOTION_TYPE:   return "flight";
+            case POINT_MOTION_TYPE:    return "point";
+            case FLEEING_MOTION_TYPE:  return "fleeing";
+            case FOLLOW_MOTION_TYPE:   return "follow";
+            case EFFECT_MOTION_TYPE:   return "effect";
+            case ESCORT_MOTION_TYPE:   return "escort (autopilot walk)";
+            default:                   return "other";
+        }
+    }
+
+    void Head(std::vector<std::string>& out, const std::string& title) { out.push_back("# " + title); }
+    void Kv(std::vector<std::string>& out, const std::string& key, const std::string& value)
+    {
+        out.push_back(key + ": " + (value.empty() ? std::string("-") : value));
+    }
+    std::string YesNo(bool b) { return b ? "yes" : "no"; }
+
+    std::string PointText(const AutopilotTravelPoint& p)
+    {
+        return SafeFormat("map {} ({:.0f}, {:.0f}, {:.0f})", p.map, p.x, p.y, p.z);
+    }
+
+    std::string DistanceText(Player* bot, const AutopilotTravelPoint& p)
+    {
+        if (bot->GetMapId() != p.map)
+            return "another map";
+        return SafeFormat("{:.0f} yd", bot->GetExactDist(p.x, p.y, p.z));
+    }
+
+    // Splits multi-line text (a prompt, a reply) into page lines.
+    void TextBlock(std::vector<std::string>& out, const std::string& text)
+    {
+        size_t start = 0;
+        while (start <= text.size())
+        {
+            size_t end = text.find('\n', start);
+            if (end == std::string::npos)
+                end = text.size();
+            std::string line = text.substr(start, end - start);
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            out.push_back("  " + line);
+            start = end + 1;
+        }
+    }
+
+    void TripLines(Player* bot, const AutopilotTrip& t, uint32_t now, std::vector<std::string>& out)
+    {
+        Kv(out, "active", YesNo(t.active));
+        if (!t.active)
+            return;
+        Kv(out, "now", AutopilotTravel_Describe(bot, t));
+        Kv(out, "destination", PointText(t.dest) + " - " + DistanceText(bot, t.dest) +
+                                   SafeFormat(", arrive within {:.0f} yd", t.arriveRadius));
+        Kv(out, "plans", SafeFormat("{} (no flights: {}, flew since last crossing: {}, interrupted: {})",
+                                    t.plans, YesNo(t.noFlight), YesNo(t.flown), YesNo(t.interrupted)));
+        Kv(out, "this leg", SafeFormat("{} of {}, for {}", t.leg + 1, t.legs.size(),
+                                       t.legStartedAt ? Span(now > t.legStartedAt ? now - t.legStartedAt : 0)
+                                                      : std::string("-")));
+        for (size_t i = 0; i < t.legs.size(); ++i)
+        {
+            const AutopilotLeg& l = t.legs[i];
+            out.push_back(SafeFormat("  {} {}. {} {}{}{}", i == t.leg ? ">" : " ", i + 1, LegTypeName(l.type),
+                                     l.label.empty() ? PointText(l.to) : l.label,
+                                     l.entry ? SafeFormat(" [entry {}]", l.entry) : std::string(),
+                                     l.taxiPath.empty() ? std::string()
+                                                        : SafeFormat(" [{} taxi nodes]", l.taxiPath.size())));
+        }
+
+        const AutopilotRoute& r = t.route;
+        out.push_back("  walk:");
+        Kv(out, "    routed", YesNo(t.routed));
+        if (t.routed)
+        {
+            std::string next = "-";
+            if (r.next < r.nodes.size())
+            {
+                const AutopilotRoutePoint& n = r.nodes[r.next];
+                next = SafeFormat("({:.0f}, {:.0f}, {:.0f}) {:.0f} yd away", n.x, n.y, n.z,
+                                  bot->GetExactDist(n.x, n.y, n.z));
+            }
+            Kv(out, "    route", SafeFormat("node {} of {} built | {}{}{}", r.next, r.nodes.size(),
+                                            r.complete ? "complete" : r.failed ? "FAILED" : "building",
+                                            r.waiting ? " | waiting for tiles to load" : "",
+                                            r.why.empty() ? std::string() : " | " + r.why));
+            Kv(out, "    next node", next);
+            Kv(out, "    road anchors", SafeFormat("{} of {}", std::min(r.anchor, r.anchors.size()),
+                                                   r.anchors.size()));
+            Kv(out, "    corridor", SafeFormat("corner {} of {} | reach {:.0f} yd | stalls {} | steps off slopes {}",
+                                               r.corner, r.corridor.size(), r.corridorReach, r.stalls, r.stepOffs));
+            Kv(out, "    cost", SafeFormat("{} navmesh queries | {} rebuilds", r.queries, r.rebuilds));
+            Kv(out, "    progress", SafeFormat("{} points reached | nearest {:.0f} yd, {}", t.lastReached, t.best,
+                                               t.bestAt ? Ago(t.bestAt, now) : std::string("-")));
+        }
+        Kv(out, "  vehicle", SafeFormat("boarded {} | deck found {} | stepping off {} | took off {}",
+                                        YesNo(t.boarded), YesNo(t.deckFound), YesNo(t.stepping),
+                                        YesNo(t.tookOff)));
+    }
+}
+
+std::vector<AutopilotMonitorRow> Autopilot_MonitorList()
+{
+    std::vector<AutopilotMonitorRow> out;
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    for (uint64_t guid : g_roster)
+    {
+        auto rowIt = g_rows.find(guid);
+        if (rowIt == g_rows.end() || !rowIt->second.enrolled)
+            continue;
+        Player* bot = ObjectAccessor::FindConnectedPlayer(ObjectGuid(guid));
+        if (!bot || !bot->IsInWorld())
+            continue;
+
+        const Online* ob = OnlineOf(guid);
+        AutopilotMonitorRow m;
+        m.guid  = guid;
+        m.name  = bot->GetName();
+        m.level = bot->GetLevel();
+        m.cls   = bot->getClass();
+        m.zone  = bot->GetZoneId();
+        m.tier  = ob ? TierName(ob->tier) : "-";
+        m.doing = rowIt->second.doing;
+
+        if (bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+            m.state = "corpse run";
+        else if (!bot->IsAlive())
+            m.state = "dead";
+        else if (bot->IsInCombat())
+            m.state = "fighting";
+        else if (bot->IsInFlight())
+            m.state = "flying";
+        else if (bot->GetTransport())
+            m.state = "aboard";
+        else if (ob && ob->errand.active)
+            m.state = "travelling";
+        else if (ob && ob->planPending)
+            m.state = "waiting on the model";
+        else
+            m.state = "idle";
+        out.push_back(std::move(m));
+    }
+    return out;
+}
+
+bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std::string>& out)
+{
+    const uint64_t guid = bot->GetGUID().GetRawValue();
+    const uint32_t now  = Progress_Now();
+    Row    row;
+    Online ob;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        auto it = g_rows.find(guid);
+        if (it == g_rows.end())
+            return false;
+        row = it->second;
+        if (const Online* on = OnlineOf(guid))
+            ob = *on;
+    }
+    PlayerbotAI* ai = BotAI(bot);
+
+    if (page == "overview")
+    {
+        Head(out, "Bot");
+        Kv(out, "where", SafeFormat("{} - map {} ({:.1f}, {:.1f}, {:.1f}){}", Progress_ZoneName(bot->GetZoneId()),
+                                    bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                                    bot->GetTransport() ? " - on a transport" : ""));
+        Kv(out, "health", SafeFormat("{}% | power {}/{} | gold {}", uint32_t(bot->GetHealthPct()),
+                                     bot->GetPower(bot->getPowerType()), bot->GetMaxPower(bot->getPowerType()),
+                                     bot->GetMoney() / 10000));
+        std::string attackers;
+        for (Unit* u : bot->getAttackers())
+            if (u)
+                attackers += (attackers.empty() ? "" : ", ") + u->GetName();
+        Kv(out, "combat", SafeFormat("{} | attacked by {} | target {}", YesNo(bot->IsInCombat()),
+                                     attackers.empty() ? std::string("nobody") : attackers,
+                                     bot->GetVictim() ? bot->GetVictim()->GetName() : std::string("none")));
+        Kv(out, "body", SafeFormat("{}{}{}{}", bot->IsAlive() ? "alive" : "dead",
+                                   bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) ? " (ghost)" : "",
+                                   bot->IsSitState() ? " | sitting" : "", bot->IsInFlight() ? " | in flight" : ""));
+        Kv(out, "movement", SafeFormat("{} | moving {}", MotionName(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()),
+                                       YesNo(bot->isMoving())));
+        if (ai)
+        {
+            const BotState state = ai->GetState();
+            Kv(out, "playerbots engine", state == BOT_STATE_COMBAT ? "combat" : state == BOT_STATE_DEAD ? "dead" : "non-combat");
+            Kv(out, "live strategies", DescribeLiveStrategies(ai));
+            Kv(out, "now", DescribeActivity(bot, ob));
+        }
+
+        Head(out, "Autopilot");
+        Kv(out, "enrolled", SafeFormat("{} | mode {} | source {} | tier {}", YesNo(row.enrolled), ModeName(row.mode),
+                                       row.source.empty() ? "-" : row.source, TierName(ob.tier)));
+        Kv(out, "planning", SafeFormat("{}{}{} | last plan {} | next due {}",
+                                       ob.planPending ? "waiting on the model since " + Ago(ob.planSubmittedAt, now)
+                                                      : std::string("idle"),
+                                       ob.quickPlan ? " | quick replan asked" : "",
+                                       ob.urgentPlan ? " | urgent" : "",
+                                       row.lastPlanAt ? Ago(row.lastPlanAt, now) : std::string("never"),
+                                       row.planUntil > now ? "in " + Span(row.planUntil - now) : std::string("now")));
+        Kv(out, "identity", row.HasIdentity() ? SafeFormat("{} ({})", row.style, row.outlook) : std::string());
+        Kv(out, "profile", row.profile);
+        Kv(out, "doing", row.doing.empty() ? std::string()
+                                           : row.doing + (row.doingSince ? " (since " + Ago(row.doingSince, now) + ")" : ""));
+        Kv(out, "decided by", row.decidedBy);
+        Kv(out, "goal", row.goal.Active() ? Goal_Describe(bot, row.goal, Counters(row)) : std::string());
+        Kv(out, "last reason", row.lastReason);
+        Kv(out, "model's strategies", row.strategies.empty() ? std::string() : FormatStrategies(row.strategies));
+        for (const std::string& r : row.lastResults)
+            Kv(out, "order", r);
+
+        Head(out, "Watchdogs");
+        Kv(out, "last alert", ob.lastAlert.empty() ? std::string()
+                                                   : ob.lastAlert + " (" + Ago(ob.lastAlertAt, now) + ")");
+        Kv(out, "last busy", ob.lastBusyAt ? Ago(ob.lastBusyAt, now) : std::string());
+        Kv(out, "last fight", ob.lastCombatAt ? Ago(ob.lastCombatAt, now) : std::string());
+        Kv(out, "teleport hold", ob.teleportDeferredAt ? "pushed back " + Ago(ob.teleportDeferredAt, now) : std::string());
+        Kv(out, "death", ob.deadSince ? SafeFormat("dead {} | revive held {} | corpse run {}",
+                                                   Ago(ob.deadSince, now), YesNo(ob.reviveHeld),
+                                                   YesNo(ob.corpseTrip.active))
+                                      : std::string());
+        Kv(out, "last hour", RewardSummary(ob, now));
+        for (const auto& [at, text] : ob.temptations)
+            Kv(out, "tempted " + Ago(at, now), text);
+        Kv(out, "since enrollment", SafeFormat("{} kills, {} deaths, {} quests, {} dungeons", row.killsTotal,
+                                               row.deathsTotal, row.questsTotal, row.dungeonsTotal));
+        return true;
+    }
+
+    if (page == "travel")
+    {
+        Head(out, "Errand");
+        Kv(out, "active", YesNo(ob.errand.active));
+        if (ob.errand.active)
+        {
+            Kv(out, "kind", ErrandKindName(ob.errand.kind));
+            Kv(out, "bound for", ob.errand.label);
+            Kv(out, "started", ob.errand.startedAt ? Ago(ob.errand.startedAt, now) : std::string());
+            if (ob.errand.npcEntry)
+                Kv(out, "npc entry", std::to_string(ob.errand.npcEntry));
+            if (ob.errand.questId)
+                Kv(out, "quest", std::to_string(ob.errand.questId));
+        }
+        Head(out, "Trip");
+        TripLines(bot, ob.errand.trip, now, out);
+        if (ob.corpseTrip.active || ob.corpseRetryAt > now)
+        {
+            Head(out, "Corpse run");
+            TripLines(bot, ob.corpseTrip, now, out);
+            if (ob.corpseRetryAt > now)
+                Kv(out, "retry", "in " + Span(ob.corpseRetryAt - now));
+        }
+        return true;
+    }
+
+    if (page == "planner")
+    {
+        Head(out, "Last exchange with the model");
+        AutopilotExchange ex;
+        if (!AutopilotPlanner_LastExchange(guid, ex))
+        {
+            out.push_back("none kept - the model has not been asked about this bot recently");
+            return true;
+        }
+        Kv(out, "asked", Ago(ex.submittedAt, now));
+        Kv(out, "answered", ex.answeredAt ? SafeFormat("{} ({} ms)", Ago(ex.answeredAt, now), ex.latencyMs)
+                                          : std::string("still waiting"));
+        if (!ex.error.empty())
+            Kv(out, "error", ex.error);
+        Head(out, "Reply (raw)");
+        TextBlock(out, ex.reply.empty() ? std::string("(none)") : ex.reply);
+        Head(out, "Prompt");
+        TextBlock(out, ex.prompt);
+        return true;
+    }
+
+    if (page == "events")
+    {
+        Head(out, "Orders and what they did");
+        for (const std::string& r : row.lastResults)
+            out.push_back("  " + r);
+        Head(out, "Recent decisions (newest last)");
+        for (const std::string& d : ob.decisions)
+            out.push_back("  " + d);
+        Head(out, "Diary (newest last)");
+        for (const ProgressEvent& e : ob.events)
+            out.push_back(SafeFormat("  [{}] {}: {}", Ago(e.at, now), e.type, e.detail));
+        return true;
+    }
+
+    out.push_back("unknown page: " + page);
+    return true;
 }

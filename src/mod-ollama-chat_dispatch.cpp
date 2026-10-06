@@ -24,10 +24,13 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <ctime>
 #include <deque>
+#include <unordered_map>
 #include <list>
 #include <mutex>
 #include <thread>
@@ -91,6 +94,57 @@ namespace
     std::mutex  g_errorMutex;
     std::string g_lastError;
 
+    // --- debug trace (monitor addon) ---------------------------------------
+    // Workers and the world thread both write it, under its own mutex only.
+
+    constexpr size_t kTraceBots  = 256;
+    constexpr size_t kTraceLines = 15;
+    std::mutex                                     g_traceMutex;
+    std::unordered_map<uint64_t, OllamaChatTrace> g_traces;
+
+    uint32_t TraceNow() { return uint32_t(std::time(nullptr)); }
+
+    OllamaChatTrace& TraceOfLocked(uint64_t botGuid)
+    {
+        if (g_traces.size() >= kTraceBots && !g_traces.count(botGuid))
+        {
+            auto oldest = std::min_element(g_traces.begin(), g_traces.end(),
+                [](const auto& a, const auto& b) { return a.second.lastAt < b.second.lastAt; });
+            g_traces.erase(oldest);
+        }
+        OllamaChatTrace& t = g_traces[botGuid];
+        t.lastAt = TraceNow();
+        return t;
+    }
+
+    void TraceLine(const OllamaChatRequest& r, const std::string& text, const std::string& outcome)
+    {
+        OllamaChatTraceLine line;
+        line.at          = TraceNow();
+        line.source      = uint8_t(r.source);
+        line.channelName = r.channelName;
+        line.targetGuid  = r.targetGuid;
+        line.chainDepth  = r.chainDepth;
+        line.heard       = r.originMessage;
+        line.text        = text;
+        line.outcome     = outcome;
+
+        std::lock_guard<std::mutex> lock(g_traceMutex);
+        OllamaChatTrace& t = TraceOfLocked(r.botGuid);
+        t.lines.push_back(std::move(line));
+        while (t.lines.size() > kTraceLines)
+            t.lines.pop_front();
+    }
+
+    void TraceExchange(uint64_t botGuid, const std::string& prompt, const std::string& raw, uint64_t latencyMs)
+    {
+        std::lock_guard<std::mutex> lock(g_traceMutex);
+        OllamaChatTrace& t = TraceOfLocked(botGuid);
+        t.lastPrompt    = prompt;
+        t.lastRaw       = raw;
+        t.lastLatencyMs = latencyMs;
+    }
+
     void RecordError(const std::string& what)
     {
         ++g_totalFailed;
@@ -103,10 +157,13 @@ namespace
     void RunChatTask(const Task& task)
     {
         OllamaApiResult api = QueryOllama(task.request.prompt, task.request.kind);
+        TraceExchange(task.request.botGuid, task.request.prompt, api.ok ? api.text : "(error) " + api.error,
+                      api.latencyMs);
 
         if (!api.ok)
         {
             RecordError(api.error);
+            TraceLine(task.request, std::string(), "failed: " + api.error);
             return;
         }
 
@@ -130,6 +187,7 @@ namespace
         if (text.empty())
         {
             ++g_droppedEmpty;
+            TraceLine(task.request, std::string(), "nothing usable after cleanup (see the raw reply)");
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
                          "[Ollama Chat] Bot {} produced nothing usable after cleanup.",
@@ -357,6 +415,7 @@ namespace
         // as anti-repetition working.
         if (!directAddress && Governor_IsRepetitive(botGuid, c.request.scopeKey, c.text))
         {
+            TraceLine(c.request, c.text, "dropped: repeats something said recently");
             ++g_droppedGovernor;
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
@@ -367,6 +426,7 @@ namespace
 
         if (!Governor_TryConsumeSend(botGuid, c.request.scopeKey, directAddress))
         {
+            TraceLine(c.request, c.text, "dropped: cooldown or rate limit");
             ++g_droppedGovernor;
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
@@ -378,6 +438,7 @@ namespace
         Channel* channel = nullptr;
         if (!RouteMessage(bot, botAI, c, world, channel))
         {
+            TraceLine(c.request, c.text, "dropped: nowhere to send it");
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
                          "[Ollama Chat] Bot {} had nowhere to send its reply ({}).",
@@ -387,6 +448,7 @@ namespace
 
         Governor_RecordUtterance(botGuid, c.request.scopeKey, c.text);
         ++g_totalDelivered;
+        TraceLine(c.request, c.text, "said");
 
         // This bot is now in a conversation with whoever it just answered, so
         // their next line in this scope is a turn in it rather than ambient
@@ -790,4 +852,32 @@ Channel* OllamaResolveZoneChannel(Player* bot, uint32_t chatChannelId)
     }
 
     return nullptr;
+}
+
+bool OllamaDispatch_GetTrace(uint64_t botGuid, OllamaChatTrace& out)
+{
+    std::lock_guard<std::mutex> lock(g_traceMutex);
+    auto it = g_traces.find(botGuid);
+    if (it == g_traces.end())
+        return false;
+    out = it->second;
+    return true;
+}
+
+uint32_t OllamaDispatch_PendingFor(uint64_t botGuid)
+{
+    uint32_t n = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_queueMutex);
+        for (const Task& t : g_queue)
+            if (t.request.botGuid == botGuid)
+                ++n;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_doneMutex);
+        for (const Completion& c : g_done)
+            if (c.request.botGuid == botGuid)
+                ++n;
+    }
+    return n;
 }

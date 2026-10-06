@@ -627,3 +627,19 @@ void Memory_RunRelationshipUpdate(uint64_t botGuid, uint64_t otherGuid,
                  "[Ollama Chat] Bot {} relationship with {} updated: {}",
                  botGuid, otherName, rel.description);
 }
+
+bool Memory_GetDebug(uint64_t botGuid, BotMemoryDebug& out)
+{
+    // Not nested: HistoryTokens takes the conversation mutex on its own.
+    out.historyTokens = HistoryTokens(botGuid);
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_state.find(botGuid);
+    if (it == g_state.end())
+        return out.historyTokens > 0;
+    out.memories   = it->second.memories;
+    out.condensing = it->second.condensing;
+    for (const auto& [other, rel] : it->second.relationships)
+        out.relationships.push_back(rel);
+    return true;
+}

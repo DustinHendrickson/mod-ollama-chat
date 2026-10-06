@@ -2569,3 +2569,31 @@ OllamaChat.Autopilot.SnapshotRetention = 500
 #        Events kept per bot (newest first). 0 = no cap.
 #        Default: 300
 OllamaChat.Autopilot.EventRetention = 300
+
+###############################################################################
+#
+#   OLLAMA CHAT - MONITOR ADDON
+#
+# The OllamaMonitor client addon (addon/OllamaMonitor, copy it into
+# Interface/AddOns) shows every online autopilot bot, and for the one you
+# click: its live status, its trip and route, the model's last prompt and raw
+# reply, its chat replies (and why any were dropped), memories, relationships
+# and sentiment. It can follow a bot with your camera. Type /om in game.
+#
+# The addon talks to the server over addon whispers to yourself; nothing is
+# sent to other players.
+###############################################################################
+
+#    OllamaChat.Monitor.Enable
+#        Answer the OllamaMonitor addon. With 0 the addon reports that the
+#        monitor is turned off.
+#        Default: 1
+OllamaChat.Monitor.Enable = 1
+
+#    OllamaChat.Monitor.MinSecurity
+#        Lowest account security level that may use the monitor: 0 player,
+#        1 moderator, 2 gamemaster, 3 administrator. Its pages show prompts,
+#        memories and every bot's position, and "Teleport to" moves you, so
+#        keep it at GM level or above.
+#        Default: 3
+OllamaChat.Monitor.MinSecurity = 3

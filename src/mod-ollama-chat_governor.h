@@ -3,6 +3,7 @@
 
 #include "ObjectGuid.h"
 #include <string>
+#include <vector>
 #include <cstdint>
 
 // --------------------------------------------------------------------------
@@ -110,5 +111,21 @@ struct GovernorStats
     uint32_t blockedNoAudience;
 };
 GovernorStats Governor_GetStats();
+
+// Per-bot pacing state for the monitor addon. Seconds are -1 for "never".
+struct GovernorConversation
+{
+    uint64_t    playerGuid = 0;
+    std::string scopeKey;
+    double      secondsAgo = 0.0;
+};
+struct GovernorBotDebug
+{
+    double   sinceSend  = -1.0;
+    double   sinceEvent = -1.0;
+    uint32_t remembered = 0;   // utterances held for the repetition check
+    std::vector<GovernorConversation> conversations;
+};
+bool Governor_GetBotDebug(ObjectGuid bot, GovernorBotDebug& out);
 
 #endif // MOD_OLLAMA_CHAT_GOVERNOR_H

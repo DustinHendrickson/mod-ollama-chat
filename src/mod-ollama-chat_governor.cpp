@@ -655,3 +655,22 @@ GovernorStats Governor_GetStats()
     out.sendsLastMinute = static_cast<uint32_t>(g_globalSends.size());
     return out;
 }
+
+bool Governor_GetBotDebug(ObjectGuid bot, GovernorBotDebug& out)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_bots.find(bot.GetRawValue());
+    if (it == g_bots.end())
+        return false;
+
+    const TimePoint now = Clock::now();
+    auto since = [&](TimePoint t) { const double s = SecondsSince(t, now); return s >= 1e9 ? -1.0 : s; };
+    const BotState& b = it->second;
+    out.sinceSend  = since(b.lastSend);
+    out.sinceEvent = since(b.lastEvent);
+    out.remembered = uint32_t(b.history.size());
+    for (const auto& [player, scopes] : b.conversations)
+        for (const auto& [scope, when] : scopes)
+            out.conversations.push_back({ player, scope, since(when) });
+    return true;
+}

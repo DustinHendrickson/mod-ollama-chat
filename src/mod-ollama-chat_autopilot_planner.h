@@ -127,6 +127,20 @@ struct AutopilotPlannerStats
 };
 AutopilotPlannerStats AutopilotPlanner_GetStats();
 
+// The last planner exchange for a bot, for the debug monitor: the prompt as
+// sent and the model's raw reply (or the error). Kept for the most recent
+// few dozen bots only. Any thread.
+struct AutopilotExchange
+{
+    std::string prompt;
+    std::string reply;
+    std::string error;
+    uint32_t    submittedAt = 0;   // Unix seconds
+    uint32_t    answeredAt  = 0;   // 0 while waiting
+    uint64_t    latencyMs   = 0;
+};
+bool AutopilotPlanner_LastExchange(uint64_t botGuid, AutopilotExchange& out);
+
 // Parse a raw model reply exactly as the worker does.
 AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& reply);
 

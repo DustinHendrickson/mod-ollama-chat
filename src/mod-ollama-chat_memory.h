@@ -93,4 +93,14 @@ std::string Memory_BuildRelationshipPrompt(Player* bot, uint64_t otherGuid,
 // approximation, which is accurate enough for a budget.
 uint32_t Memory_EstimateTokens(const std::string& text);
 
+// Copy of a bot's memory for the monitor addon. Any thread.
+struct BotMemoryDebug
+{
+    std::vector<BotMemoryEntry>  memories;
+    std::vector<BotRelationship> relationships;
+    bool     condensing     = false;
+    uint32_t historyTokens  = 0;   // raw conversation history held, toward the condensation limit
+};
+bool Memory_GetDebug(uint64_t botGuid, BotMemoryDebug& out);
+
 #endif // MOD_OLLAMA_CHAT_MEMORY_H

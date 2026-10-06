@@ -434,6 +434,55 @@ Visit the [Personality Packs Discussion Board](https://github.com/DustinHendrick
 
 For detailed logs of bot responses, prompt generation, and LLM interactions, enable debug mode via your server logs or module-specific settings.
 
+### The Ollama Monitor addon
+
+`addon/OllamaMonitor` is a client addon for WoW 3.3.5a that shows what the
+bots are doing, live, without reading logs.
+
+**Install:** copy the `addon/OllamaMonitor` folder into your client's
+`Interface/AddOns` folder. Log in on an account at
+`OllamaChat.Monitor.MinSecurity` (administrator by default), then type `/om`.
+
+**The window:**
+- **Left:** every online autopilot bot, with its class, level and what it is
+  doing (fighting, travelling, waiting on the model, idle, ...). The box at
+  the top filters by name, zone, state or plan. Hover over a bot for its
+  current plan; click it to open its pages.
+- **Right**, one page at a time, refreshed automatically:
+  - **Overview:** where it is, health, combat and attackers, its movement
+    type, playerbots' engine and live strategies, the model's identity, plan,
+    goal, reason and last orders, and the watchdogs (alerts, deaths,
+    teleport holds).
+  - **Travel:** the errand, every leg of the trip with the current one marked,
+    and the route builder's state: next node, road anchors, corridor, stalls,
+    slope step-offs, navmesh queries spent.
+  - **Planner:** the last prompt sent to the model for this bot, and its raw
+    reply or error.
+  - **Chat:** personality, pacing (cooldowns, conversations), queued replies,
+    the bot's recent replies with what each was answering and what became of
+    it (said, or why it was dropped), the conversation history kept for
+    prompts, and the last chat prompt and raw reply.
+  - **Mind:** memories, relationships, sentiment toward players, recent topics
+    and witnessed events.
+  - **Events:** orders and their results, recent decisions, the diary.
+- **Buttons:**
+  - **Follow camera** puts your camera on the bot, the way Mind Vision
+    does. Your own character stays where it is. When the bot changes map,
+    you are teleported along. A dungeon can't be followed: the camera
+    waits until the bot comes out.
+  - **Teleport to** moves you to the bot.
+  - **Replan now** and **Status to chat** run the matching
+    `.ollama autopilot` command.
+  - **Plain text** turns off colours, so text copies cleanly. Every page
+    is selectable, and Ctrl+C copies it.
+- **Whisper:** talks to the bot through the normal chat system. Its answer
+  shows up on the Chat page.
+
+**Slash commands:**
+- `/om` opens or closes the window.
+- `/om stop` releases the camera.
+- `/om pause` and `/om resume` stop and restart the auto refresh.
+
 
 
 ## Conversation Control

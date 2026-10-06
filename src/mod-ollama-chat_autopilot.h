@@ -5,6 +5,8 @@
 #include "ScriptMgr.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 class Player;
 
@@ -61,6 +63,25 @@ bool Autopilot_IsActive();
 
 // `.ollama autopilot ...`
 Acore::ChatCommands::ChatCommandTable const& Autopilot_CommandTable();
+
+// For the monitor addon (mod-ollama-chat_monitor.cpp). World thread only.
+struct AutopilotMonitorRow
+{
+    uint64_t    guid  = 0;
+    std::string name;
+    uint8_t     level = 0;
+    uint8_t     cls   = 0;
+    uint32_t    zone  = 0;
+    std::string tier;
+    std::string state;    // "fighting", "dead", "travelling", "waiting on the model", "idle", ...
+    std::string doing;    // the model's own label
+};
+std::vector<AutopilotMonitorRow> Autopilot_MonitorList();
+
+// Lines for one page of the monitor ("overview", "travel", "planner",
+// "events"). "# Title" lines head a section, "key: value" lines are facts.
+// False when the bot has never been on autopilot.
+bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std::string>& lines);
 
 // Login/logout roster plus the progress hooks.
 class AutopilotPlayerScript : public PlayerScript

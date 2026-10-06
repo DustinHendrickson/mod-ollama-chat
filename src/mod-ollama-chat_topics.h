@@ -3,6 +3,8 @@
 
 #include "ObjectGuid.h"
 #include <string>
+#include <utility>
+#include <vector>
 #include <cstdint>
 
 class Player;
@@ -69,5 +71,10 @@ void Topics_BroadcastEventToNearby(Player* actor, const std::string& text, float
 
 void Topics_ForgetBot(ObjectGuid botGuid);
 void Topics_Update();     // expire old memories
+
+// For the monitor addon: topic keys used lately (oldest first) and witnessed
+// events with their age in seconds. Any thread.
+bool Topics_GetDebug(ObjectGuid botGuid, std::vector<std::string>& recentKeys,
+                     std::vector<std::pair<std::string, uint32_t>>& witnessed);
 
 #endif // MOD_OLLAMA_CHAT_TOPICS_H

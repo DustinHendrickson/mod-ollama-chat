@@ -818,3 +818,18 @@ void Topics_Update()
                  : std::next(it);
     }
 }
+
+bool Topics_GetDebug(ObjectGuid botGuid, std::vector<std::string>& recentKeys,
+                     std::vector<std::pair<std::string, uint32_t>>& witnessed)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_state.find(botGuid.GetRawValue());
+    if (it == g_state.end())
+        return false;
+    const Clock::time_point now = Clock::now();
+    recentKeys.assign(it->second.recentKeys.begin(), it->second.recentKeys.end());
+    for (const WitnessedEvent& e : it->second.memory)
+        witnessed.emplace_back(e.text,
+            uint32_t(std::chrono::duration_cast<std::chrono::seconds>(now - e.when).count()));
+    return true;
+}

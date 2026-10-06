@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_autopilot.h"
+#include "mod-ollama-chat_monitor.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_events.h"
@@ -38,6 +39,9 @@ void Addmod_ollama_chatScripts()
     // Autopilot: bot roster, progress diary and the `autopilot` strategy.
     new AutopilotPlayerScript();
     new AutopilotGuildScript();
+
+    // Monitor addon bridge: bot list, debug pages, camera follow.
+    new OllamaMonitorScript();
 
     new OllamaChatConfigCommand();
 }

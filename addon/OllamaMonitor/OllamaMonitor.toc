@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Ollama Monitor
+## Notes: Live debug view of mod-ollama-chat autopilot bots: status, travel, the model's prompts and replies, chat and memory. Follow a bot with the camera. /om to open.
+## Author: Dustin Hendrickson
+## Version: 1.0
+## SavedVariables: OllamaMonitorDB
+
+OllamaMonitor.lua

@@ -5,6 +5,7 @@
 #include "mod-ollama-chat_handler.h"
 
 #include "ObjectGuid.h"
+#include <deque>
 #include <functional>
 #include <string>
 #include <cstdint>
@@ -144,5 +145,31 @@ struct OllamaDispatchStats
     std::string lastError;
 };
 OllamaDispatchStats OllamaDispatch_GetStats();
+
+// Debug trace for the monitor addon: what a bot's chat replies came to, kept
+// for the most recently active few hundred bots. Any thread.
+struct OllamaChatTraceLine
+{
+    uint32_t    at = 0;            // Unix seconds
+    uint8_t     source = 0;        // ChatChannelSourceLocal
+    std::string channelName;
+    uint64_t    targetGuid = 0;
+    uint8_t     chainDepth = 0;
+    std::string heard;             // the message it answered, if any
+    std::string text;              // what it said (or would have said)
+    std::string outcome;           // "said", "repetitive", "cooldown", "failed: ...", ...
+};
+struct OllamaChatTrace
+{
+    std::deque<OllamaChatTraceLine> lines;   // oldest first
+    std::string lastPrompt;
+    std::string lastRaw;
+    uint32_t    lastAt = 0;
+    uint64_t    lastLatencyMs = 0;
+};
+bool OllamaDispatch_GetTrace(uint64_t botGuid, OllamaChatTrace& out);
+
+// Chat requests for this bot still queued or waiting to be delivered.
+uint32_t OllamaDispatch_PendingFor(uint64_t botGuid);
 
 #endif // MOD_OLLAMA_CHAT_DISPATCH_H

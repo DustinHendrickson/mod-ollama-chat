@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_random.h"
+#include "mod-ollama-chat_monitor.h"
 #include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_dispatch.h"
@@ -209,6 +210,7 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
     // Before the master switch: with the module turned off, autopilot still
     // has to hand its bots back to playerbots and flush its diary.
     Autopilot_Update(diff);
+    Monitor_Update(diff);
 
     if (!g_Enable)
         return;
@@ -399,4 +401,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
         reschedule();
     }
+}
+
+time_t OllamaRandomChatter_NextTime(ObjectGuid botGuid)
+{
+    std::lock_guard<std::mutex> lock(g_scheduleMutex);
+    auto it = g_nextRandomChatTime.find(botGuid.GetRawValue());
+    return it == g_nextRandomChatTime.end() ? 0 : it->second;
 }

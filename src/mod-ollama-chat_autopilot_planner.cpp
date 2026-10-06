@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <mutex>
+#include <unordered_map>
 
 namespace
 {
@@ -98,6 +100,41 @@ namespace
     std::mutex                     g_doneMutex;
     std::vector<AutopilotDecision> g_done;
     std::string                    g_lastError;
+
+    // Last exchange per bot, for the debug monitor. Workers write the reply
+    // under this mutex only; nothing else here is shared with them.
+    constexpr size_t kExchangeCap = 48;
+    std::mutex                                       g_exchangeMutex;
+    std::unordered_map<uint64_t, AutopilotExchange> g_exchanges;
+
+    uint32_t UnixNow() { return uint32_t(std::time(nullptr)); }
+
+    void RecordPrompt(uint64_t botGuid, const std::string& prompt)
+    {
+        std::lock_guard<std::mutex> lock(g_exchangeMutex);
+        if (g_exchanges.size() >= kExchangeCap && !g_exchanges.count(botGuid))
+        {
+            auto oldest = std::min_element(g_exchanges.begin(), g_exchanges.end(),
+                [](const auto& a, const auto& b) { return a.second.submittedAt < b.second.submittedAt; });
+            g_exchanges.erase(oldest);
+        }
+        AutopilotExchange& e = g_exchanges[botGuid];
+        e = AutopilotExchange();
+        e.prompt      = prompt;
+        e.submittedAt = UnixNow();
+    }
+
+    void RecordReply(uint64_t botGuid, const std::string& reply, const std::string& error, uint64_t latencyMs)
+    {
+        std::lock_guard<std::mutex> lock(g_exchangeMutex);
+        auto it = g_exchanges.find(botGuid);
+        if (it == g_exchanges.end())
+            return;
+        it->second.reply      = reply;
+        it->second.error      = error;
+        it->second.latencyMs  = latencyMs;
+        it->second.answeredAt = UnixNow();
+    }
 
     void RefillLocked()
     {
@@ -233,6 +270,7 @@ namespace
             decision = AutopilotPlanner_Parse(botGuid, api.text);
         }
         decision.latencyMs = api.latencyMs;
+        RecordReply(botGuid, api.text, decision.ok ? std::string() : decision.error, api.latencyMs);
 
         if (decision.ok)
             ++g_parsed;
@@ -350,6 +388,7 @@ bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
         g_tokens -= 1.0f;
     }
 
+    RecordPrompt(botGuid, prompt);
     ++g_inFlight;
     const bool queued = OllamaDispatch_SubmitJob(
         [botGuid, prompt = std::move(prompt)]()
@@ -367,6 +406,7 @@ bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
                 AutopilotDecision failed;
                 failed.botGuid = botGuid;
                 failed.error   = std::string("exception: ") + e.what();
+                RecordReply(botGuid, std::string(), failed.error, 0);
                 ++g_failed;
                 std::lock_guard<std::mutex> lock(g_doneMutex);
                 g_lastError = failed.error;
@@ -414,6 +454,16 @@ AutopilotPlannerStats AutopilotPlanner_GetStats()
         s.lastError = g_lastError;
     }
     return s;
+}
+
+bool AutopilotPlanner_LastExchange(uint64_t botGuid, AutopilotExchange& out)
+{
+    std::lock_guard<std::mutex> lock(g_exchangeMutex);
+    auto it = g_exchanges.find(botGuid);
+    if (it == g_exchanges.end())
+        return false;
+    out = it->second;
+    return true;
 }
 
 AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& reply)
