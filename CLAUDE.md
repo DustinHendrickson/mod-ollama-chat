@@ -257,7 +257,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   time. The route is built lazily, a few queries per visit and a
   few hundred yards ahead, because mmap tiles load only with their grid: a
   query far ahead of the bot can fail just because the tile is not loaded, so
-  a failure counts only once the bot is near it.
+  a failure counts only once the bot is near it. For a player source, the
+  core answers a query ending off the mesh (inside a wall) exactly like one
+  ending on an unloaded tile (NOT_USING_PATH). So corridor targets and
+  shortened steps are snapped onto walkable ground first (`SnapToMesh`,
+  Detour's `findNearestPoly` on the map's own query object, world thread),
+  and `TileLoaded` tells the two failures apart. Without that, a bot inside
+  the Exodar never got a route out.
 - **Travel** (`mod-ollama-chat_autopilot_travel.cpp`) plans legs and replans
   after every flight or crossing. Flights call `ActivateTaxiPathTo` directly
   with a path from TravelMgr's flight-master cache and `FindTaxiPath`. The

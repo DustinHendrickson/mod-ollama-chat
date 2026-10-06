@@ -61,6 +61,42 @@ namespace
     // A corner's XY is the useful part; its Z is whatever surface Detour
     // snapped to, often the hillside above a road. Search down from just above
     // the height we are walking at instead.
+    // Is the navmesh tile under (x, y) loaded? The core answers a query that
+    // ends on an unloaded tile and one that ends off the mesh (inside a wall,
+    // in rock under a building) the same way, with a NOT_USING_PATH shortcut;
+    // only the first is fixed by waiting.
+    bool TileLoaded(Map* map, float x, float y)
+    {
+        dtNavMesh const* mesh = map ? map->GetMapCollisionData().GetMMapData().GetNavMesh() : nullptr;
+        if (!mesh)
+            return false;
+        const float point[3] = { y, 0.0f, x };
+        int tx = -1, ty = -1;
+        mesh->calcTileLoc(point, &tx, &ty);
+        return tx >= 0 && ty >= 0 && mesh->getTileAt(tx, ty, 0) != nullptr;
+    }
+
+    // Move an aim point onto the nearest walkable navmesh polygon within the
+    // box -- the bot's own filter's ground, no steep slopes. A point aimed
+    // straight ahead from inside a building lands in its walls.
+    bool SnapToMesh(Map* map, AutopilotRoutePoint& p, float horizontal, float vertical)
+    {
+        dtNavMeshQuery const* query = map ? map->GetMapCollisionData().GetMMapData().GetNavMeshQuery() : nullptr;
+        if (!query || !TileLoaded(map, p.x, p.y))
+            return false;
+        dtQueryFilter filter;
+        filter.setIncludeFlags(NAV_GROUND | NAV_WATER);
+        filter.setExcludeFlags(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP);
+        const float center[3]  = { p.y, p.z, p.x };
+        const float extents[3] = { horizontal, vertical, horizontal };
+        dtPolyRef ref = 0;
+        float nearest[3] = { 0.0f, 0.0f, 0.0f };
+        if (dtStatusFailed(query->findNearestPoly(center, extents, &filter, &ref, nearest)) || !ref)
+            return false;
+        p = { nearest[2], nearest[0], nearest[1] };
+        return true;
+    }
+
     AutopilotRoutePoint Reseat(Map* map, const AutopilotRoutePoint& p, float walkingZ)
     {
         if (map)
@@ -257,6 +293,11 @@ namespace
                                              r.cursor.y + (goal.y - r.cursor.y) * t, r.cursor.z }, r.cursor.z);
         }
 
+        // Aim at walkable ground: a point straight ahead from inside a
+        // building (the Exodar, a mine) is in its walls, and the query then
+        // fails exactly as if the tile were not loaded.
+        SnapToMesh(bot->GetMap(), target, 20.0f, 30.0f);
+
         if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, target.x, target.y, target.z, false))
         {
             r.why = "invalid coordinates";
@@ -289,7 +330,9 @@ namespace
                 r.retryCorridor = true;
                 return Step::Progress;   // corridor still empty: the next query retries
             }
-            r.why = "the way ahead is not loaded yet";
+            r.why = TileLoaded(bot->GetMap(), target.x, target.y)
+                ? "no walkable ground found toward it from here"
+                : "the way ahead is not loaded yet";
             return Step::Exhausted;
         }
         r.corridorReach = CORRIDOR_MAX;
@@ -388,6 +431,7 @@ namespace
             step = Reseat(bot->GetMap(), { r.cursor.x + (aim.x - r.cursor.x) * t,
                                            r.cursor.y + (aim.y - r.cursor.y) * t,
                                            r.cursor.z + (aim.z - r.cursor.z) * t }, r.cursor.z);
+            SnapToMesh(bot->GetMap(), step, 8.0f, 15.0f);   // a shortened step can land in a wall too
         }
 
         if (SmoothLeg(bot, r, step))

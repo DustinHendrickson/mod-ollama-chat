@@ -300,7 +300,10 @@ built lazily:
    a corridor cannot get closer to is skipped.
 2. **Corridor.** `findStraightPath` toward the next anchor or the
    destination, at most 250 yards ahead, halved while the far tile is not
-   loaded. Corners are XY guidance only.
+   loaded. Corners are XY guidance only. The aim point is snapped onto
+   walkable navmesh first (`SnapToMesh`): from inside a building a point
+   straight ahead is in its walls, and the core answers that exactly like an
+   unloaded tile. `TileLoaded` tells the two apart for the failure message.
 3. **Walk.** Smooth `PathGenerator` legs toward each corner, at most 120
    yards each, halved until one fits, re-seated on the ground. A bot on a
    slope the filter excludes steps off onto walkable ground first.
