@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "Map.h"
+#include "ModelIgnoreFlags.h"
 #include "PathGenerator.h"
 
 #include "TravelMgr.h"
@@ -11,6 +12,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
+#include <shared_mutex>
 
 // The two-pass design and its constants come from mod-city-siege's
 // CitySiegePathing.cpp, which learned them the hard way; see the notes there
@@ -38,6 +41,7 @@ namespace
     constexpr float    NODE_REACHED  = 8.0f;    // the bot is at a node
     constexpr float    TILES_LOADED  = 90.0f;   // nearer the bot than this, a failure is real
     constexpr uint32_t MAX_STALLS    = 3;
+    constexpr uint32_t MAX_STEP_OFFS = 4;     // straight steps off a slope, per route
     constexpr float    HAND_AHEAD    = 55.0f;   // one pathfinding query covers it easily
     constexpr float    CORRIDOR_MAX  = 250.0f;  // how far ahead one corridor query aims
     constexpr float    CORRIDOR_MIN  = 40.0f;   // shortest reach before "not loaded" is final
@@ -104,35 +108,116 @@ namespace
     // placed nodes with stored walking paths between them, the same data its
     // travel planner uses), so the bot takes the roads and the passes instead
     // of aiming straight at a destination behind a mountain range. Only a
-    // route that is walking all the way on this continent is used; anything
-    // else (a tram, a flight, a portal) is the travel planner's business, and
-    // the corridors fall back to aiming at the destination.
+    // route that walks every link on this continent is used; anything else (a
+    // tram, a flight, a portal) is the travel planner's business, and the
+    // corridors fall back to aiming at the destination.
+    //
+    // Not TravelNodeMap::getFullPath: it returns with the map's shared lock
+    // still held when no route is found (freezing playerbots' node editing for
+    // good) and allocates a node per call for the hearthstone leg. The
+    // node-to-node A* below takes the lock itself, without waiting for it.
     void Anchor(Player* bot, AutopilotRoute& r)
     {
         if (D2(r.cursor, r.dest) < 400.0f)
             return;
 
-        TravelPath path = TravelNodeMap::getFullPath(WorldPosition(bot),
-                                                     WorldPosition(r.map, r.dest.x, r.dest.y, r.dest.z), bot);
-        if (path.empty())
+        TravelNodeMap& nodeMap = TravelNodeMap::instance();
+        std::shared_lock<std::shared_timed_mutex> lock(nodeMap.m_nMapMtx, std::try_to_lock);
+        if (!lock.owns_lock())
+            return;
+
+        const WorldPosition from(bot);
+        const WorldPosition to(r.map, r.dest.x, r.dest.y, r.dest.z);
+        std::vector<TravelNode*> starts = nodeMap.getNodes(from, 200.0f);
+        std::vector<TravelNode*> ends   = nodeMap.getNodes(to, 200.0f);
+        if (starts.size() > 2) starts.resize(2);
+        if (ends.size() > 2)   ends.resize(2);
+
+        std::vector<TravelNode*> nodes;
+        for (TravelNode* s : starts)
+        {
+            for (TravelNode* e : ends)
+            {
+                if (s == e)
+                    continue;
+                TravelNodeRoute found = nodeMap.getRoute(s, e, bot);
+                if (!found.isEmpty())
+                {
+                    nodes = found.getNodes();
+                    break;
+                }
+            }
+            if (!nodes.empty())
+                break;
+        }
+        if (nodes.size() < 2)
             return;
 
         std::vector<AutopilotRoutePoint> points;
-        for (const PathNodePoint& p : path.getPath())
+        auto keep = [&](const WorldPosition& w)
         {
-            if (p.point.GetMapId() != r.map ||
-                (p.type != NODE_PATH && p.type != NODE_PREPATH && p.type != NODE_NODE))
-                return;   // not a walk: leave it to the corridors
-            const AutopilotRoutePoint q{ p.point.GetPositionX(), p.point.GetPositionY(), p.point.GetPositionZ() };
+            const AutopilotRoutePoint q{ w.GetPositionX(), w.GetPositionY(), w.GetPositionZ() };
             // One anchor every ~120 yards is plenty: the navmesh walks between.
             if (points.empty() || D2(points.back(), q) >= 120.0f)
                 points.push_back(q);
+        };
+        for (size_t i = 0; i + 1 < nodes.size(); ++i)
+        {
+            if (nodes[i]->getMapId() != r.map || nodes[i + 1]->getMapId() != r.map)
+                return;
+            auto* links = nodes[i]->getLinks();
+            auto link = links->find(nodes[i + 1]);
+            if (link == links->end() || link->second->getPathType() != TravelNodePathType::walk)
+                return;   // not a walk: leave it to the corridors
+            keep(*nodes[i]->getPosition());
+            for (const WorldPosition& w : link->second->getPath())
+                keep(w);
         }
+        keep(*nodes.back()->getPosition());
         r.anchors = std::move(points);
         r.anchor  = 0;
     }
 
     enum class Step { Progress, Exhausted, Done, Fail };
+
+    // Walkable ground within a few yards of the cursor, reached by a straight
+    // step: the way off a slope the navmesh filter excludes.
+    bool StepOff(Player* bot, AutopilotRoute& r)
+    {
+        if (r.stepOffs >= MAX_STEP_OFFS)
+            return false;
+        Map* map = bot->GetMap();
+        for (float radius : { 4.0f, 7.0f })
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                const float angle = float(i) * float(M_PI) / 4.0f;
+                const AutopilotRoutePoint c = Reseat(map, { r.cursor.x + std::cos(angle) * radius,
+                                                            r.cursor.y + std::sin(angle) * radius, r.cursor.z },
+                                                     r.cursor.z);
+                if (std::fabs(c.z - r.cursor.z) > 3.0f ||
+                    !map->isInLineOfSight(r.cursor.x, r.cursor.y, r.cursor.z + 2.0f, c.x, c.y, c.z + 2.0f,
+                                          bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
+                    continue;
+
+                ++r.queries;
+                PathGenerator probe(bot);
+                Filter(bot, probe);
+                probe.CalculatePath(c.x, c.y, c.z, c.x + 2.0f, c.y, c.z, false);
+                if (probe.GetPathType() & (PATHFIND_NOT_USING_PATH | PATHFIND_NOPATH))
+                    continue;
+
+                ++r.stepOffs;
+                r.nodes.push_back(c);
+                r.lastKept      = c;
+                r.haveHeading   = false;
+                r.cursor        = c;
+                r.retryCorridor = true;
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Pass 1: one corridor leg from the walk cursor toward the destination.
     Step CorridorLeg(Player* bot, AutopilotRoute& r)
@@ -187,6 +272,12 @@ namespace
             ++r.queries;
             if (probe.GetPathType() & PATHFIND_NOT_USING_PATH)
             {
+                // The cursor may just stand where the filter will not walk (a
+                // steep slope): the query cannot start there, so it is no
+                // proof the map has no navmesh. Step off onto walkable ground
+                // nearby, straight, in sight and without a climb.
+                if (StepOff(bot, r))
+                    return Step::Progress;
                 r.why = "no mmaps";
                 return Step::Fail;
             }
@@ -195,6 +286,7 @@ namespace
             if (r.corridorReach > CORRIDOR_MIN)
             {
                 r.corridorReach = std::max(CORRIDOR_MIN, r.corridorReach * 0.5f);
+                r.retryCorridor = true;
                 return Step::Progress;   // corridor still empty: the next query retries
             }
             r.why = "the way ahead is not loaded yet";
@@ -356,19 +448,42 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
 
     for (uint32_t spent = 0; spent < g_rc.queriesPerVisit; ++spent)
     {
-        Step step;
+        Step step = Step::Progress;
         if (r.corridor.empty())
         {
-            r.legStart = r.cursor;
-            step = CorridorLeg(bot, r);
-            // No corridor: aim the walk at the current goal -- the next road
-            // anchor when there is one, the destination only after the last.
-            // Smooth queries often get round what the straight query could not.
-            if (step == Step::Exhausted)
+            // A corridor used up where it began got the walk nowhere. Aimed at
+            // a road anchor, give that anchor up and head past it (the road
+            // point may sit off the mesh); aimed at the destination, it is a
+            // stall, and a few in a row end the route.
+            if (r.legOpen && !r.retryCorridor)
             {
-                r.corridor.push_back(r.goal);
-                r.corridorToDest = r.goalIsEnd;
-                step = Step::Progress;
+                if (D2(r.legStart, r.cursor) >= MIN_PROGRESS)
+                    r.stalls = 0;
+                else if (!r.goalIsEnd && r.anchor < r.anchors.size())
+                    ++r.anchor;
+                else if (++r.stalls >= MAX_STALLS)
+                {
+                    step = Step::Fail;
+                    if (r.why.empty())
+                        r.why = "no walkable way found";
+                }
+            }
+            r.retryCorridor = false;
+
+            if (step != Step::Fail)
+            {
+                r.legStart = r.cursor;
+                r.legOpen  = true;
+                step = CorridorLeg(bot, r);
+                // No corridor: aim the walk at the current goal -- the next road
+                // anchor when there is one, the destination only after the last.
+                // Smooth queries often get round what the straight query could not.
+                if (step == Step::Exhausted)
+                {
+                    r.corridor.push_back(r.goal);
+                    r.corridorToDest = r.goalIsEnd;
+                    step = Step::Progress;
+                }
             }
         }
         else
@@ -387,15 +502,10 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
         if (step == Step::Exhausted)
         {
             // The corridor is used up short of the destination: ask for a new
-            // one from here, unless the last one got us nowhere.
-            r.stalls = D2(r.legStart, r.cursor) < MIN_PROGRESS ? r.stalls + 1 : 0;
+            // one from here (the check above counts it if it got nowhere).
             r.corridor.clear();
             r.corner = 0;
-            if (r.stalls < MAX_STALLS)
-                continue;
-            step = Step::Fail;
-            if (r.why.empty())
-                r.why = "no walkable way found";
+            continue;
         }
 
         if (step == Step::Fail)
@@ -408,6 +518,9 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
             {
                 r.corridor.clear();
                 r.corner  = 0;
+                r.stalls  = 0;
+                r.legOpen = false;
+                r.why.clear();
                 r.waiting = true;
                 return;
             }

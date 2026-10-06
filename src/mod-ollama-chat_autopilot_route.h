@@ -56,7 +56,9 @@ struct AutopilotRoute
     // Pass 1: corners of the current corridor leg (XY guidance).
     std::vector<AutopilotRoutePoint> corridor;
     size_t   corner      = 0;
-    uint32_t emptyLegs   = 0;   // corridor queries that got nowhere
+    bool     legOpen     = false;   // legStart holds the start of a corridor
+    bool     retryCorridor = false; // the last corridor query asks to be retried at once
+    uint32_t stepOffs    = 0;   // straight steps off unwalkable ground (a slope)
     uint32_t stalls      = 0;   // corridors used up without progress, in a row
     float    corridorReach  = 250.0f;  // shortened while the far end's tile is not loaded
     std::vector<AutopilotRoutePoint> anchors;   // waypoints along playerbots' road network

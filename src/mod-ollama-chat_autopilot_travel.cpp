@@ -712,6 +712,16 @@ namespace
             return LegResult::Going;
         }
 
+        // Docked, but the bot is not on the pier yet: get there first. The
+        // deck probe takes the bot's own height as the pier's, and the walk
+        // onto the deck is a straight one -- neither is right from afar.
+        if (!trip.boarded && bot->GetExactDist2d(leg.land.x, leg.land.y) > 15.0f)
+        {
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, leg.land.x, leg.land.y, leg.land.z, true);
+            return LegResult::Going;
+        }
+
         // Docked: walk straight onto the deck (it is not on the navmesh).
         // Probed until a deck is found, then kept for this docking: the ship
         // does not move while docked.

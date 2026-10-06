@@ -113,6 +113,12 @@ bool AutopilotStrategy_IsRegistered()
 
 namespace
 {
+    // The longest straight step taken where the navmesh has no path (onto a
+    // portal or an NPC on a ledge, off a slope the filter excludes), and the
+    // most it may climb or drop.
+    constexpr float SHORT_STEP       = 8.0f;
+    constexpr float SHORT_STEP_CLIMB = 3.0f;
+
     LastMovement& LastMove(PlayerbotAI* ai)
     {
         return ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
@@ -145,20 +151,36 @@ bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generateP
         PathGenerator path(bot);
         AutopilotRoute_Filter(bot, path);   // the core's bot filter: no steep slopes, water costly
         path.SetSlopeCheck(true);           // drop steps too steep to walk
-        if (!path.CalculatePath(x, y, z, false) ||
-            (path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
+        const bool built = path.CalculatePath(x, y, z, false);
+        if (!built || (path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
             path.GetPath().size() < 2)
-            return false;
-
-        Movement::PointsArray points = path.GetPath();
-        length = 0.0f;
-        for (size_t i = 1; i < points.size(); ++i)
-            length += (points[i] - points[i - 1]).length();
-        const G3D::Vector3& end = points.back();
-        x = end.x;
-        y = end.y;
-        z = end.z;
-        bot->GetMotionMaster()->MoveSplinePath(&points);
+        {
+            // A short step on or off the mesh (a portal, a trigger, an NPC on
+            // a ledge, the bot standing on a slope the filter excludes) is
+            // walked straight -- but only in sight and without a climb, never
+            // through a wall or up a cliff.
+            if (!built || length > SHORT_STEP || std::fabs(z - bot->GetPositionZ()) > SHORT_STEP_CLIMB ||
+                !bot->IsWithinLOS(x, y, z))
+                return false;
+            bot->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false, false);
+        }
+        else
+        {
+            Movement::PointsArray points = path.GetPath();
+            // The escort generator hands a two-point path to MoveTo with
+            // pathfinding on, which re-paths without our filter. Split the
+            // straight segment so it walks exactly this one.
+            if (points.size() == 2)
+                points.insert(points.begin() + 1, (points[0] + points[1]) * 0.5f);
+            length = 0.0f;
+            for (size_t i = 1; i < points.size(); ++i)
+                length += (points[i] - points[i - 1]).length();
+            const G3D::Vector3& end = points.back();
+            x = end.x;
+            y = end.y;
+            z = end.z;
+            bot->GetMotionMaster()->MoveSplinePath(&points);
+        }
     }
 
     // Recorded the way playerbots records its own moves, so its out-of-combat

@@ -685,8 +685,9 @@ NewRpg.
   and passes. A bot only ever moves along a real navmesh path, never in a
   straight line through walls or up cliffs. The bot is
   handed one node (about 28 yards) at a time, and the route is built a few
-  hundred yards ahead as it walks. A stuck bot reroutes twice before the
-  trip fails. Without mmaps, it walks straight at the destination.
+  hundred yards ahead as it walks. A bot standing on a slope too steep to
+  path from steps a few yards onto walkable ground first. A stuck bot
+  reroutes twice before the trip fails. Without mmaps, it walks straight at the destination.
 - **Flights.** On the same continent, a flight is taken when it clearly
   saves distance and the bot can pay for it. Otherwise the bot walks. As for
   a player, only flight points the bot has discovered are used;

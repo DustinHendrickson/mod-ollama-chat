@@ -228,10 +228,19 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
 - **Never `MovePoint` with pathfinding for autopilot moves.** When the
   navmesh has no path it silently moves in a straight line (through walls, up
   cliffs). `AutopilotMove_To` computes the path itself and walks it with
-  `MoveSplinePath`, or does not move at all. Long routes are anchored on
-  playerbots' `TravelNodeMap::getFullPath` (its road network) when that route
-  is walking only, and corridors never aim at an unloaded tile (the core
-  answers those with a NOT_USING_PATH shortcut).
+  `MoveSplinePath`, or does not move at all. The one exception is a step of
+  at most 8 yd, in line of sight and without a climb (onto a portal, off a
+  slope the filter excludes). A two-point path is padded to three, because
+  the escort generator hands two points to `MoveTo` with pathfinding on.
+  Long routes are anchored on playerbots' road network: the nearest travel
+  nodes and `TravelNodeMap::getRoute(node, node)` under our own `try_to_lock`
+  on `m_nMapMtx`, walk links only. **Never call `getFullPath`**: it returns
+  with the shared lock still held when it finds no route, and allocates a
+  node per call. Corridors never aim at an unloaded tile (the core answers
+  those with a NOT_USING_PATH shortcut), and an anchor a corridor cannot
+  get closer to is skipped. A query that cannot start because the bot stands
+  on a steep slope is not "no mmaps": the route steps off onto walkable
+  ground nearby first.
 - **Long walks follow a navmesh route** (`mod-ollama-chat_autopilot_route.cpp`,
   ported from mod-city-siege's `CitySiegePathing.cpp`), one node (~28 yd) at a
   time. The route is built lazily, a few queries per visit and a
@@ -270,7 +279,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   strip past a leading-words check.
 - **The autopilot tables are repaired at startup**
   (`mod-ollama-chat_autopilot_schema.cpp`): missing tables created, missing
-  columns added, short VARCHARs widened, columns from earlier drafts dropped.
+  columns added, short VARCHARs widened. A column the module does not know is left alone
+  unless it is NOT NULL with no default (it would fail every save); names
+  are compared without case.
   The core's updater runs the SQL file once per content change and only as
   `CREATE TABLE IF NOT EXISTS`, so it never fixed a table an earlier draft
   made. Change a column in both places.

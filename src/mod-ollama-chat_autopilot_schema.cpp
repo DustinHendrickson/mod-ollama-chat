@@ -7,6 +7,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <cctype>
 #include <ctime>
 #include <cstdlib>
 #include <map>
@@ -113,14 +114,32 @@ namespace
         return r && (*r)[0].Get<uint64>() > 0;
     }
 
-    // Column name -> maximum character length (0 for non-text columns).
-    std::map<std::string, uint64_t> ColumnsOf(const char* table)
+    std::string Lower(std::string s)
     {
-        std::map<std::string, uint64_t> out;
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        return s;
+    }
+
+    struct Existing
+    {
+        uint64_t length   = 0;       // maximum character length, 0 for non-text columns
+        bool     required = false;   // NOT NULL with no default: every insert must name it
+    };
+
+    // Lower-cased column name -> what it is. MySQL column names ignore case.
+    std::map<std::string, Existing> ColumnsOf(const char* table)
+    {
+        std::map<std::string, Existing> out;
         if (QueryResult r = CharacterDatabase.Query(SafeFormat(
-                "SELECT column_name, IFNULL(character_maximum_length, 0) FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND table_name = '{}'", table)))
-            do { out[(*r)[0].Get<std::string>()] = (*r)[1].Get<uint64>(); } while (r->NextRow());
+                "SELECT column_name, IFNULL(character_maximum_length, 0), "
+                "CAST(is_nullable = 'NO' AND column_default IS NULL AND extra NOT LIKE '%auto_increment%' AS UNSIGNED) "
+                "FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = '{}'", table)))
+            do
+            {
+                Existing& e = out[Lower((*r)[0].Get<std::string>())];
+                e.length   = (*r)[1].Get<uint64>();
+                e.required = (*r)[2].Get<uint64>() != 0;
+            } while (r->NextRow());
         return out;
     }
 
@@ -159,11 +178,11 @@ bool AutopilotSchema_Ensure(std::string& problem)
             continue;
         }
 
-        const std::map<std::string, uint64_t> have = ColumnsOf(t.name);
+        const std::map<std::string, Existing> have = ColumnsOf(t.name);
 
         // Without its key column the table cannot be repaired in place: move it
         // aside (nothing is deleted) and start a fresh one.
-        if (!have.count(t.key))
+        if (!have.count(Lower(t.key)))
         {
             const std::string aside = SafeFormat("{}_old_{}", t.name, uint64_t(std::time(nullptr)));
             CharacterDatabase.DirectExecute(SafeFormat("RENAME TABLE {} TO {}", t.name, aside));
@@ -174,14 +193,14 @@ bool AutopilotSchema_Ensure(std::string& problem)
 
         for (const Column& c : t.columns)
         {
-            auto it = have.find(c.name);
+            auto it = have.find(Lower(c.name));
             if (it == have.end())
             {
                 CharacterDatabase.DirectExecute(SafeFormat("ALTER TABLE {} ADD COLUMN `{}` {}", t.name, c.name,
                                                            c.definition));
                 Note(SafeFormat("added {}.{}", t.name, c.name));
             }
-            else if (const uint64_t want = VarcharLength(c.definition); want && it->second < want)
+            else if (const uint64_t want = VarcharLength(c.definition); want && it->second.length < want)
             {
                 // Too short (an earlier draft) would make every save fail
                 // under strict mode once a value outgrew it.
@@ -191,15 +210,22 @@ bool AutopilotSchema_Ensure(std::string& problem)
             }
         }
 
-        for (const auto& [name, length] : have)
+        // A column the module does not know is left alone (an operator may have
+        // added it) unless it would make every save fail: NOT NULL with no
+        // default, which only an earlier draft of this module would have made.
+        for (const auto& [name, existing] : have)
         {
             const bool wanted = std::any_of(t.columns.begin(), t.columns.end(),
-                                            [&](const Column& c) { return name == c.name; });
-            if (!wanted)
+                                            [&](const Column& c) { return name == Lower(c.name); });
+            if (wanted)
+                continue;
+            if (existing.required)
             {
                 CharacterDatabase.DirectExecute(SafeFormat("ALTER TABLE {} DROP COLUMN `{}`", t.name, name));
-                Note(SafeFormat("dropped {}.{} (from an earlier draft)", t.name, name));
+                Note(SafeFormat("dropped {}.{}: NOT NULL with no default, so every save would fail", t.name, name));
             }
+            else
+                Note(SafeFormat("{}.{} is not used by this module; left as it is", t.name, name));
         }
     }
 
@@ -207,9 +233,9 @@ bool AutopilotSchema_Ensure(std::string& problem)
     // logged by the database layer, and here it must stop autopilot.
     for (const Table& t : Layout())
     {
-        const std::map<std::string, uint64_t> have = ColumnsOf(t.name);
+        const std::map<std::string, Existing> have = ColumnsOf(t.name);
         for (const Column& c : t.columns)
-            if (!have.count(c.name))
+            if (!have.count(Lower(c.name)))
             {
                 problem = SafeFormat("{}.{} is still missing after repair (see the database errors above)",
                                      t.name, c.name);

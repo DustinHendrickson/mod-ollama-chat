@@ -249,6 +249,7 @@ namespace
         // A walk to a service or a zone, from `goto`.
         AutopilotErrand errand;
         AutopilotTrip   corpseTrip;     // a ghost walking back to its body
+        uint32_t        corpseRetryAt = 0;  // after a corpse run that could not be made
         uint32_t        nextTaxiLook = 0;   // when to look for a flight master nearby
         uint32_t        lastCombatAt = 0;   // last seen fighting or attacked
 
@@ -1057,9 +1058,11 @@ namespace
     // gives up ten minutes after the death. With NoTeleport holding back
     // playerbots' teleporting revive, a ghost could otherwise stand at the
     // graveyard until CorpseRunMinutes released the hold.
-    void RunCorpse(Player* bot, PlayerbotAI* ai, uint64_t guid, Online& ob, uint32_t now)
+    void RunCorpse(Player* bot, PlayerbotAI* ai, uint64_t guid, Online& ob, const Situation& sit, uint32_t now)
     {
-        if (!g_cfg.control || bot->InBattleground())
+        // Hands off the same as when alive: with a real player, following a
+        // group leader or inside an instance, the ghost is theirs to handle.
+        if (!g_cfg.control || bot->InBattleground() || sit.withRealPlayer || sit.follower || sit.inInstance)
             return;
 
         if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
@@ -1084,17 +1087,28 @@ namespace
 
         if (!ob.corpseTrip.active)
         {
+            if (now < ob.corpseRetryAt)
+                return;
             const std::string why = AutopilotTravel_Start(
                 bot, { corpse->GetMapId(), corpse->GetPositionX(), corpse->GetPositionY(), corpse->GetPositionZ() },
                 15.0f, 0, ob.corpseTrip, now, /*allowFlights*/ false);
             if (!why.empty())
+            {
+                ob.corpseRetryAt = now + 30;
                 return;
+            }
             RecordEvent(guid, "corpse_run", SafeFormat("walking back to the body ({} yd)",
                                                        uint32_t(bot->GetExactDist2d(corpse))));
         }
 
         std::string note;
-        AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note);
+        if (AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note) == AutopilotTripState::Failed)
+        {
+            // Stuck on the way: try again from wherever the ghost stands, in a
+            // little while rather than every sweep.
+            ob.corpseTrip    = AutopilotTrip();
+            ob.corpseRetryAt = now + 30;
+        }
     }
 
     // Passing a flight master, a player stops to pick up the flight point;
@@ -1628,19 +1642,21 @@ namespace
         // so the next prompt says so.
         std::vector<std::string> results;
         if (ob && bot && ai && g_cfg.control)
+        {
             results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot), now);
 
-        // An order failed and the bot has no trip: it would stand there until
-        // the plan's minutes run out. Let the model try something else soon
-        // (it sees what failed in the results).
-        if (ob && !ob->errand.active &&
-            std::any_of(results.begin(), results.end(), [](const std::string& r)
-            {
-                const size_t arrow = r.find(" -> ");
-                const std::string what = arrow == std::string::npos ? r : r.substr(arrow + 4);
-                return what.rfind("done", 0) != 0 && what != "sent" && what.rfind("on the way", 0) != 0;
-            }))
-            ob->quickPlan = true;
+            // An order failed and the bot has no trip: it would stand there
+            // until the plan's minutes run out. Let the model try something
+            // else soon (it sees what failed in the results).
+            if (!ob->errand.active &&
+                std::any_of(results.begin(), results.end(), [](const std::string& r)
+                {
+                    const size_t arrow = r.find(" -> ");
+                    const std::string what = arrow == std::string::npos ? r : r.substr(arrow + 4);
+                    return what.rfind("done", 0) != 0 && what != "sent" && what.rfind("on the way", 0) != 0;
+                }))
+                ob->quickPlan = true;
+        }
         else if (!d.commands.empty())
         {
             for (const std::string& c : d.commands)
@@ -1967,14 +1983,18 @@ namespace
         if (sit.dead)
         {
             ob.errand.trip.interrupted = true;
-            RunCorpse(bot, ai, guid, ob, now);
+            ob.lastBusyAt = now;   // dead is not idle
+            RunCorpse(bot, ai, guid, ob, sit, now);
             return;
         }
         if (ob.corpseTrip.active)
             ob.corpseTrip = AutopilotTrip();   // alive again
+        ob.corpseRetryAt = 0;
 
-        // Busy: on a trip, in a fight, or moving under its own strategies.
-        if (!ob.lastBusyAt || ob.errand.active || sit.inCombat || bot->isMoving())
+        // Busy: on a trip, in a fight, or moving under its own strategies --
+        // or not its own to direct (a real player's group, a follower, an
+        // instance), which is not standing idle either.
+        if (!ob.lastBusyAt || ob.errand.active || sit.inCombat || bot->isMoving() || !sit.CanUseNonCombat())
             ob.lastBusyAt = now;
 
         CheckBoundaries(bot, guid, row, ob, sit, now);
