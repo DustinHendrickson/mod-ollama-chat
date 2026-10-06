@@ -2490,18 +2490,27 @@ OllamaChat.Autopilot.Alert.CooldownMinutes = 30
 # Diary and performance
 # ----------------------------------------------
 #
-# The sweep visits a fixed number of bots per tick in rotation, so its cost
-# per tick does not grow with the number of bots. Snapshots are staggered
-# across the interval, and all writes are batched into one transaction per
-# flush.
+# Autopilot looks after its bots in a "sweep": every SweepIntervalMs it checks
+# up to BotsPerSweep enrolled bots, taking turns. A check is the cheap
+# per-bot work -- putting the LLM's strategies back after a playerbots reset,
+# moving a trip along (next route point, boarding, stepping off), the
+# teleport and corpse-run holds, snapshots, and deciding whether it is time
+# to ask the LLM. The cap keeps the cost per tick the same with 25 bots or
+# 2500. Snapshots are staggered, and database writes are batched per flush.
 
 #    OllamaChat.Autopilot.SweepIntervalMs
-#        How often the sweep runs. Minimum 100.
+#        How often the sweep runs, in milliseconds. Minimum 100.
 #        Default: 1000
 OllamaChat.Autopilot.SweepIntervalMs = 1000
 
 #    OllamaChat.Autopilot.BotsPerSweep
-#        Enrolled bots visited per sweep.
+#        How many enrolled bots one sweep checks. With this many or fewer
+#        enrolled, every bot is checked every sweep. With more, each bot is
+#        checked every (enrolled / BotsPerSweep) sweeps -- 250 bots at the
+#        default is once every 10 seconds, so they react a little slower to
+#        things like arriving somewhere. Bots waiting at a dock or aboard a
+#        ship are checked every sweep regardless. Raise it if you enroll many
+#        bots and have CPU to spare; lower it if the world tick gets heavy.
 #        Default: 25
 OllamaChat.Autopilot.BotsPerSweep = 25
 
