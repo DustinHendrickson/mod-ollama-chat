@@ -2214,6 +2214,22 @@ OllamaChat.Autopilot.CommandReference = ""
 #        Default: 1
 OllamaChat.Autopilot.Control = 1
 
+#    OllamaChat.Autopilot.Groups
+#        The model decides who an enrolled bot groups with. Its prompt lists
+#        people of its faction nearby (real players, bots, bots on autopilot),
+#        its group with each member's quests, an invite waiting for it, and
+#        recent whispers both ways. It can whisper someone (to ask first),
+#        invite, accept or decline an invite, leave, and share a quest with
+#        the group. Playerbots' own accepting of invites, inviting nearby
+#        players and guildmates, and leaving a far-away group are switched off
+#        for enrolled bots. A bot that leads keeps doing what the model says,
+#        waiting for members who fall behind; members of a bot's group follow
+#        their leader and fight alongside. With Llm.Enable = 0 playerbots
+#        keeps handling invites, since the model could not answer them.
+#        0: playerbots handles grouping as before, and group orders are refused.
+#        Default: 1
+OllamaChat.Autopilot.Groups = 1
+
 #    OllamaChat.Autopilot.WithRealPlayer
 #        In a group with a real player:
 #          0 = hands off entirely

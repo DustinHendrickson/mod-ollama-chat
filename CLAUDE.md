@@ -305,6 +305,24 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   hostile to the racial faction, level -8..+2, not in combat) retargets the
   trip at what it finds. The legs are capped (6 and 4), so a bot reports
   "found nothing" to the model instead of wandering forever.
+- **Grouping is the model's** (`mod-ollama-chat_autopilot_group.cpp`,
+  `Groups`). Invite, accept, decline, leave and share go through the
+  client's handlers (`HandleGroupInviteOpcode`, `HandleGroupAcceptOpcode`,
+  `HandleGroupDeclineOpcode`, `HandleGroupDisbandOpcode`,
+  `HandlePushQuestToParty`). The marker's multiplier drops playerbots'
+  `accept invitation`, `invite nearby`, `invite guild` and `leave far away`
+  for enrolled bots; a waiting invite raises an `invite` alert (3 minute
+  cooldown). Accepting mirrors playerbots' own accept without its summon:
+  master = leader for a random bot, `ResetStrategies`, `+follow`. Whispers
+  both ways are kept per bot (`Autopilot_NoteWhisper`, from the chat hook,
+  existing entries only) and shown in the prompt; one about grouping, or an
+  answer to the bot, asks the model again (at most every 2 minutes, so two
+  bots cannot spin each other). `Classify`: a group the bot leads is its
+  own (`leads`), real players in it or not; `withRealPlayer` means a human
+  leads; `follower` means another bot leads, and then the out-of-combat
+  engine is not restored to the solo baseline (it would drop follow) and
+  `follow` is kept on. A leader on an errand waits up to 25 s for members
+  30-150 yd behind (`WaitForGroup`), then walks on for a minute.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
 - **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it

@@ -39,6 +39,10 @@ bool AutopilotStrategy_IsRegistered();
 void AutopilotStrategy_SetNoHandouts(bool on);
 bool AutopilotStrategy_NoHandouts();
 
+// On: playerbots' own group invites, accepts and leaving are dropped for
+// enrolled bots; the model's group orders decide instead.
+void AutopilotStrategy_SetModelGroups(bool on);
+
 // Playerbots revives a bot through its re-roll (bags emptied) once its
 // "death count" reaches 5; keep it below that. World thread.
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai);

@@ -1,6 +1,7 @@
 #include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_autopilot_commands.h"
 #include "mod-ollama-chat_autopilot_goals.h"
+#include "mod-ollama-chat_autopilot_group.h"
 #include "mod-ollama-chat_autopilot_planner.h"
 #include "mod-ollama-chat_autopilot_schema.h"
 #include "mod-ollama-chat_autopilot_strategy.h"
@@ -120,6 +121,7 @@ namespace
         Tier     realGuildTier           = Tier::Background;
         uint32_t realGuildRefreshMinutes = 10;
         uint32_t planTimeoutSeconds      = 300;
+        bool     groups                  = true;    // the model decides who the bot groups with
         std::string promptTemplate;
 
         // Alerts: conditions that ask the model early. The model decides
@@ -270,6 +272,8 @@ namespace
         uint32_t        castHoldUntil = 0;  // the walk waits while the bot casts
         uint32_t        walkingSince  = 0;  // continuous walking, for the upkeep pause
         std::deque<uint64_t> lootTried;     // bodies already looted (or refused), newest last
+        uint32_t        groupWaitSince    = 0;  // leading: waiting for members who fell behind
+        uint32_t        groupWaitOffUntil = 0;  // gave up waiting; walk on until then
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -283,6 +287,17 @@ namespace
         std::string              lastAlert;
         uint32_t                 lastBusyAt  = 0;   // last seen on a trip, fighting or moving
         uint32_t                 lastAlertAt = 0;
+
+        // Whispers to and from the bot, newest last, for the prompt: how it
+        // asks someone to group up and hears the answer.
+        struct Whisper
+        {
+            std::string who;
+            std::string text;
+            uint32_t    at       = 0;
+            bool        fromThem = false;
+        };
+        std::deque<Whisper>      whispers;
 
         // Recent history, for prompts without a DB round trip.
         bool                          historyRequested = false;
@@ -683,6 +698,8 @@ namespace
         bool     inInstance     = false;   // dungeon, raid, battleground, arena
         bool     inBattleground = false;   // battleground or arena
         bool     follower       = false;   // in a bot group, not its leader
+        bool     leads          = false;   // leads a group with others in it
+        std::string leaderName;            // whose group it follows
         uint64_t groupGuid      = 0;
 
         // Combat strategies are the model's everywhere -- dungeons, a human's
@@ -712,7 +729,9 @@ namespace
             if (inInstance)
                 return "They are in a dungeon: only co (combat) orders will be carried out until they leave.";
             if (follower)
-                return "They are following a group leader: only co (combat) orders will be carried out.";
+                return "They are in a group led by " + (leaderName.empty() ? std::string("another bot") : leaderName) +
+                       ": they follow the leader and fight alongside. Only co (combat), whisper and group orders "
+                       "will be carried out until they leave the group (group leave).";
             return "";
         }
     };
@@ -733,9 +752,17 @@ namespace
 
         if (Group* group = bot->GetGroup())
         {
+            const bool leads = group->GetLeaderGUID() == bot->GetGUID();
             s.groupGuid      = group->GetGUID().GetRawValue();
-            s.withRealPlayer = OllamaGroupHasRealPlayer(bot);
-            s.follower       = !s.withRealPlayer && group->GetLeaderGUID() != bot->GetGUID();
+            // A group the bot leads stays its own, real players in it or not:
+            // they joined it. Only someone else's lead takes it out of the
+            // model's hands.
+            s.withRealPlayer = !leads && OllamaGroupHasRealPlayer(bot);
+            s.follower       = !leads && !s.withRealPlayer;
+            s.leads          = leads && group->GetMembersCount() > 1;
+            if (!leads)
+                if (Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID()))
+                    s.leaderName = leader->GetName();
         }
         return s;
     }
@@ -921,9 +948,23 @@ namespace
             ob.errandQueue.clear();   // the model is asked afresh once the bot is its own again
             if (!ob.ncReplay)
             {
-                if (!row.baseline.empty())
+                // A member of a bot's group keeps what playerbots gave it on
+                // joining (follow among it); the solo baseline would drop it.
+                if (!row.baseline.empty() && !sit.follower)
                     RestoreEngine(ai, row.baseline, BOT_STATE_NON_COMBAT);
                 ob.ncReplay = true;
+            }
+
+            // In a bot's group, stay with the leader (unless told to stay put),
+            // as playerbots sets a bot up when it joins.
+            if (sit.follower)
+            {
+                Player* self = ai->GetBot();
+                if (!ai->GetMaster() && sRandomPlayerbotMgr.IsRandomBot(self) && self->GetGroup())
+                    if (Player* leader = ObjectAccessor::FindConnectedPlayer(self->GetGroup()->GetLeaderGUID()))
+                        ai->SetMaster(leader);
+                if (!ai->HasStrategy("follow", BOT_STATE_NON_COMBAT) && !ai->HasStrategy("stay", BOT_STATE_NON_COMBAT))
+                    ai->ChangeStrategy("+follow", BOT_STATE_NON_COMBAT);
             }
         }
 
@@ -961,6 +1002,18 @@ namespace
                 result = "denied by the server";
             else if (!sit.CanUseCombat())
                 result = "not carried out (hands off in a player's group)";
+            else if (AutopilotGroup_IsOrder(command))
+            {
+                // At once, never queued behind a trip: asking someone to group
+                // up and then setting off is one plan.
+                std::string whisperedTo;
+                if (!g_cfg.groups)
+                    result = "not carried out (grouping is not theirs to decide on this server)";
+                else if (sit.withRealPlayer && AutopilotGroup_ChangesMembership(command))
+                    result = "not carried out (a real player leads their group)";
+                else
+                    result = AutopilotGroup_Run(bot, ai, command, whisperedTo);
+            }
             else if (!combat && !sit.CanUseNonCombat())
                 result = "not carried out (only combat orders right now)";
             else
@@ -1387,7 +1440,13 @@ namespace
         std::string reason;
         const char* kind = nullptr;
 
-        if (g_cfg.alertDeaths > 0 && ob.deathTimes.size() >= g_cfg.alertDeaths && ready("deaths"))
+        Player* inviter = g_cfg.groups ? AutopilotGroup_Inviter(bot) : nullptr;
+        if (inviter && ready("invite"))
+        {
+            reason = SafeFormat("{} invited them to a group", inviter->GetName());
+            kind   = "invite";
+        }
+        else if (g_cfg.alertDeaths > 0 && ob.deathTimes.size() >= g_cfg.alertDeaths && ready("deaths"))
         {
             reason = SafeFormat("died {} times in {} minutes in {}", ob.deathTimes.size(),
                                 g_cfg.alertDeathWindowMinutes, Progress_ZoneName(bot->GetZoneId()));
@@ -1420,8 +1479,10 @@ namespace
 
         // Idle repeats on its own clock: a bot still idle after another
         // IdleMinutes is worth another look, not half an hour's silence.
-        ob.alertCooldown[kind] = now + (std::string_view(kind) == "idle" ? g_cfg.alertIdleMinutes
-                                                                         : g_cfg.alertCooldownMinutes) * 60;
+        // An invite waits for an answer: ask again soon if it is still there.
+        const std::string_view k(kind);
+        ob.alertCooldown[kind] = now + (k == "invite" ? 3 : k == "idle" ? g_cfg.alertIdleMinutes
+                                                                       : g_cfg.alertCooldownMinutes) * 60;
         ob.lastAlert   = reason;
         ob.lastAlertAt = now;
         ob.urgentPlan  = true;
@@ -1550,6 +1611,127 @@ namespace
         if (place.map != bot->GetMapId())
             return SafeFormat("{} in {}, on another continent", place.name, where);
         return SafeFormat("{} in {}, {:.0f} yd away", place.name, where, place.distance);
+    }
+
+    // Someone, as the model should see them:
+    // "Ann (level 4 Mage, a bot on autopilot, 12 yd)". g_mutex held.
+    std::string WhoIs(Player* bot, PlayerbotAI* ai, Player* p)
+    {
+        std::string kind = "a real player";
+        if (OllamaIsBotPlayer(p))
+        {
+            auto it = g_rows.find(p->GetGUID().GetRawValue());
+            kind = it != g_rows.end() && it->second.enrolled ? "a bot on autopilot" : "a bot";
+        }
+        const std::string where = p->GetMap() == bot->GetMap()
+            ? SafeFormat("{} yd", uint32_t(bot->GetDistance(p)))
+            : "far away in " + Progress_ZoneName(p->GetZoneId());
+        return SafeFormat("{} (level {} {}, {}, {})", p->GetName(), p->GetLevel(),
+                          ai->GetChatHelper()->FormatClass(p->getClass()), kind, where);
+    }
+
+    std::vector<uint32_t> QuestIds(Player* p)
+    {
+        std::vector<uint32_t> out;
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            if (uint32_t id = p->GetQuestSlotQuestId(slot))
+                out.push_back(id);
+        return out;
+    }
+
+    std::string IdList(const std::vector<uint32_t>& ids)
+    {
+        std::string out;
+        for (size_t i = 0; i < ids.size() && i < 8; ++i)
+            out += (out.empty() ? "" : ", ") + SafeFormat("[{}]", ids[i]);
+        return out;
+    }
+
+    // Their group: who leads, each member, and how their quests line up
+    // with the bot's (to plan together, and to know what to share).
+    std::string DescribeGroup(Player* bot, PlayerbotAI* ai)
+    {
+        std::string out;
+        Group* group = bot->GetGroup();
+        if (!group)
+            out = "none, they are on their own.";
+        else
+        {
+            const bool leads = group->GetLeaderGUID() == bot->GetGUID();
+            const std::vector<uint32_t> mine = QuestIds(bot);
+            std::string members;
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* m = ref->GetSource();
+                if (!m || m == bot || !m->IsInWorld())
+                    continue;
+                std::string line = (group->GetLeaderGUID() == m->GetGUID() ? "the leader, " : "") + WhoIs(bot, ai, m);
+                const std::vector<uint32_t> theirs = QuestIds(m);
+                std::vector<uint32_t> shared, lacking;
+                for (uint32_t id : mine)
+                    (std::find(theirs.begin(), theirs.end(), id) != theirs.end() ? shared : lacking).push_back(id);
+                if (!shared.empty())
+                    line += ", has the same quests " + IdList(shared);
+                if (!lacking.empty())
+                    line += ", does not have " + IdList(lacking);
+                auto it = g_rows.find(m->GetGUID().GetRawValue());
+                if (it != g_rows.end() && it->second.enrolled && !it->second.doing.empty())
+                    line += ", doing: " + it->second.doing;
+                members += (members.empty() ? "" : "; ") + line;
+            }
+            if (members.empty())
+                out = "a group with nobody else in it.";
+            else if (leads)
+                out = "they lead it; members follow them and fight alongside, so plan for all of them. "
+                      "Members: " + members + ".";
+            else
+                out = "they follow its leader. Members: " + members + ".";
+        }
+        if (Player* inviter = AutopilotGroup_Inviter(bot))
+            out += "\nInvite waiting: " + WhoIs(bot, ai, inviter) +
+                   " invited them to a group (group accept or group decline).";
+        return out;
+    }
+
+    // Players and bots of their faction close by, outside their group.
+    std::string DescribePeople(Player* bot, PlayerbotAI* ai)
+    {
+        std::vector<Player*> nearby;
+        Acore::AnyPlayerInObjectRangeCheck check(bot, 60.0f, true, true);
+        Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(bot, nearby, check);
+        Cell::VisitObjects(bot, searcher, 60.0f);
+        std::sort(nearby.begin(), nearby.end(),
+                  [bot](Player* a, Player* b) { return bot->GetDistance(a) < bot->GetDistance(b); });
+        Group* mine = bot->GetGroup();
+        std::string out;
+        size_t shown = 0;
+        for (Player* p : nearby)
+        {
+            if (p == bot || p->GetTeamId() != bot->GetTeamId() || (mine && p->GetGroup() == mine))
+                continue;
+            if (++shown > 6)
+                break;
+            std::string line = WhoIs(bot, ai, p);
+            line.insert(line.size() - 1, p->GetGroup() ? ", in a group" : ", alone");
+            out += (out.empty() ? "" : "; ") + line;
+        }
+        return out;
+    }
+
+    // The last whispers, both ways, from the last quarter of an hour.
+    std::string DescribeWhispers(const Online& ob, uint32_t now)
+    {
+        std::string out;
+        for (const Online::Whisper& w : ob.whispers)
+        {
+            if (now - w.at > 15 * 60)
+                continue;
+            std::string text = w.text;
+            std::replace(text.begin(), text.end(), '{', '(');
+            std::replace(text.begin(), text.end(), '}', ')');
+            out += SafeFormat("\n- {} {} ({} ago): \"{}\"", w.fromThem ? "from" : "to", w.who, Span(now - w.at), text);
+        }
+        return out;
     }
 
     // "- [783] A Threat Within (level 1): ready to turn in"
@@ -1690,6 +1872,14 @@ namespace
             ctx.state += " They could craft now, from their own bags (craft <name> [count|all]): " + craft + ".";
         if (const std::string around = AutopilotCommands_DescribeSurroundings(bot); !around.empty())
             ctx.state += "\nAround them: " + around + ".";
+        if (g_cfg.groups)
+        {
+            ctx.state += "\nTheir group: " + DescribeGroup(bot, ai);
+            if (const std::string people = DescribePeople(bot, ai); !people.empty())
+                ctx.state += "\nPeople nearby, not in their group: " + people + ".";
+            if (const std::string w = DescribeWhispers(ob, now); !w.empty())
+                ctx.state += "\nWhispers (oldest first):" + w;
+        }
         if (tier == Tier::Foreground && g_EnableChatBotSnapshotTemplate)
             ctx.state += "\n" + GenerateBotGameStateSnapshot(bot);
 
@@ -2160,6 +2350,29 @@ namespace
         }
     };
 
+    // Leading a group: wait for a member who fell behind, as a player looks
+    // back for the party. A while at a time, so one stuck member cannot hold
+    // the group for good. Members much further off are not waited for.
+    bool WaitForGroup(Player* bot, PlayerbotAI* ai, Online& ob, uint32_t now)
+    {
+        if (now < ob.groupWaitOffUntil || AutopilotGroup_Straggler(bot, 30.0f, 150.0f) <= 0.0f)
+        {
+            ob.groupWaitSince = 0;
+            return false;
+        }
+        if (!ob.groupWaitSince)
+            ob.groupWaitSince = now;
+        if (now - ob.groupWaitSince > 25)
+        {
+            ob.groupWaitSince    = 0;
+            ob.groupWaitOffUntil = now + 60;
+            return false;
+        }
+        if (bot->isMoving())
+            AutopilotMove_Stop(ai);
+        return true;
+    }
+
     // Loot the nearest body the bot may loot, the way the client does: walk up,
     // open it, take the coin and every item it can carry, close it. Each body is
     // tried once (full bags would leave it unlooted for good). True while busy.
@@ -2357,6 +2570,8 @@ namespace
             // drop on bodies. Then the errand (a quest hunt picks its next
             // target, a trip walks on).
             if (now - ob.lastCombatAt >= 1 && LootBodies(bot, ai, ob))
+                ob.lastBusyAt = now;
+            else if (sit.leads && ob.errand.active && WaitForGroup(bot, ai, ob, now))
                 ob.lastBusyAt = now;
             else if (now - ob.lastCombatAt >= 4)
                 StepErrand(bot, ai, guid, row, ob, now);
@@ -3154,6 +3369,7 @@ void Autopilot_LoadConfig()
     c.quickReplanSeconds      = std::max<uint32_t>(10, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.QuickReplanSeconds", 60));
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
+    c.groups                  = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Groups", true);
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
 
     auto parseScope = [](const std::string& key, const char* fallback, Scope def)
@@ -3203,6 +3419,7 @@ void Autopilot_LoadConfig()
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     g_cfg = std::move(c);
     AutopilotStrategy_SetNoHandouts(g_cfg.noHandouts);
+    AutopilotStrategy_SetModelGroups(g_cfg.enable && g_cfg.control && g_cfg.groups && g_cfg.llmEnable);
 
     // Rules may have changed: re-evaluate every online bot on its next visit.
     for (auto& [guid, ob] : g_online)
@@ -3547,6 +3764,54 @@ ChatCommandTable const& Autopilot_CommandTable()
         { "goal",     HandleGoal,     SEC_ADMINISTRATOR, Console::Yes },
     };
     return table;
+}
+
+void Autopilot_NoteWhisper(Player* from, Player* to, const std::string& text)
+{
+    if (!from || !to || from == to || text.empty() || !Autopilot_IsActive())
+        return;
+    const uint32_t now = Progress_Now();
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+
+    // Existing entries only: this can run on a map thread.
+    auto note = [&](Player* self, Player* other, bool fromThem) -> Online*
+    {
+        const uint64_t guid = self->GetGUID().GetRawValue();
+        auto row = g_rows.find(guid);
+        auto on  = g_online.find(guid);
+        if (row == g_rows.end() || !row->second.enrolled || on == g_online.end())
+            return nullptr;
+        Online& ob = on->second;
+        ob.whispers.push_back({ other->GetName(), text.substr(0, 200), now, fromThem });
+        while (ob.whispers.size() > 8)
+            ob.whispers.pop_front();
+        return &ob;
+    };
+
+    note(from, to, false);
+    Online* ob = note(to, from, true);
+    if (!ob)
+        return;
+
+    // Ask the model soon when it is about grouping, or it answers something
+    // the bot asked. Ordinary chat is the chat system's to answer. At most
+    // every two minutes, so two bots whispering cannot spin each other.
+    const std::string lower = Lower(text);
+    bool about = false;
+    for (const char* word : { "group", "party", "invite", "inv ", "join" })
+        if (lower.find(word) != std::string::npos || lower == "inv")
+            about = true;
+    bool asked = false;
+    for (const Online::Whisper& w : ob->whispers)
+        if (!w.fromThem && w.who == from->GetName() && now - w.at <= 600)
+            asked = true;
+    if (!about && !asked)
+        return;
+    uint32_t& next = ob->alertCooldown["whisper"];
+    if (now < next)
+        return;
+    next = now + 120;
+    ob->quickPlan = true;
 }
 
 bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name)
@@ -4045,6 +4310,10 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
                 ? "active"
                 : "idle: no real player near (AiPlayerbot.BotActiveAlone and ForceWhenIn*)");
             Kv(out, "live strategies", DescribeLiveStrategies(ai));
+            {
+                std::lock_guard<std::recursive_mutex> lock(g_mutex);   // reads other bots' rows
+                Kv(out, "group", DescribeGroup(bot, ai));
+            }
             Kv(out, "now", DescribeActivity(bot, ob));
         }
 

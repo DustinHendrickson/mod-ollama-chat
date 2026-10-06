@@ -27,6 +27,7 @@
 #include <ctime>
 #include "DatabaseEnv.h"
 #include "mod-ollama-chat_handler.h"
+#include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_personality.h"
 #include "mod-ollama-chat_config.h"
@@ -327,6 +328,11 @@ bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uin
     // Only process if our module is enabled
     if (!g_Enable)
         return true;
+
+    // Autopilot keeps whispers to and from its bots (bots' own included),
+    // so the model hears answers when it asked someone to group up.
+    if (type == CHAT_MSG_WHISPER && lang != LANG_ADDON && player && receiver && player != receiver)
+        Autopilot_NoteWhisper(player, receiver, msg);
 
     if (type == CHAT_MSG_WHISPER)
     {

@@ -68,6 +68,11 @@ std::vector<std::string> Autopilot_InactiveReasons();
 // caller checks OllamaChat.Monitor.MinSecurity. False for an unknown `sub`.
 bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name);
 
+// A whisper between two players, either of them perhaps an autopilot bot:
+// kept for the bot's prompt, and a reason to ask the model soon when it is
+// about grouping or answers the bot. Any thread; takes the autopilot mutex.
+void Autopilot_NoteWhisper(Player* from, Player* to, const std::string& text);
+
 // `.ollama autopilot ...`
 Acore::ChatCommands::ChatCommandTable const& Autopilot_CommandTable();
 

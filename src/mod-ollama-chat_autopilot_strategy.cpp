@@ -41,6 +41,7 @@ namespace
     // zero multiplier drops them for this bot only (Engine::DoNextAction
     // discards an action whose relevance multiplies to nothing).
     std::atomic<bool> g_noHandouts{ true };
+    std::atomic<bool> g_modelGroups{ true };
 
     // Bots on a trip (an errand under way), set from the world thread and read
     // by the multiplier on map threads.
@@ -74,6 +75,14 @@ namespace
                 Player* bot = botAI->GetBot();
                 return bot && IsTravelling(bot) ? 0.0f : 1.0f;
             }
+
+            // Who the bot groups with is the model's choice (group orders):
+            // playerbots' own accepting, inviting and leaving would decide it
+            // behind its back.
+            if (g_modelGroups.load(std::memory_order_relaxed) &&
+                (name == "accept invitation" || name == "invite nearby" || name == "invite guild" ||
+                 name == "leave far away"))
+                return 0.0f;
 
             if (!g_noHandouts.load(std::memory_order_relaxed))
                 return 1.0f;
@@ -192,6 +201,11 @@ bool AutopilotStrategy_IsRegistered()
 void AutopilotStrategy_SetNoHandouts(bool on)
 {
     g_noHandouts.store(on, std::memory_order_relaxed);
+}
+
+void AutopilotStrategy_SetModelGroups(bool on)
+{
+    g_modelGroups.store(on, std::memory_order_relaxed);
 }
 
 bool AutopilotStrategy_NoHandouts()

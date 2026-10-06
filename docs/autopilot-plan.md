@@ -139,6 +139,12 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
   or more), nearest spawn on this continent first. The bot walks up to them
   and talks to them (playerbots' `talk to quest giver`: quests taken,
   finished ones handed in). Zone names win over people's.
+- **Groups.** `whisper <name> <text>`, `group invite <name>`, `group accept`,
+  `group decline`, `group leave`, `group share <quest id>`. The prompt shows
+  people nearby, the group with each member's quests (shared and missing),
+  a waiting invite and recent whispers. The leader decides for the group;
+  members of a bot's group follow it and take only combat, whisper and
+  group orders. Playerbots' own grouping is off for enrolled bots.
 - **`goto zone <name>`.** Goes to the friendly service NPC nearest the zone's
   centre, on any continent. Sub-area names resolve to their zone.
 - **`goto hunt`.** The nearest group of monsters of the bot's level (first
