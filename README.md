@@ -846,6 +846,11 @@ NewRpg.
 - **Another way.** If a boat, portal or trigger doesn't work (a portal that
   does nothing, a dock it can't reach), the bot tries another crossing
   rather than giving up the trip.
+- **Looting kills.** After a fight, an autopilot bot loots the bodies it
+  may loot (within 25 yards) before it moves on, the way the client does:
+  it opens each body, takes the coin and every item it can carry, and
+  closes it. Quest items drop this way, so a quest hunt collects them as it
+  goes. Skinning is still playerbots' `loot` strategy.
 - **Casting on the way.** The walk waits while the bot casts (a pet summon,
   a buff) and stops for two seconds every thirty, as a player would, because
   playerbots never starts a spell with a cast time while the bot moves. A

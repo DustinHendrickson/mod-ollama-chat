@@ -348,6 +348,15 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   (`AutopilotCommands_DescribeCraftable`) and what is around the bot
   (`AutopilotCommands_DescribeSurroundings`: bodies, nodes with the skill
   each needs, chests, fishing pools, stations).
+- **The bot loots its kills itself.** Playerbots' looting runs only out of
+  combat, on its own schedule, and the quest hunt (or a trip) engaged the
+  next target first, so bodies, and the quest items on them, were left.
+  `LootBodies` in autopilot.cpp runs on every visit, 1 s after combat and
+  before `StepErrand`. It walks to the nearest body within 25 yd that
+  `isAllowedToLoot` and isn't looted, then calls `HandleLootOpcode`, then
+  `HandleLootMoneyOpcode` and `HandleAutostoreLootItemOpcode` per slot
+  (`GetMaxSlotInLootFor`), then `HandleLootReleaseOpcode`. Each body is
+  tried once (`Online::lootTried`), so full bags never loop.
 - **Auction house and mail use the client's handlers.** `ah sell`/`ah buy`
   build `CMSG_AUCTION_SELL_ITEM` / `CMSG_AUCTION_PLACE_BID` and call
   `HandleAuctionSellItem` / `HandleAuctionPlaceBid` with an auctioneer

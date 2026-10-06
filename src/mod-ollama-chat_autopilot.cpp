@@ -15,7 +15,10 @@
 #include "mod-ollama-chat-utilities.h"
 
 #include "CharacterCache.h"
+#include "CellImpl.h"
 #include "Chat.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "Config.h"
 #include "DatabaseEnv.h"
 #include "DBCStores.h"
@@ -265,6 +268,7 @@ namespace
         uint32_t        lastCombatAt = 0;   // last seen fighting or attacked
         uint32_t        castHoldUntil = 0;  // the walk waits while the bot casts
         uint32_t        walkingSince  = 0;  // continuous walking, for the upkeep pause
+        std::deque<uint64_t> lootTried;     // bodies already looted (or refused), newest last
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -2140,6 +2144,79 @@ namespace
     // A trip the model sent the bot on: keep it going, and do the job on
     // arrival. Finishing or failing is the moment to ask the model what next
     // -- soon, since without orders the bot stands idle.
+    struct LootableBodyCheck
+    {
+        Player* bot;
+        float   range;
+        bool operator()(Creature* c) const
+        {
+            return c && !c->IsAlive() && bot->IsWithinDistInMap(c, range) && bot->isAllowedToLoot(c) &&
+                   !c->loot.isLooted();
+        }
+    };
+
+    // Loot the nearest body the bot may loot, the way the client does: walk up,
+    // open it, take the coin and every item it can carry, close it. Each body is
+    // tried once (full bags would leave it unlooted for good). True while busy.
+    bool LootBodies(Player* bot, PlayerbotAI* ai, Online& ob)
+    {
+        std::list<Creature*> bodies;
+        LootableBodyCheck check{ bot, 25.0f };
+        Acore::CreatureListSearcher<LootableBodyCheck> searcher(bot, bodies, check);
+        Cell::VisitObjects(bot, searcher, 25.0f);
+
+        Creature* body = nullptr;
+        float best = 0.0f;
+        for (Creature* c : bodies)
+        {
+            if (std::find(ob.lootTried.begin(), ob.lootTried.end(), c->GetGUID().GetRawValue()) != ob.lootTried.end())
+                continue;
+            const float d = bot->GetDistance(c);
+            if (!body || d < best)
+            {
+                body = c;
+                best = d;
+            }
+        }
+        if (!body)
+            return false;
+
+        if (best > 3.0f)
+        {
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, body->GetPositionX(), body->GetPositionY(), body->GetPositionZ(), true);
+            return true;
+        }
+
+        AutopilotMove_Stop(ai);
+        const ObjectGuid guid = body->GetGUID();
+        PushCapped(ob.lootTried, guid.GetRawValue(), size_t(32));
+        WorldSession* session = bot->GetSession();
+
+        WorldPacket open(CMSG_LOOT, 8);
+        open << guid;
+        session->HandleLootOpcode(open);
+        if (bot->GetLootGUID() != guid)
+            return true;   // refused (too far, not theirs): tried, move on next visit
+
+        if (body->loot.gold)
+        {
+            WorldPacket money(CMSG_LOOT_MONEY, 0);
+            session->HandleLootMoneyOpcode(money);
+        }
+        const uint32 slots = body->loot.GetMaxSlotInLootFor(bot);
+        for (uint32 slot = 0; slot < slots; ++slot)
+        {
+            WorldPacket take(CMSG_AUTOSTORE_LOOT_ITEM, 1);
+            take << uint8(slot);
+            session->HandleAutostoreLootItemOpcode(take);
+        }
+        WorldPacket release(CMSG_LOOT_RELEASE, 8);
+        release << guid;
+        session->HandleLootReleaseOpcode(release);
+        return true;
+    }
+
     void StepErrand(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
     {
         const AutopilotErrandUpdate u = AutopilotCommands_UpdateErrand(bot, ai, ob.errand, now);
@@ -2269,9 +2346,16 @@ namespace
             AutopilotMove_Yield(ai);
             ob.errand.trip.interrupted = true;
         }
-        else if (g_cfg.control && sit.CanUseNonCombat() && now - ob.lastCombatAt >= 4 && !bot->IsSitState() &&
-                 now >= ob.castHoldUntil)
-            StepErrand(bot, ai, guid, row, ob, now);
+        else if (g_cfg.control && sit.CanUseNonCombat() && !bot->IsSitState() && now >= ob.castHoldUntil)
+        {
+            // Loot the kill before moving on, as a player does -- quest items
+            // drop on bodies. Then the errand (a quest hunt picks its next
+            // target, a trip walks on).
+            if (now - ob.lastCombatAt >= 1 && LootBodies(bot, ai, ob))
+                ob.lastBusyAt = now;
+            else if (now - ob.lastCombatAt >= 4)
+                StepErrand(bot, ai, guid, row, ob, now);
+        }
 
         // A plan that never came back (provider down, server restarted the
         // dispatcher) must not block the next one forever.
