@@ -475,12 +475,18 @@ bots are doing, live, without reading logs.
     `.ollama autopilot` command.
   - **Plain text** turns off colours, so text copies cleanly. Every page
     is selectable, and Ctrl+C copies it.
+- **Log only:** the small button beside the close X shrinks the window to
+  the bot's name and the live log, see-through, so most of the screen
+  stays free while the camera follows. Drag the corner to resize it, and
+  click the button again for the full window. `/om mini` does the same, and
+  the mode and size are remembered.
 - **Whisper:** talks to the bot through the normal chat system. Its answer
   shows up on the Chat page.
 
 **Slash commands:**
 - `/om` opens or closes the window.
 - `/om stop` releases the camera.
+- `/om mini` switches between the full window and log only.
 - `/om pause` and `/om resume` stop and restart the auto refresh.
 
 

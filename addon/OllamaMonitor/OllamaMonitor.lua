@@ -569,6 +569,112 @@ frame:SetScript("OnShow", function()
 end)
 
 -- ---------------------------------------------------------------------------
+-- Compact mode: only the bot's name and the log, small and see-through, so
+-- the screen stays free while the camera follows a bot.
+-- ---------------------------------------------------------------------------
+
+local FULL_W, FULL_H = 900, 540
+local FULL_BACKDROP = {
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 32, edgeSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+}
+local COMPACT_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+}
+-- Everything that is not the log.
+local FULL_ONLY = {
+    title, status, listPanel, followButton, gotoButton, replanButton, statusButton, plainButton,
+    updatedText, cameraText, sayLabel, sayBox,
+}
+for _, t in ipairs(tabs) do table.insert(FULL_ONLY, t) end
+
+frame:SetResizable(true)
+frame:SetMinResize(280, 140)
+frame:SetMaxResize(1600, 1200)
+
+local grip = CreateFrame("Button", nil, frame)
+grip:SetSize(16, 16)
+grip:SetPoint("BOTTOMRIGHT", -4, 4)
+grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+grip:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+grip:SetScript("OnMouseUp", function()
+    frame:StopMovingOrSizing()
+    OllamaMonitorDB.compactSize = { frame:GetWidth(), frame:GetHeight() }
+end)
+grip:Hide()
+
+local sizeButton = CreateFrame("Button", nil, frame)
+sizeButton:SetSize(32, 32)
+sizeButton:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+
+local function SetCompact(on)
+    M.compact = on
+    OllamaMonitorDB = OllamaMonitorDB or {}
+    OllamaMonitorDB.compact = on
+
+    for _, region in ipairs(FULL_ONLY) do
+        if on then region:Hide() else region:Show() end
+    end
+
+    detail:ClearAllPoints()
+    textBg:ClearAllPoints()
+    close:ClearAllPoints()
+    sizeButton:ClearAllPoints()
+    if on then
+        local size = OllamaMonitorDB.compactSize or { 460, 300 }
+        frame:SetSize(size[1], size[2])
+        frame:SetBackdrop(COMPACT_BACKDROP)
+        frame:SetBackdropColor(0, 0, 0, 0.55)
+        frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.6)
+        detail:SetPoint("TOPLEFT", 8, -6)
+        detail:SetPoint("BOTTOMRIGHT", -8, 8)
+        textBg:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -4, -2)
+        textBg:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", 0, 0)
+        textBg:SetBackdropColor(0, 0, 0, 0)
+        textBg:SetBackdropBorderColor(0, 0, 0, 0)
+        close:SetPoint("TOPRIGHT", 2, 2)
+        sizeButton:SetPoint("RIGHT", close, "LEFT", 8, 0)
+        sizeButton:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+        sizeButton:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+        header:SetPoint("RIGHT", -44, 0)
+        grip:Show()
+    else
+        frame:SetSize(FULL_W, FULL_H)
+        frame:SetBackdrop(FULL_BACKDROP)
+        frame:SetBackdropColor(0, 0, 0, 0.92)
+        detail:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 8, 0)
+        detail:SetPoint("BOTTOMRIGHT", -18, 18)
+        textBg:SetPoint("TOPLEFT", tabs[1], "BOTTOMLEFT", 0, -6)
+        textBg:SetPoint("BOTTOMRIGHT", 0, 52)
+        textBg:SetBackdropColor(0.02, 0.02, 0.04, 0.95)
+        textBg:SetBackdropBorderColor(1, 1, 1, 1)
+        close:SetPoint("TOPRIGHT", -6, -6)
+        sizeButton:SetPoint("RIGHT", close, "LEFT", 8, 0)
+        sizeButton:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+        sizeButton:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
+        header:SetPoint("RIGHT", -4, 0)
+        grip:Hide()
+    end
+end
+M.SetCompact = SetCompact
+
+sizeButton:SetScript("OnClick", function() SetCompact(not M.compact) end)
+sizeButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:AddLine(M.compact and "Full window" or "Log only")
+    GameTooltip:Show()
+end)
+sizeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+SetCompact(false)
+
+-- ---------------------------------------------------------------------------
 -- Events and slash command
 -- ---------------------------------------------------------------------------
 
@@ -586,6 +692,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
             frame:SetPoint(pt[1], UIParent, pt[2], pt[3], pt[4])
         end
         M.page = OllamaMonitorDB.page or "overview"
+        if OllamaMonitorDB.compact then M.SetCompact(true) end
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)
@@ -602,6 +709,9 @@ SlashCmdList["OLLAMAMONITOR"] = function(arg)
     elseif arg == "resume" then
         OllamaMonitorDB.auto = true
         Print("auto refresh on")
+    elseif arg == "mini" then
+        M.SetCompact(not M.compact)
+        frame:Show()
     elseif frame:IsShown() then
         frame:Hide()
     else
