@@ -201,13 +201,6 @@ bool AutopilotGroup_IsOrder(const std::string& command)
     return StartsWithWord(c, "group") || StartsWithWord(c, "invite") || StartsWithWord(c, "whisper");
 }
 
-bool AutopilotGroup_ChangesMembership(const std::string& command)
-{
-    const std::string c = Lower(Trim(command));
-    return StartsWithWord(c, "invite") ||
-           (StartsWithWord(c, "group") && !StartsWithWord(Trim(c.substr(5)), "share"));
-}
-
 std::string AutopilotGroup_Run(Player* bot, PlayerbotAI* ai, const std::string& command, std::string& whisperedTo)
 {
     if (!bot || !ai || !bot->GetSession())

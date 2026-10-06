@@ -14,9 +14,6 @@ class PlayerbotAI;
 // "group ...", "invite <name>" or "whisper <name> <text>".
 bool AutopilotGroup_IsOrder(const std::string& command);
 
-// True for the orders that change who is in the group (not whisper).
-bool AutopilotGroup_ChangesMembership(const std::string& command);
-
 // Runs one order. Results start with "done" when it went through. A whisper
 // that went out names its receiver in `whisperedTo`.
 std::string AutopilotGroup_Run(Player* bot, PlayerbotAI* ai, const std::string& command,

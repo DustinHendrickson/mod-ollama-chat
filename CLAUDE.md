@@ -321,7 +321,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   own (`leads`), real players in it or not; `withRealPlayer` means a human
   leads; `follower` means another bot leads, and then the out-of-combat
   engine is not restored to the solo baseline (it would drop follow) and
-  `follow` is kept on. A leader on an errand waits up to 25 s for members
+  `follow` is kept on. `group leave` is never blocked (a real player's
+  group included); the prompt and the order reference discourage it unless
+  the bot's goals have parted ways with the group's. A leader on an errand waits up to 25 s for members
   30-150 yd behind (`WaitForGroup`), then walks on for a minute.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.

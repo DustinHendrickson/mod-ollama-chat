@@ -722,8 +722,9 @@ namespace
             if (!CanUseCombat())
                 return "";
             if (withRealPlayer)
-                return "They are in a group with a real player, who leads them: only co (combat) orders will be "
-                       "carried out until the group breaks up.";
+                return "They are in a group with a real player, who leads them: only co (combat), whisper and group "
+                       "orders will be carried out while they are in it. Someone chose to play with them: stay, and "
+                       "leave (group leave) only if they truly must go a different way.";
             if (inBattleground)
                 return "They are in a battleground: only co (combat) orders will be carried out until it ends.";
             if (inInstance)
@@ -731,7 +732,8 @@ namespace
             if (follower)
                 return "They are in a group led by " + (leaderName.empty() ? std::string("another bot") : leaderName) +
                        ": they follow the leader and fight alongside. Only co (combat), whisper and group orders "
-                       "will be carried out until they leave the group (group leave).";
+                       "will be carried out while they are in it. Groups stick together: leave (group leave) only if "
+                       "their goals have truly parted ways with the group's, not for an errand or on a whim.";
             return "";
         }
     };
@@ -1007,10 +1009,10 @@ namespace
                 // At once, never queued behind a trip: asking someone to group
                 // up and then setting off is one plan.
                 std::string whisperedTo;
+                // Leaving is never blocked, a real player's group included: the
+                // prompt asks them to stay unless their goals part ways.
                 if (!g_cfg.groups)
                     result = "not carried out (grouping is not theirs to decide on this server)";
-                else if (sit.withRealPlayer && AutopilotGroup_ChangesMembership(command))
-                    result = "not carried out (a real player leads their group)";
                 else
                     result = AutopilotGroup_Run(bot, ai, command, whisperedTo);
             }
