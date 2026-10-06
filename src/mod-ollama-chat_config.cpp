@@ -101,7 +101,7 @@ const char* OllamaProvider_Name(OllamaProvider provider)
         default:                        return "ollama";
     }
 }
-uint32_t    g_OllamaNumPredict = 40;
+uint32_t    g_OllamaNumPredict = 0;
 float       g_OllamaTemperature = 0.8f;
 float       g_OllamaTopP = 0.95f;
 float       g_OllamaRepeatPenalty = 1.1f;
@@ -110,7 +110,7 @@ uint32_t    g_OllamaNumThreads = 0;
 std::string g_OllamaStop = "";
 std::string g_OllamaSystemPrompt = "";
 std::string g_AutopilotModel;
-uint32_t    g_AutopilotNumPredict = 600;
+uint32_t    g_AutopilotNumPredict = 0;
 std::string g_AutopilotSystemPrompt;
 std::string g_OllamaSeed = "";
 int32_t     g_OllamaTopK             = -1;
@@ -616,7 +616,7 @@ void LoadOllamaChatConfig()
         }
     }
 
-    g_OllamaNumPredict                = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumPredict", 40);
+    g_OllamaNumPredict                = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumPredict", 0);
     g_OllamaTemperature               = sConfigMgr->GetOption<float>("OllamaChat.Temperature", 0.8f);
     g_OllamaTopP                      = sConfigMgr->GetOption<float>("OllamaChat.TopP", 0.95f);
     g_OllamaRepeatPenalty             = sConfigMgr->GetOption<float>("OllamaChat.RepeatPenalty", 1.1f);
@@ -627,7 +627,7 @@ void LoadOllamaChatConfig()
     g_OllamaSeed                      = sConfigMgr->GetOption<std::string>("OllamaChat.Seed", "");
 
     g_AutopilotModel                  = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.Model", "");
-    g_AutopilotNumPredict             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.NumPredict", 600);
+    g_AutopilotNumPredict             = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.NumPredict", 0);
     g_AutopilotSystemPrompt           = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.SystemPrompt", "");
     if (g_AutopilotSystemPrompt.empty())
         g_AutopilotSystemPrompt =

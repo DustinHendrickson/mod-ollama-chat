@@ -151,7 +151,7 @@ OllamaChat.Model = llama3.2:1b
 # OllamaChat.NumPredict
 #     Description: Maximum number of tokens to generate in Ollama responses.
 #     0 = unlimited. Only set if you want a hard cap.
-#     Default: 100
+#     Default: 0
 #
 #     IMPORTANT: this cap covers reasoning AND the reply. On a reasoning model
 #     (gpt-oss, deepseek-r1, qwen3 thinking builds) the reasoning is emitted
@@ -167,7 +167,7 @@ OllamaChat.Model = llama3.2:1b
 #     |     50     |   ~35–38      | Slightly longer reply            |
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
-OllamaChat.NumPredict = 100
+OllamaChat.NumPredict = 0
 
 # OllamaChat.ReasoningTokenReserve
 #     Description: Extra num_predict headroom added when reasoning tokens are
@@ -2432,9 +2432,11 @@ OllamaChat.Autopilot.PlanTimeoutSeconds = 300
 OllamaChat.Autopilot.Model = ""
 
 #    OllamaChat.Autopilot.NumPredict
-#        Output token cap for a plan; the chat cap is far too small for one.
-#        Default: 600
-OllamaChat.Autopilot.NumPredict = 600
+#        Output token cap for a plan. 0 = unlimited (the Anthropic provider,
+#        which requires a cap, then uses 1024). If you set one, a plan needs
+#        several hundred tokens; the chat cap is far too small for one.
+#        Default: 0
+OllamaChat.Autopilot.NumPredict = 0
 
 #    OllamaChat.Autopilot.SystemPrompt
 #        System prompt for planning. Empty = a short built-in instruction to
