@@ -1675,6 +1675,12 @@ namespace
             if (!specs.empty())
                 ctx.state += " Talent specs (talents spec <name>): " + specs + ".";
         }
+        // What a player would notice and be tempted by: what they could make
+        // right now, and what is lying around to loot, gather, open or fish.
+        if (const std::string craft = AutopilotCommands_DescribeCraftable(bot); !craft.empty())
+            ctx.state += " They could craft now, from their own bags (craft <name> [count|all]): " + craft + ".";
+        if (const std::string around = AutopilotCommands_DescribeSurroundings(bot); !around.empty())
+            ctx.state += "\nAround them: " + around + ".";
         if (tier == Tier::Foreground && g_EnableChatBotSnapshotTemplate)
             ctx.state += "\n" + GenerateBotGameStateSnapshot(bot);
 
@@ -3718,6 +3724,8 @@ namespace
             case AutopilotErrandKind::Service:        return "service";
             case AutopilotErrandKind::QuestTurnIn:    return "quest turn-in";
             case AutopilotErrandKind::QuestObjective: return "quest objective";
+            case AutopilotErrandKind::Craft:          return "craft";
+            case AutopilotErrandKind::Open:           return "open";
         }
         return "?";
     }
@@ -3919,6 +3927,8 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
         Kv(out, "body", SafeFormat("{}{}{}{}", bot->IsAlive() ? "alive" : "dead",
                                    bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) ? " (ghost)" : "",
                                    bot->IsSitState() ? " | sitting" : "", bot->IsInFlight() ? " | in flight" : ""));
+        Kv(out, "around", AutopilotCommands_DescribeSurroundings(bot));
+        Kv(out, "can craft", AutopilotCommands_DescribeCraftable(bot));
         Kv(out, "movement", SafeFormat("{} | moving {}", MotionName(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()),
                                        YesNo(bot->isMoving())));
         if (ai)

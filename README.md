@@ -731,6 +731,13 @@ Every line is in `.ollama autopilot history <bot>`.
   points and its class's talent specs.
 - **Surroundings:** the nearest services (trainer, repair vendor, inn and so
   on) and zones that suit its level.
+- **What's around it, worth acting on:** bodies to loot or skin, herb and ore
+  nodes (and whether it has the skill), chests, fishing pools and crafting
+  stations nearby. A player notices these and is tempted by them, and so is
+  the LLM.
+- **What it could craft:** recipes it knows that it has the materials for,
+  how many, whether they still raise the skill, and which need a forge or
+  anvil.
 - **What it's doing:** its live strategies, what it's doing right now
   (walking, flying, waiting for a boat), and the orders still queued.
 - **Feedback:** what each of its last orders actually did, so it can try
@@ -755,6 +762,7 @@ Planner tab shows the full prompt it was sent.
 | Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
 | Hunting | `goto hunt` goes to the nearest group of monsters of the bot's level; `nc +grind` fights what is around it | On its own |
 | Upkeep and money | `talents spec <name>` (one of the class's talent specs, listed in the prompt with unspent points), `equip upgrade` (best gear in the bags), `e` / `use <item>`, `open items`; at a vendor `s gray` / `s vendor` / `s <item>`, `b vendor` (buys what they can use, with their own gold), `repair`. Orders after a `goto` wait until the bot arrives | On its own |
+| Professions and the world | `nc +gather` picks herbs and mines ore as it passes, with its own skill. `nc +loot` loots bodies, and skins them with Skinning and a skinning knife. `nc +master fishing` fishes at water nearby. `open <object>` walks to a node, chest or object and opens or uses it. `craft <recipe> [count\|all]` makes something from its own materials, walking to a forge, anvil or fire first if the recipe needs one. `disenchant <item>` | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 
 ### Earned, not handed out
@@ -812,11 +820,9 @@ Some things this module can't change per bot:
   strategies go back to what it had before autopilot, and any trip under
   way ends. When it leaves, the LLM's strategies return and it is asked what
   to do next.
-- **Crafting and the auction house.** Selling, buying from vendors (`b
-  vendor`), repairing and training are covered. `nc +maintenance` lets the
-  bot's AI disenchant, enchant and learn recipes with its own skills and
-  materials. Crafting a chosen item and trading at the auction house have no
-  order yet; playerbots' `craft` needs a real master.
+- **The auction house.** Selling, buying from vendors (`b vendor`),
+  repairing, training and crafting are covered. Trading at the auction house
+  has no order yet.
 - **Chat.** Chat replies don't mention the bot's plan yet. Autopilot and chat
   run side by side.
 - **Bots it can't plan for.** With nobody nearby (the default reach), a bot

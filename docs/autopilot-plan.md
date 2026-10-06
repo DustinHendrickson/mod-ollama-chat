@@ -156,6 +156,19 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
 - **`abandon <id|title>`.** Drops a quest through `HandleQuestLogRemoveQuest`,
   the client's Abandon button. A quest for another class or race is refused
   by `quest` and marked in the prompt.
+- **`craft <recipe> [count|all]`.** A known recipe (a create-item spell on a
+  skill line), from the bot's own materials. If the recipe needs a station
+  (`RequiresSpellFocus`: forge, anvil, cooking fire), the bot walks to the
+  nearest one first. It casts once per visit until the count is made or the
+  materials run out.
+- **`disenchant <item>`.** Casts Disenchant on a bag item, with the bot's own
+  Enchanting.
+- **`open <object>`.** Walks to a node, chest or object nearby. A chest or
+  node goes into playerbots' loot stack, so gathering skills and looting are
+  handled there; anything else is used through the client's packets.
+- **Gathering, looting, skinning, fishing** are playerbots' strategies:
+  `gather`, `loot` (skinning with a knife), `master fishing` (no master
+  needed).
 - **`talents spec <name>`.** Playerbots' own command: applies one of the
   class's premade specs for the current level. A bare `talents` only prints
   help. `talents autopick` leaves the spec to playerbots.

@@ -53,6 +53,11 @@ namespace
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_itemFromObjects;
     const std::vector<uint32_t> kNone;
 
+    // Crafting stations (forges, anvils, cooking fires...): spell focus id ->
+    // spawn points. A recipe that needs one names the focus id.
+    std::unordered_map<uint32_t, std::vector<SpawnAt>> g_focusById;
+    std::unordered_map<uint32_t, std::string>          g_focusName;   // "Forge", "Anvil"...
+
     // quest id -> creature entries that take it in.
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
 
@@ -176,6 +181,8 @@ void AutopilotWorld_Build()
     g_goByEntry.clear();
     g_itemFromCreatures.clear();
     g_itemFromObjects.clear();
+    g_focusById.clear();
+    g_focusName.clear();
     g_mobs.clear();
 
     if (QuestRelations const* enders = sObjectMgr->GetCreatureQuestInvolvedRelationMap())
@@ -199,8 +206,16 @@ void AutopilotWorld_Build()
             if (quest->RequiredNpcOrGo[i] < 0)
                 questObjects.insert(uint32_t(-quest->RequiredNpcOrGo[i]));
     for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+    {
         if (questObjects.count(data.id))
             g_goByEntry[data.id].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
+        if (GameObjectTemplate const* t = sObjectMgr->GetGameObjectTemplate(data.id))
+            if (t->type == GAMEOBJECT_TYPE_SPELL_FOCUS && t->spellFocus.focusId)
+            {
+                g_focusById[t->spellFocus.focusId].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
+                g_focusName.emplace(t->spellFocus.focusId, t->name);
+            }
+    }
 
     size_t count = 0;
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
@@ -718,4 +733,40 @@ bool AutopilotWorld_HuntingGround(Player* bot, AutopilotPlace& out)
     out.name     = SafeFormat("{} (level {}-{})", NameOf(best->entry), uint32_t(best->minLevel), uint32_t(best->maxLevel));
     out.distance = bot->GetDistance(best->x, best->y, best->z);
     return true;
+}
+
+bool AutopilotWorld_NearestSpellFocus(Player* bot, uint32_t focusId, AutopilotPlace& out)
+{
+    auto it = g_focusById.find(focusId);
+    if (it == g_focusById.end())
+        return false;
+    const SpawnAt* best = nullptr;
+    float bestDist = 0.0f;
+    for (const SpawnAt& s : it->second)
+    {
+        if (s.map != bot->GetMapId())
+            continue;
+        const float d = bot->GetDistance(s.x, s.y, s.z);
+        if (!best || d < bestDist)
+        {
+            best     = &s;
+            bestDist = d;
+        }
+    }
+    if (!best)
+        return false;
+    out.map      = best->map;
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = 0;
+    out.name     = AutopilotWorld_SpellFocusName(focusId);
+    out.distance = bestDist;
+    return true;
+}
+
+std::string AutopilotWorld_SpellFocusName(uint32_t focusId)
+{
+    auto it = g_focusName.find(focusId);
+    return it == g_focusName.end() ? std::string("a crafting station") : it->second;
 }

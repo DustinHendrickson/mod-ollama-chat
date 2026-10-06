@@ -333,6 +333,21 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   objective is done or after `QuestHuntMinutes`, and the target is cleared.
   Grind on its own takes the *nearest* mob; quest need only counts for its
   out-of-range picks while rpg is active, which autopilot turns off.
+- **Professions run on playerbots where it can, ours where it cannot.**
+  Gathering, corpse looting and skinning are playerbots' `gather` and `loot`
+  (`LootObject` reads the node's lock for the skill, and checks for a
+  skinning knife). Fishing is `master fishing`, which needs no master.
+  Crafting is ours: `craft <recipe>` (errand kind `Craft`) finds a known
+  create-item spell on a skill line, walks to the nearest station of the
+  recipe's `RequiresSpellFocus` (spell-focus gameobjects indexed at
+  startup), then casts it once per visit via `PlayerbotAI::CastSpell` until
+  the count or the materials run out. Playerbots' own `craft` needs a
+  master. `disenchant` casts 13262 on a bag item. `open <object>` puts a
+  chest or node into the loot stack, or uses the object with the client's
+  packets. The prompt lists craftable recipes
+  (`AutopilotCommands_DescribeCraftable`) and what is around the bot
+  (`AutopilotCommands_DescribeSurroundings`: bodies, nodes with the skill
+  each needs, chests, fishing pools, stations).
 - **A player's choices are the model's.** Quest rewards (`quest <id> reward
   <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
   by stat weights), professions (`goto profession <name>`; a trainer's skill

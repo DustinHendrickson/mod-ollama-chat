@@ -83,6 +83,11 @@ bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& creatu
 const std::vector<uint32_t>& AutopilotWorld_CreaturesDropping(uint32_t item);
 const std::vector<uint32_t>& AutopilotWorld_ObjectsHolding(uint32_t item);
 
+// The nearest spawn on the bot's map of a crafting station of this spell focus
+// type (a forge, an anvil, a cooking fire), for a recipe that needs one.
+bool AutopilotWorld_NearestSpellFocus(Player* bot, uint32_t focusId, AutopilotPlace& out);
+std::string AutopilotWorld_SpellFocusName(uint32_t focusId);   // "Forge", "Anvil"
+
 // A hunting ground for the bot's level on its own continent: the nearest
 // group of ordinary monsters (not elite) hostile to it, four levels below to
 // one above, at least 40 yards away. `name` describes them.

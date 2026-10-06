@@ -3,7 +3,16 @@
 #include "mod-ollama-chat_autopilot_world.h"
 #include "mod-ollama-chat-utilities.h"
 
+#include "Bag.h"
+#include "CellImpl.h"
 #include "Config.h"
+#include "DBCStores.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
+#include "Item.h"
+#include "ObjectAccessor.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
 #include "ItemTemplate.h"
@@ -24,6 +33,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
+#include <list>
+#include <map>
 
 namespace
 {
@@ -75,6 +87,13 @@ namespace
         "vendor sells everything a vendor should have, s <item name> sells one item, b vendor buys what they "
         "can use (gear upgrades, ammo, food and drink, reagents) with their own money, repair repairs. "
         "Watch their gold: buying and training cost money\n"
+        "- PROFESSIONS AND THE WORLD AROUND THEM (what is nearby and what they could craft is listed with "
+        "their facts): nc +loot loots bodies, and skins them with Skinning and a skinning knife; nc +gather "
+        "picks herbs and mines ore they have the skill for as they pass; nc +master fishing fishes at water "
+        "nearby (needs Fishing and a fishing pole); open <object> walks to a node, chest or other object "
+        "nearby and opens or uses it; craft <recipe> [count|all] makes something from their own materials "
+        "(they walk to a forge, anvil or fire first if it needs one); disenchant <item> (Enchanting). "
+        "Making things still worth skill points raises the profession\n"
         "- follow / stay : follow the group leader or stay put\n"
         "ORDER OF ORDERS: orders run in the order you give them. Everything after a goto or quest waits until "
         "they get there (so goto vendor, then b vendor, buys at the vendor), except nc/co changes, which apply "
@@ -170,6 +189,162 @@ namespace
     // Where to go for a quest that is not done yet: the nearest spawn of a
     // creature it still needs killed or spoken to, else the quest's own map
     // marker for an objective.
+    // --- crafting -------------------------------------------------------------
+
+    constexpr uint32_t kDisenchantSpell = 13262;
+
+    struct Recipe
+    {
+        uint32_t    spell = 0;
+        uint32_t    item  = 0;
+        std::string name;   // what it makes
+    };
+
+    // A profession recipe the bot knows: a spell on a skill line that creates
+    // an item.
+    std::vector<Recipe> KnownRecipes(Player* bot)
+    {
+        std::vector<Recipe> out;
+        for (auto const& [spellId, spell] : bot->GetSpellMap())
+        {
+            if (!spell || spell->State == PLAYERSPELL_REMOVED || !spell->Active)
+                continue;
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+            if (!info)
+                continue;
+            uint32_t item = 0;
+            for (SpellEffectInfo const& e : info->GetEffects())
+                if (e.Effect == SPELL_EFFECT_CREATE_ITEM && e.ItemType)
+                    item = e.ItemType;
+            if (!item)
+                continue;
+            auto bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+            if (bounds.first == bounds.second)
+                continue;
+            ItemTemplate const* t = sObjectMgr->GetItemTemplate(item);
+            out.push_back({ spellId, item, t ? t->Name1 : std::string(info->SpellName[0] ? info->SpellName[0] : "?") });
+        }
+        return out;
+    }
+
+    // How many times the bags hold this recipe's materials.
+    uint32_t Craftable(Player* bot, SpellInfo const* info)
+    {
+        uint32_t times = UINT32_MAX;
+        for (size_t i = 0; i < info->Reagent.size(); ++i)
+            if (info->Reagent[i] > 0 && info->ReagentCount[i])
+                times = std::min<uint32_t>(times, bot->GetItemCount(uint32_t(info->Reagent[i]), false) /
+                                                      info->ReagentCount[i]);
+        return times == UINT32_MAX ? 0 : times;
+    }
+
+    // "2 Rough Stone (have 1)"
+    std::string MissingMaterials(Player* bot, SpellInfo const* info)
+    {
+        std::string out;
+        for (size_t i = 0; i < info->Reagent.size(); ++i)
+        {
+            if (info->Reagent[i] <= 0 || !info->ReagentCount[i])
+                continue;
+            const uint32_t have = bot->GetItemCount(uint32_t(info->Reagent[i]), false);
+            ItemTemplate const* t = sObjectMgr->GetItemTemplate(uint32_t(info->Reagent[i]));
+            out += SafeFormat("{}{} {} (have {})", out.empty() ? "" : ", ", info->ReagentCount[i],
+                              t ? t->Name1 : std::to_string(info->Reagent[i]), have);
+        }
+        return out;
+    }
+
+    // Still worth skill points (below where the recipe turns grey).
+    bool RaisesSkill(Player* bot, uint32_t spellId)
+    {
+        auto bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        for (auto it = bounds.first; it != bounds.second; ++it)
+            if (it->second->TrivialSkillLineRankHigh &&
+                bot->GetSkillValue(it->second->SkillLine) < it->second->TrivialSkillLineRankHigh)
+                return true;
+        return false;
+    }
+
+    const Recipe* FindRecipe(const std::vector<Recipe>& recipes, const std::string& name)
+    {
+        for (const Recipe& r : recipes)
+            if (Lower(r.name) == name)
+                return &r;
+        for (const Recipe& r : recipes)
+            if (Lower(r.name).find(name) != std::string::npos)
+                return &r;
+        return nullptr;
+    }
+
+    // An item in the bags (not worn) by name.
+    Item* FindBagItem(Player* bot, const std::string& name)
+    {
+        auto matches = [&](Item* item)
+        {
+            return item && item->GetTemplate() && Lower(item->GetTemplate()->Name1).find(name) != std::string::npos;
+        };
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot); matches(item))
+                return item;
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+            if (Bag* b = bot->GetBagByPos(bag))
+                for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
+                    if (Item* item = b->GetItemByPos(uint8(slot)); matches(item))
+                        return item;
+        return nullptr;
+    }
+
+    // --- the world around the bot ---------------------------------------------
+
+    struct DeadCreatureCheck
+    {
+        Player* bot;
+        float   range;
+        bool operator()(Creature* c) const { return c && !c->IsAlive() && bot->IsWithinDistInMap(c, range); }
+    };
+
+    struct NearbyObjectCheck
+    {
+        Player* bot;
+        float   range;
+        bool operator()(GameObject* go) const
+        {
+            return go && go->isSpawned() && bot->IsWithinDistInMap(go, range);
+        }
+    };
+
+    std::list<GameObject*> ObjectsNear(Player* bot, float range)
+    {
+        std::list<GameObject*> out;
+        NearbyObjectCheck check{ bot, range };
+        Acore::GameObjectListSearcher<NearbyObjectCheck> searcher(bot, out, check);
+        Cell::VisitObjects(bot, searcher, range);
+        return out;
+    }
+
+    // The skill a gathering node (or lockbox) asks for, and how much; 0 if none.
+    uint32_t NodeSkill(GameObject* go, uint32_t& required)
+    {
+        required = 0;
+        LockEntry const* lock = sLockStore.LookupEntry(go->GetGOInfo()->GetLockId());
+        if (!lock)
+            return 0;
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+            if (lock->Type[i] == LOCK_KEY_SKILL)
+                if (const SkillType skill = SkillByLockType(LockType(lock->Index[i])); skill != SKILL_NONE)
+                {
+                    required = lock->Skill[i];
+                    return uint32_t(skill);
+                }
+        return 0;
+    }
+
+    std::string SkillName(uint32_t skill)
+    {
+        SkillLineEntry const* line = sSkillLineStore.LookupEntry(skill);
+        return line && line->name[0] ? std::string(line->name[0]) : std::to_string(skill);
+    }
+
     // What a quest still needs from the world, by kind: creatures to kill
     // (or speak to), objects to use, and the creatures and objects that give
     // the items still missing.
@@ -439,6 +614,126 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         if (errand.active)
             AutopilotCommands_StopErrand(ai, errand);
         return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 40.0f, display, now);
+    }
+
+    // "craft copper bar 5", "craft linen bandage all": a recipe the bot knows,
+    // from its own materials, at a crafting station if the recipe needs one.
+    if (StartsWithWord(lower, "craft"))
+    {
+        std::string arg = Trim(lower.substr(5));
+        uint32_t want = 1;
+        bool all = false;
+        if (const size_t sp = arg.rfind(' '); sp != std::string::npos)
+        {
+            const std::string last = arg.substr(sp + 1);
+            if (last == "all")
+                all = true;
+            else
+                try { want = std::max<uint32_t>(1, uint32_t(std::stoul(last))); } catch (...) { want = 0; }
+            if (all || want)
+                arg = Trim(arg.substr(0, sp));
+            if (!want)
+                want = 1;
+        }
+
+        const std::vector<Recipe> recipes = KnownRecipes(bot);
+        const Recipe* recipe = arg.empty() ? nullptr : FindRecipe(recipes, arg);
+        if (!recipe)
+            return "they know no recipe for that (their recipes are listed with their facts)";
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(recipe->spell);
+        const uint32_t can = info ? Craftable(bot, info) : 0;
+        if (!can)
+            return SafeFormat("not enough materials for {}: needs {}", recipe->name, MissingMaterials(bot, info));
+        const uint32_t count = std::min<uint32_t>({ all ? can : want, can, 20 });
+
+        AutopilotErrand next;
+        next.kind       = AutopilotErrandKind::Craft;
+        next.craftSpell = recipe->spell;
+        next.craftLeft  = count;
+        next.label      = SafeFormat("crafting {} x{}", recipe->name, count);
+        next.startedAt  = now;
+
+        if (info->RequiresSpellFocus)
+        {
+            AutopilotPlace station;
+            if (!AutopilotWorld_NearestSpellFocus(bot, info->RequiresSpellFocus, station))
+                return SafeFormat("{} needs {}, and there is none on this continent", recipe->name,
+                                  AutopilotWorld_SpellFocusName(info->RequiresSpellFocus));
+            if (station.distance > 6.0f)
+            {
+                const std::string why = AutopilotTravel_Start(bot, { station.map, station.x, station.y, station.z },
+                                                              4.0f, 0, next.trip, now);
+                if (!why.empty())
+                    return why;
+                if (errand.active)
+                    AutopilotCommands_StopErrand(ai, errand);
+                next.active = true;
+                errand      = std::move(next);
+                return SafeFormat("on the way to the {} ({} yd) to craft {} x{}", station.name,
+                                  uint32_t(station.distance), recipe->name, count);
+            }
+        }
+        if (errand.active)
+            AutopilotCommands_StopErrand(ai, errand);
+        next.active = true;
+        errand      = std::move(next);
+        return SafeFormat("crafting {} x{}", recipe->name, count);
+    }
+
+    // "disenchant worn shortsword": an item in the bags, with their own
+    // Enchanting skill.
+    if (StartsWithWord(lower, "disenchant"))
+    {
+        const std::string name = Trim(lower.substr(10));
+        if (!bot->HasSpell(kDisenchantSpell))
+            return "they cannot disenchant (no Enchanting)";
+        Item* item = name.empty() ? nullptr : FindBagItem(bot, name);
+        if (!item)
+            return "no item called that in their bags";
+        ItemTemplate const* t = item->GetTemplate();
+        if (!t->DisenchantID || int32(t->RequiredDisenchantSkill) < 0 ||
+            bot->GetSkillValue(SKILL_ENCHANTING) < t->RequiredDisenchantSkill)
+            return t->Name1 + " cannot be disenchanted by them (not disenchantable, or too little skill)";
+        AutopilotMove_Stop(ai);
+        return ai->CastSpell(kDisenchantSpell, bot, item) ? "done: disenchanting " + t->Name1
+                                                          : "could not disenchant " + t->Name1 + " right now";
+    }
+
+    // "open copper vein", "open battered chest": an object nearby, opened the
+    // way their AI loots (gathering skills included) or used like the client.
+    // "open items" stays playerbots' own order (boxes in the bags).
+    if (StartsWithWord(lower, "open") && lower != "open items")
+    {
+        const std::string name = Trim(lower.substr(4));
+        GameObject* best = nullptr;
+        float bestDist = 0.0f;
+        for (GameObject* go : ObjectsNear(bot, 50.0f))
+        {
+            if (name.empty() || Lower(go->GetGOInfo()->name).find(name) == std::string::npos ||
+                go->GetGoState() != GO_STATE_READY)
+                continue;
+            const float d = bot->GetDistance(go);
+            if (!best || d < bestDist)
+            {
+                best     = go;
+                bestDist = d;
+            }
+        }
+        if (!best)
+            return "nothing called that within 50 yards";
+
+        AutopilotPlace place;
+        place.map   = best->GetMapId();
+        place.x     = best->GetPositionX();
+        place.y     = best->GetPositionY();
+        place.z     = best->GetPositionZ();
+        place.entry = best->GetEntry();
+        if (errand.active)
+            AutopilotCommands_StopErrand(ai, errand);
+        const std::string result = StartErrand(bot, errand, AutopilotErrandKind::Open, 0, 0, 0, place, 3.0f,
+                                               best->GetGOInfo()->name, now);
+        errand.objectGuid = best->GetGUID().GetRawValue();
+        return result;
     }
 
     // "abandon 6121" or "abandon Lessons Anew": drop a quest from the log the
@@ -752,6 +1047,210 @@ namespace
     }
 }
 
+namespace
+{
+    // At the bench: one craft per visit (the walk waits while it casts), until
+    // the count is made or the materials run out.
+    AutopilotErrandUpdate CraftStep(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+    {
+        AutopilotErrandUpdate u;
+        if (bot->IsNonMeleeSpellCast(false) || bot->IsInCombat())
+            return u;
+
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(errand.craftSpell);
+        std::string made = errand.label;
+        if (const size_t at = made.find("crafting "); at == 0)
+            made = made.substr(9);
+        if (const size_t x = made.rfind(" x"); x != std::string::npos)
+            made = made.substr(0, x);
+
+        auto finish = [&](std::string note)
+        {
+            errand.active = false;
+            u.finished    = true;
+            u.note        = std::move(note);
+        };
+
+        if (!info)
+            return finish("that recipe is gone"), u;
+        if (!errand.craftLeft)
+            return finish(SafeFormat("crafted {} x{}", made, errand.craftDone)), u;
+        if (!Craftable(bot, info))
+            return finish(SafeFormat("ran out of materials for {} after {}", made, errand.craftDone)), u;
+
+        if (bot->isMoving())
+            AutopilotMove_Stop(ai);
+        if (!ai->CanCastSpell(errand.craftSpell, bot, true) || !ai->CastSpell(errand.craftSpell, bot))
+            return finish(SafeFormat("could not craft {} here after {} (a tool or {} missing?)", made, errand.craftDone,
+                                     info->RequiresSpellFocus
+                                         ? AutopilotWorld_SpellFocusName(info->RequiresSpellFocus)
+                                         : std::string("something else"))), u;
+        --errand.craftLeft;
+        ++errand.craftDone;
+        return u;
+    }
+
+    // At the object: opened through playerbots' looting (which handles the
+    // gathering skills and takes what is inside), or used like the client.
+    AutopilotErrandUpdate OpenStep(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+    {
+        AutopilotErrandUpdate u;
+        u.finished    = true;
+        errand.active = false;
+        GameObject* go = ObjectAccessor::GetGameObject(*bot, ObjectGuid(errand.objectGuid));
+        if (!go || !go->isSpawned() || go->GetGoState() != GO_STATE_READY)
+        {
+            u.note = errand.label + " was gone or already used";
+            return u;
+        }
+        uint32_t required = 0;
+        const uint32_t skill = NodeSkill(go, required);
+        if (skill && bot->GetSkillValue(skill) < required)
+        {
+            u.note = SafeFormat("{} needs {} {}; they have {}", errand.label, SkillName(skill), required,
+                                bot->GetSkillValue(skill));
+            return u;
+        }
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+        {
+            AutopilotBot_LootObject(ai, go->GetGUID().GetRawValue());
+            u.note = "opening " + errand.label + " (their looting takes what is inside)";
+            return u;
+        }
+        WorldPacket use(CMSG_GAMEOBJ_USE, 8);
+        use << go->GetGUID();
+        bot->GetSession()->HandleGameObjectUseOpcode(use);
+        WorldPacket report(CMSG_GAMEOBJ_REPORT_USE, 8);
+        report << go->GetGUID();
+        bot->GetSession()->HandleGameobjectReportUse(report);
+        u.note = "used " + errand.label;
+        return u;
+    }
+}
+
+std::string AutopilotCommands_DescribeCraftable(Player* bot)
+{
+    struct Line
+    {
+        std::string text;
+        bool        raises = false;
+    };
+    std::vector<Line> lines;
+    for (const Recipe& r : KnownRecipes(bot))
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(r.spell);
+        const uint32_t can = info ? Craftable(bot, info) : 0;
+        if (!can)
+            continue;
+        const bool raises = RaisesSkill(bot, r.spell);
+        lines.push_back({ SafeFormat("{} x{}{}{}", r.name, can, raises ? " (raises skill)" : "",
+                                     info->RequiresSpellFocus
+                                         ? " (at a " + AutopilotWorld_SpellFocusName(info->RequiresSpellFocus) + ")"
+                                         : std::string()),
+                          raises });
+    }
+    std::stable_sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.raises && !b.raises; });
+    std::string out;
+    for (size_t i = 0; i < lines.size() && i < 8; ++i)
+        out += (out.empty() ? "" : ", ") + lines[i].text;
+    if (lines.size() > 8)
+        out += SafeFormat(", and {} more", lines.size() - 8);
+    return out;
+}
+
+std::string AutopilotCommands_DescribeSurroundings(Player* bot)
+{
+    std::vector<std::string> parts;
+
+    // Bodies: theirs to loot, and to skin.
+    {
+        std::list<Creature*> dead;
+        DeadCreatureCheck check{ bot, 30.0f };
+        Acore::CreatureListSearcher<DeadCreatureCheck> searcher(bot, dead, check);
+        Cell::VisitObjects(bot, searcher, 30.0f);
+        uint32_t loot = 0, skin = 0;
+        const bool skinner = bot->HasSkill(SKILL_SKINNING);
+        for (Creature* c : dead)
+        {
+            if (bot->isAllowedToLoot(c) && !c->loot.isLooted())
+                ++loot;
+            else if (skinner && c->HasUnitFlag(UNIT_FLAG_SKINNABLE))
+                ++skin;
+        }
+        if (loot)
+            parts.push_back(SafeFormat("{} bod{} to loot (the loot strategy takes it)", loot, loot == 1 ? "y" : "ies"));
+        if (skin)
+            parts.push_back(SafeFormat("{} bod{} to skin (loot strategy, with a skinning knife)", skin,
+                                       skin == 1 ? "y" : "ies"));
+    }
+
+    // Objects worth a look: nodes, chests, fishing pools, crafting stations.
+    struct Seen
+    {
+        uint32_t    count = 0;
+        float       nearest = 0.0f;
+        std::string note;
+    };
+    std::map<std::string, Seen> seen;
+    for (GameObject* go : ObjectsNear(bot, 40.0f))
+    {
+        if (go->GetGoState() != GO_STATE_READY)
+            continue;
+        std::string note;
+        switch (go->GetGoType())
+        {
+            case GAMEOBJECT_TYPE_CHEST:
+            {
+                uint32_t required = 0;
+                if (const uint32_t skill = NodeSkill(go, required))
+                {
+                    const uint32_t have = bot->GetSkillValue(skill);
+                    if (have >= required)
+                        note = SafeFormat("they can gather it: {} {}", SkillName(skill), have);
+                    else if (have)
+                        note = SafeFormat("needs {} {}, they have {}", SkillName(skill), required, have);
+                    else
+                        note = SafeFormat("needs {}, which they do not have", SkillName(skill));
+                }
+                else if (!go->GetGOInfo()->GetLootId())
+                    continue;   // a chest-type prop with nothing in it
+                else
+                    note = "can be opened";
+                break;
+            }
+            case GAMEOBJECT_TYPE_FISHINGHOLE:
+                if (!bot->HasSkill(SKILL_FISHING))
+                    continue;
+                note = "a fishing pool (nc +master fishing beside it)";
+                break;
+            case GAMEOBJECT_TYPE_SPELL_FOCUS:
+                note = "a crafting station";
+                break;
+            default:
+                continue;
+        }
+        Seen& s = seen[go->GetGOInfo()->name];
+        const float d = bot->GetDistance(go);
+        if (!s.count || d < s.nearest)
+            s.nearest = d;
+        ++s.count;
+        s.note = note;
+    }
+    std::vector<std::pair<float, std::string>> objects;
+    for (auto const& [name, s] : seen)
+        objects.emplace_back(s.nearest, SafeFormat("{}{} ({:.0f} yd, {})", name, s.count > 1 ? SafeFormat(" x{}", s.count)
+                                                                                         : std::string(),
+                                                   s.nearest, s.note));
+    std::sort(objects.begin(), objects.end());
+    for (size_t i = 0; i < objects.size() && i < 6; ++i)
+        parts.push_back(objects[i].second);
+
+    std::string out;
+    for (const std::string& p : parts)
+        out += (out.empty() ? "" : "; ") + p;
+    return out;
+}
+
 AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand,
                                                      uint32_t now)
 {
@@ -760,6 +1259,9 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
         return u;
     if (errand.hunting)
         return Hunt(bot, ai, errand, now);
+    // Crafting where it stands (no trip, or the trip to the station is over).
+    if (errand.kind == AutopilotErrandKind::Craft && !errand.trip.active)
+        return CraftStep(bot, ai, errand);
 
     std::string note;
     const AutopilotTripState state = AutopilotTravel_Update(bot, ai, errand.trip, now, note);
@@ -803,6 +1305,16 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             u.note = "arrived at " + errand.label;
             return u;
         }
+
+        case AutopilotErrandKind::Craft:
+            // At the station: keep the errand and craft from the next visit.
+            errand.active = true;
+            u.finished    = false;
+            u.note        = "at the crafting station";
+            return u;
+
+        case AutopilotErrandKind::Open:
+            return OpenStep(bot, ai, errand);
 
         case AutopilotErrandKind::QuestTurnIn:
         {

@@ -39,7 +39,9 @@ enum class AutopilotErrandKind : uint8_t
     Place,            // a zone, or anywhere
     Service,          // use the NPC on arrival
     QuestTurnIn,      // talk to the NPC on arrival
-    QuestObjective    // just get there; the LLM decides what to do
+    QuestObjective,   // get there and work the objective
+    Craft,            // (walk to a crafting station, then) craft a recipe N times
+    Open              // walk to an object and open or use it
 };
 
 // A trip with a purpose: where, and what to do on arrival.
@@ -61,6 +63,12 @@ struct AutopilotErrand
     bool                hunting   = false;
     uint32_t            huntUntil = 0;
     uint32_t            lastUseAt = 0;      // last time it used an objective object
+
+    // Craft: the recipe spell and how many are left / done. Open: the object.
+    uint32_t            craftSpell = 0;
+    uint32_t            craftLeft  = 0;
+    uint32_t            craftDone  = 0;
+    uint64_t            objectGuid = 0;
 };
 
 void AutopilotCommands_Load();
@@ -98,6 +106,13 @@ struct AutopilotErrandUpdate
 // Advance an errand: travel, then on arrival do the job.
 AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand,
                                                      uint32_t now);
+
+// For the prompt: what the bot can craft from its bags right now ("Copper Bar
+// x6 (raises skill) (at a Forge)"), and what is around it worth acting on:
+// bodies to loot or skin, gathering nodes and chests, fishing pools, crafting
+// stations. World thread.
+std::string AutopilotCommands_DescribeCraftable(Player* bot);
+std::string AutopilotCommands_DescribeSurroundings(Player* bot);
 
 // End an errand early (unenrolled, joined a group): stop the bot.
 void AutopilotCommands_StopErrand(PlayerbotAI* ai, AutopilotErrand& errand);
