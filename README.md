@@ -446,11 +446,20 @@ or click the spyglass button on the minimap (left-click shows or hides the
 window, right-click switches to log only, drag to move it).
 
 **The window:**
-- **Left:** every online autopilot bot, with its class, level and what it is
-  doing (fighting, travelling, waiting on the model, idle, ...). The box at
-  the top filters by name, zone, state or plan. Hover over a bot for its
-  current plan; click it to open its pages.
-- **Right**, one page at a time, refreshed automatically:
+- **Title bar:** drag it to move the window. The pill beside the title shows
+  whether autopilot is on. When it is off, a red banner underneath says why
+  (the same reasons `.ollama autopilot status` gives), and it also says when
+  your account may not use the monitor or the server does not answer.
+- **Left:** every online autopilot bot, with its class icon, level, state
+  (fighting, travelling, waiting on the model, idle, ...) and current task.
+  The search box filters by name, zone, state or task. The four filters
+  under it (Fighting, Moving, Waiting, Idle) show how many bots are in each
+  and narrow the list to one; click again to show all. Hover over a bot for
+  the details; click it to open its pages.
+- **Bot card:** name, level, class, zone, current task, state and tier,
+  with the action buttons under it. Buttons that need a bot stay greyed out
+  until one is selected.
+- **Pages**, one at a time, refreshed automatically:
   - **Overview:** where it is, health, combat and attackers, its movement
     type, playerbots' engine and live strategies, the model's identity, plan,
     goal, reason and last orders, and the watchdogs (alerts, deaths,
@@ -483,8 +492,9 @@ window, right-click switches to log only, drag to move it).
     had before autopilot, and it leaves the list. The button then reads Turn
     on, which does `.ollama autopilot on` for that bot. With nothing
     selected, Turn on uses your current target.
-  - **Plain text** turns off colours, so text copies cleanly. Every page
-    is selectable, and Ctrl+C copies it.
+- **Footer:** the camera state, the **Auto refresh** and **Plain text**
+  checkboxes (plain text turns off colours so text copies cleanly; every
+  page is selectable, and Ctrl+C copies it), and the whisper box.
 - **Log only:** the small button beside the close X shrinks the window to
   the bot's name and the live log, see-through, so most of the screen
   stays free while the camera follows. Drag the corner to resize it, and
