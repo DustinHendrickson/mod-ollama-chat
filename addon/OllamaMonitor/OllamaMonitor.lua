@@ -222,6 +222,8 @@ RefreshList = function()
             if b.guid == M.selected then row.sel:Show() else row.sel:Hide() end
             row:Show()
         else
+            -- A row vanishing under the cursor never gets OnLeave.
+            if GameTooltip:GetOwner() == row then GameTooltip:Hide() end
             row.guid = nil
             row:Hide()
         end
@@ -460,6 +462,7 @@ end
 
 SelectBot = function(guid)
     M.selected = guid
+    M.gone = false
     M.lines = { "loading..." }
     M.Render(false)
     UpdateHeader()
@@ -490,6 +493,11 @@ local function OnMessage(msg)
         table.sort(M.incoming, function(a, b) return a.name < b.name end)
         M.bots = M.incoming
         M.incoming = nil
+        -- Back online: pick up where the page left off.
+        if M.gone and BotByGuid(M.selected) then
+            M.gone = false
+            M.pageAt = 0
+        end
         RefreshList()
         UpdateHeader()
         UpdateCamera()
@@ -523,6 +531,16 @@ local function OnMessage(msg)
             M.watchName = f[4]
         end
         UpdateCamera()
+    elseif kind == "G" then
+        -- The selected bot logged out. Stop asking; keep its last page up,
+        -- marked, so what it was doing can still be read.
+        M.waiting = false
+        if f[2] == M.selected and not M.gone then
+            M.gone = true
+            table.insert(M.lines, 1, "# OFFLINE - last known state below; this page resumes if it logs back in")
+            M.Render(true)
+            updatedText:SetText("offline since " .. date("%H:%M:%S"))
+        end
     elseif kind == "M" then
         M.waiting = false
         Print(f[2] or "")
@@ -553,7 +571,8 @@ frame:SetScript("OnUpdate", function(self, elapsed)
         M.listAt = now
         Send("LIST")
     end
-    if M.selected and OllamaMonitorDB and OllamaMonitorDB.auto ~= false then
+    -- Only while the bot is still online (in the list) and not reported gone.
+    if M.selected and not M.gone and BotByGuid(M.selected) and OllamaMonitorDB and OllamaMonitorDB.auto ~= false then
         -- One page request at a time; a lost answer is retried after 10s.
         if (not M.waiting and now - M.pageAt >= PageEvery()) or (M.waiting and now - M.askedAt >= 10) then
             RequestPage()

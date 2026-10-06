@@ -37,6 +37,7 @@
 //   PAGE <guid> <page>               B \t guid \t page | P \t c|e \t text ... | Z \t guid \t page
 //   WATCH <guid> / UNWATCH           W \t on|off|wait \t guid \t name \t note
 //   GOTO <guid>                      M \t text
+//                                    G \t guid   (a PAGE for a bot no longer online)
 //
 // Page lines longer than one message are split; "c" marks a piece the next
 // one continues, "e" the end of a line.
@@ -455,7 +456,12 @@ namespace
         Player* bot = guid ? FindBot(guid) : nullptr;
         if (!bot)
         {
-            Note(player, "That bot is not online.");
+            // A page is the addon polling, not the user asking: answer quietly
+            // so it can stop, instead of a chat line per poll.
+            if (verb == "PAGE")
+                Send(player, SafeFormat("G\t{}", guid));
+            else
+                Note(player, "That bot is not online.");
             return;
         }
 
