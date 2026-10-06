@@ -475,9 +475,12 @@ window, right-click switches to log only, drag to move it).
   - **Teleport to** moves you to the bot.
   - **Replan now** and **Status to chat** run the matching
     `.ollama autopilot` command.
-  - **Turn off** takes the bot off autopilot after you confirm
-    (`.ollama autopilot off <bot>`). Its strategies go back to what it had
-    before autopilot, and it leaves the list.
+  - **Turn off / Turn on.** While the selected bot is on autopilot, the
+    button reads Turn off. After you confirm, it runs
+    `.ollama autopilot off <bot>`: the bot's strategies go back to what it
+    had before autopilot, and it leaves the list. The button then reads Turn
+    on, which runs `.ollama autopilot on` for that bot. With nothing
+    selected, Turn on uses your current target.
   - **Plain text** turns off colours, so text copies cleanly. Every page
     is selectable, and Ctrl+C copies it.
 - **Log only:** the small button beside the close X shrinks the window to

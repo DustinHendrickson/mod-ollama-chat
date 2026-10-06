@@ -313,13 +313,40 @@ StaticPopupDialogs["OLLAMAMONITOR_TURN_OFF"] = {
     hideOnEscape = 1,
 }
 
+-- Who "Turn on" means: the bot last selected here (it leaves the list once it
+-- is off autopilot, but its name is kept), else your current target.
+local function TurnOnName()
+    if M.selectedName then return M.selectedName end
+    if UnitExists("target") and UnitIsPlayer("target") then return UnitName("target") end
+    return nil
+end
+
+-- One button, two jobs: Turn off while the selected bot is on autopilot,
+-- Turn on once it is not.
 local offButton = MakeButton("Turn off", 80, function()
     local b = SelectedBot()
-    if not b then return end
-    local dialog = StaticPopup_Show("OLLAMAMONITOR_TURN_OFF", b.name)
-    if dialog then dialog.data = b.name end
+    if b then
+        local dialog = StaticPopup_Show("OLLAMAMONITOR_TURN_OFF", b.name)
+        if dialog then dialog.data = b.name end
+        return
+    end
+    local name = TurnOnName()
+    if not name then
+        Print("select a bot, or target one, to turn autopilot on")
+        return
+    end
+    SendChatMessage(".ollama autopilot on " .. name, "SAY")
+    M.listAt = 0   -- refresh the list soon: the bot joins it
 end)
 offButton:SetPoint("LEFT", plainButton, "RIGHT", 4, 0)
+
+function M.UpdateOnOff()
+    if SelectedBot() then
+        offButton:SetText("Turn off")
+    else
+        offButton:SetText("Turn on")
+    end
+end
 
 local tabs = {}
 local ShowPage
@@ -433,12 +460,16 @@ function M.Render(keepScroll)
 end
 
 local function UpdateHeader()
+    M.UpdateOnOff()
     local b = SelectedBot()
     if not b then
-        if M.selected then
+        if M.selected and M.selectedName then
+            header:SetText("|cffa0a0a0" .. M.selectedName ..
+                " is not on autopilot (or not online). Turn on puts it back.|r")
+        elseif M.selected then
             header:SetText("|cffa0a0a0That bot is no longer on autopilot or online.|r")
         else
-            header:SetText("Select a bot on the left.")
+            header:SetText("Select a bot on the left, or target one and press Turn on.")
         end
         return
     end
@@ -486,6 +517,8 @@ end
 SelectBot = function(guid)
     M.selected = guid
     M.gone = false
+    local picked = BotByGuid(guid)
+    if picked then M.selectedName = picked.name end
     M.lines = { "loading..." }
     M.Render(false)
     UpdateHeader()
