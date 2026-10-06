@@ -664,7 +664,7 @@ the orders a player would whisper to their own bot:
 
 ```
 nc +grind,-quest          quest 783          goto trainer
-goto zone Tanaris         talents            autogear
+goto zone Tanaris         talents spec arms  autogear
 co +flee,+potions         nc +lfg            goto repair
 ```
 
@@ -720,11 +720,11 @@ drop, a capped profession).
 | Area | Orders | Where |
 |---|---|---|
 | Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy except the overhead controllers (grind, quest, gather, loot, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
-| Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in | On its own |
-| Errands | `goto repair / vendor / trainer / profession / inn / flightmaster` goes there and uses it: repairs and sells junk, learns every affordable spell, sets the inn as home, or learns the flight point. `goto bank / auction` only goes there; at a bank, `bank <item>` stores items. Bots can't trade at the auction house | On its own |
+| Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in. The prompt lists a finished quest's reward choices (kind, stats, usable or not), and `quest <id> reward <n>` takes the one the character wants | On its own |
+| Errands | `goto repair / vendor / trainer / inn / flightmaster` goes there and uses it: repairs and sells junk, learns every affordable class spell, sets the inn as home, or learns the flight point. `goto profession <name>` goes to that profession's trainer and learns it, its next rank and its recipes; the prompt shows the free profession slots, and which professions to take is the character's choice. `goto bank / auction` only goes there; at a bank, `bank <item>` stores items. Bots can't trade at the auction house | On its own |
 | Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
 | Hunting | `goto hunt` goes to the nearest group of monsters of the bot's level; `nc +grind` fights what is around it | On its own |
-| Upkeep | `talents`, `autogear`, `s gray`, `repair`, `maintenance` | On its own |
+| Upkeep | `talents spec <name>` (one of the class's talent specs, listed in the prompt with unspent points), `autogear`, `s gray`, `repair`, `maintenance` | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
 
 **Autopilot doesn't control:**

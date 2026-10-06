@@ -38,18 +38,26 @@ namespace
         "ORDERS:\n"
         "- goto <service> : go to the nearest repair, vendor, trainer, profession, inn or flightmaster and use "
         "it (repair and sell junk, make the inn their home, learn the flight point there). trainer = their "
-        "own class trainer, for new spells and ranks as they level; profession = a profession trainer, useful "
-        "only for a profession they already have (it teaches nothing else); or "
+        "own class trainer, for new spells and ranks as they level; or "
         "to the nearest bank or auction house (they only go there; at a bank, bank <item> stores an item and "
         "bank -<item> takes one out; they cannot trade at the auction house)\n"
+        "- goto profession <name> : go to that profession's trainer and learn what it teaches them: the "
+        "profession itself (a new primary profession needs a free slot -- two at most; Cooking, First Aid and "
+        "Fishing are free), its next rank once their skill allows, and recipes. Which professions to take up "
+        "is the character's choice: Alchemy, Blacksmithing, Enchanting, Engineering, Herbalism, Inscription, "
+        "Jewelcrafting, Leatherworking, Mining, Skinning, Tailoring; Cooking, First Aid, Fishing\n"
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
         "portals, and fly between flight points they have learned\n"
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
         "around them, so send them here to fight)\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
-        "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself\n"
-        "- talents : spend talent points; autogear : equip the best gear they have; s gray : sell junk to a "
-        "vendor nearby; repair : repair at a vendor nearby\n"
+        "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself. When a quest ready to "
+        "turn in offers rewards to choose from (listed under it), pick one: quest <id> reward <n>\n"
+        "- talents spec <name> : follow one of their class's talent specs (listed with their facts) and spend "
+        "every unspent point along it; give it again after levelling to spend new points. Which spec is the "
+        "character's choice. talents autopick lets their AI choose instead\n"
+        "- autogear : equip the best gear they have; s gray : sell junk to a vendor nearby; repair : repair at a "
+        "vendor nearby\n"
         "- follow / stay : follow the group leader or stay put\n"
         "Orders that send them somewhere (goto, quest) are carried out one after another, in the order you "
         "give them, so list them in the order they should happen. Each ends on arrival (goto hunt too: put it "
@@ -292,6 +300,29 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
                                "a hunting ground: " + place.name, now);
         }
 
+        // "goto profession mining", or just "goto mining": that profession's
+        // trainer. Which profession is the character's choice, so a bare
+        // "goto profession" asks for one instead of taking the nearest.
+        {
+            const bool named = StartsWithWord(what, "profession");
+            const std::string profName = named ? Trim(what.substr(10)) : what;
+            std::string display;
+            const uint32_t skill = AutopilotWorld_ProfessionSkill(profName, display);
+            if (skill)
+            {
+                AutopilotPlace place;
+                if (!AutopilotWorld_NearestProfessionTrainer(bot, skill, place))
+                    return "no " + display + " trainer on this continent";
+                if (errand.active)
+                    AutopilotCommands_StopErrand(ai, errand);
+                return StartErrand(bot, errand, AutopilotErrandKind::Service,
+                                   static_cast<uint8_t>(AutopilotService::Profession), place.entry, 0, place, 25.0f,
+                                   SafeFormat("the {} trainer {}", display, place.name), now);
+            }
+            if (named)
+                return "say which profession: goto profession <name> (" + AutopilotWorld_ProfessionNames() + ")";
+        }
+
         AutopilotService service;
         if (!StartsWithWord(what, "zone") && AutopilotService_FromName(what, service))
         {
@@ -328,7 +359,17 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 
     if (StartsWithWord(lower, "quest"))
     {
-        const std::string arg = Trim(lower.substr(5));
+        std::string arg = Trim(lower.substr(5));
+
+        // "quest 33 reward 2": which of the quest's reward choices to take.
+        uint32_t rewardChoice = 0;
+        if (const size_t at = arg.find("reward"); at != std::string::npos)
+        {
+            try { rewardChoice = static_cast<uint32_t>(std::stoul(Trim(arg.substr(at + 6)))); }
+            catch (...) { rewardChoice = 0; }
+            arg = Trim(arg.substr(0, at));
+        }
+
         uint32_t questId = 0;
         try { questId = static_cast<uint32_t>(std::stoul(arg)); } catch (...) { questId = 0; }
 
@@ -344,6 +385,10 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         const QuestStatus status = quest ? bot->GetQuestStatus(questId) : QUEST_STATUS_NONE;
         if (!quest || (status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE))
             return "that quest is not in the log";
+        if (rewardChoice && rewardChoice > quest->GetRewChoiceItemsCount())
+            return quest->GetRewChoiceItemsCount()
+                ? SafeFormat("that quest's reward choices are 1 to {}", quest->GetRewChoiceItemsCount())
+                : std::string("that quest has no reward to choose");
 
         AutopilotPlace place;
         if (status == QUEST_STATUS_COMPLETE)
@@ -364,8 +409,11 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
                 return "nobody to turn that quest in to could be found";
             if (errand.active)
                 AutopilotCommands_StopErrand(ai, errand);
-            return StartErrand(bot, errand, AutopilotErrandKind::QuestTurnIn, 0, place.entry, questId, place, 25.0f,
-                               SafeFormat("{} to turn in {}", place.name, quest->GetTitle()), now);
+            const std::string result = StartErrand(bot, errand, AutopilotErrandKind::QuestTurnIn, 0, place.entry,
+                                                   questId, place, 25.0f,
+                                                   SafeFormat("{} to turn in {}", place.name, quest->GetTitle()), now);
+            errand.rewardChoice = static_cast<uint8_t>(rewardChoice);
+            return result;
         }
 
         std::string what;
@@ -425,12 +473,30 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 u.note = "arrived, but " + errand.label.substr(0, errand.label.find(" to turn in")) + " was not there";
                 return u;
             }
+            Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
+
+            // The reward the model chose ("quest <id> reward <n>"), taken the
+            // way a player clicks it -- before playerbots' turn-in, which
+            // would pick one by its own stat weights.
+            std::string chose;
+            if (quest && errand.rewardChoice && errand.rewardChoice <= quest->GetRewChoiceItemsCount() &&
+                !bot->GetQuestRewardStatus(errand.questId) && bot->CanRewardQuest(quest, false))
+            {
+                const uint32_t index = errand.rewardChoice - 1u;
+                if (bot->CanRewardQuest(quest, index, false))
+                {
+                    bot->RewardQuest(quest, index, npc, true);
+                    if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[index]))
+                        chose = ", taking " + item->Name1;
+                }
+            }
+
+            // Talking to the quest giver also takes any follow-up quest it offers.
             AutopilotQuest_TalkTo(ai, npc);
 
-            // Playerbots picks a reward itself for random bots; an alt asks
-            // its master to choose, and an autopilot bot's master is the LLM,
+            // No choice from the model: playerbots picks for random bots; an
+            // alt asks its master, and an autopilot bot's master is the LLM,
             // which cannot answer a whisper. Take the best usable choice.
-            Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
             if (quest && !bot->GetQuestRewardStatus(errand.questId) && bot->CanRewardQuest(quest, false))
             {
                 uint32_t choice = 0, bestLevel = 0;
@@ -450,7 +516,7 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             }
 
             u.note = bot->GetQuestRewardStatus(errand.questId)
-                ? "turned in the quest with " + npc->GetName()
+                ? "turned in the quest with " + npc->GetName() + chose
                 : "talked to " + npc->GetName() + " but the quest was not turned in (it may need choosing a reward)";
             return u;
         }
@@ -483,8 +549,8 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 u.note = SafeFormat("trained at {}: learned {} spell{}", errand.label, learned, learned == 1 ? "" : "s");
             else if (static_cast<AutopilotService>(errand.service) == AutopilotService::Profession)
                 u.note = "nothing to learn at " + errand.label +
-                         ": they have no profession it teaches, or know all it offers at their skill "
-                         "(for new class spells, goto trainer)";
+                         ": no free profession slot for it, too little skill for the next rank, or not enough "
+                         "money (for new class spells, goto trainer)";
             else
                 u.note = "nothing new to learn at " + errand.label + " at this level";
             return u;

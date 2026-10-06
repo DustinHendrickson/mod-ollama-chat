@@ -53,6 +53,16 @@ void AutopilotWorld_Build();
 // Nearest friendly NPC offering `service` on the bot's own map.
 bool AutopilotWorld_NearestService(Player* bot, AutopilotService service, AutopilotPlace& out);
 
+// A profession (primary or secondary) by its name ("mining", "first aid"),
+// as a skill line id; 0 if there is none by that name.
+uint32_t AutopilotWorld_ProfessionSkill(const std::string& name, std::string& display);
+
+// "Alchemy, Blacksmithing, ..." for the order reference.
+std::string AutopilotWorld_ProfessionNames();
+
+// The nearest trainer for that profession on this continent.
+bool AutopilotWorld_NearestProfessionTrainer(Player* bot, uint32_t skillId, AutopilotPlace& out);
+
 // A walkable spot in a zone: the friendly service NPC nearest the zone's
 // centre. The zone may be on another continent; getting there is the travel
 // planner's job (boats, zeppelins). Fills `why` on failure.

@@ -10,6 +10,8 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "SharedDefines.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "Trainer.h"
 
 #include <algorithm>
@@ -199,6 +201,126 @@ bool AutopilotWorld_NearestService(Player* bot, AutopilotService service, Autopi
     for (const Spawn& s : it->second)
     {
         if (!Serves(bot, s, service))
+            continue;
+        const float d = bot->GetDistance(s.x, s.y, s.z);
+        if (!best || d < bestDist)
+        {
+            best     = &s;
+            bestDist = d;
+        }
+    }
+    if (!best)
+        return false;
+
+    out.map      = bot->GetMapId();
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = best->entry;
+    out.name     = NameOf(best->entry);
+    out.distance = bestDist;
+    return true;
+}
+
+namespace
+{
+    bool IsProfessionLine(SkillLineEntry const* line)
+    {
+        return line && (line->categoryId == SKILL_CATEGORY_PROFESSION || line->categoryId == SKILL_CATEGORY_SECONDARY) &&
+               line->name[0] && *line->name[0];
+    }
+
+    // The skill a spell teaches: its own skill effect, or the one of a spell
+    // it teaches in turn (trainers often sell a "learn" spell).
+    uint32_t SkillOfSpell(uint32_t spellId, int depth = 0)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info || depth > 1)
+            return 0;
+        for (SpellEffectInfo const& e : info->GetEffects())
+        {
+            if ((e.Effect == SPELL_EFFECT_SKILL || e.Effect == SPELL_EFFECT_SKILL_STEP) && e.MiscValue > 0)
+                if (IsProfessionLine(sSkillLineStore.LookupEntry(uint32_t(e.MiscValue))))
+                    return uint32_t(e.MiscValue);
+            if (e.Effect == SPELL_EFFECT_LEARN_SPELL && e.TriggerSpell)
+                if (uint32_t skill = SkillOfSpell(e.TriggerSpell, depth + 1))
+                    return skill;
+        }
+        return 0;
+    }
+
+    // Which profession a trainer teaches, worked out once per creature entry.
+    uint32_t TrainerSkill(uint32_t entry)
+    {
+        static std::unordered_map<uint32_t, uint32_t> cache;
+        if (auto it = cache.find(entry); it != cache.end())
+            return it->second;
+
+        uint32_t skill = 0;
+        if (Trainer::Trainer* trainer = sObjectMgr->GetTrainer(entry))
+            if (trainer->GetTrainerType() == Trainer::Type::Tradeskill)
+                for (const Trainer::Spell& spell : trainer->GetSpells())
+                {
+                    if (spell.ReqSkillLine && IsProfessionLine(sSkillLineStore.LookupEntry(spell.ReqSkillLine)))
+                        skill = spell.ReqSkillLine;
+                    else
+                        skill = SkillOfSpell(spell.SpellId);
+                    if (skill)
+                        break;
+                }
+        cache[entry] = skill;
+        return skill;
+    }
+}
+
+uint32_t AutopilotWorld_ProfessionSkill(const std::string& raw, std::string& display)
+{
+    const std::string name = Lower(raw);
+    if (name.empty())
+        return 0;
+    for (uint32_t i = 0; i < sSkillLineStore.GetNumRows(); ++i)
+    {
+        SkillLineEntry const* line = sSkillLineStore.LookupEntry(i);
+        if (!IsProfessionLine(line))
+            continue;
+        const std::string lineName = Lower(line->name[0]);
+        if (lineName == name || (name.size() >= 4 && lineName.rfind(name, 0) == 0))
+        {
+            display = line->name[0];
+            return line->id;
+        }
+    }
+    return 0;
+}
+
+std::string AutopilotWorld_ProfessionNames()
+{
+    std::vector<std::string> names;
+    for (uint32_t i = 0; i < sSkillLineStore.GetNumRows(); ++i)
+    {
+        SkillLineEntry const* line = sSkillLineStore.LookupEntry(i);
+        if (IsProfessionLine(line))
+            names.push_back(line->name[0]);
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    std::string out;
+    for (const std::string& n : names)
+        out += (out.empty() ? "" : ", ") + n;
+    return out;
+}
+
+bool AutopilotWorld_NearestProfessionTrainer(Player* bot, uint32_t skillId, AutopilotPlace& out)
+{
+    auto it = g_spawns.find(bot->GetMapId());
+    if (it == g_spawns.end())
+        return false;
+
+    const Spawn* best = nullptr;
+    float bestDist = 0.0f;
+    for (const Spawn& s : it->second)
+    {
+        if (!Serves(bot, s, AutopilotService::Profession) || TrainerSkill(s.entry) != skillId)
             continue;
         const float d = bot->GetDistance(s.x, s.y, s.z);
         if (!best || d < bestDist)

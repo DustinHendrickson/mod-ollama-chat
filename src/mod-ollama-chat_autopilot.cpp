@@ -21,6 +21,7 @@
 #include "Group.h"
 #include "Guild.h"
 #include "Item.h"
+#include "ItemTemplate.h"
 #include "Log.h"
 #include "GameTime.h"
 #include "Map.h"
@@ -42,6 +43,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <set>
@@ -1420,6 +1422,71 @@ namespace
         return how.empty() ? "on the way to " + ob.errand.label : how + ", bound for " + ob.errand.label;
     }
 
+    // "Worn Mail Vest (mail chest, armor 98, +2 Str +1 Sta)", plus "can't use"
+    // when the bot cannot -- what a player reads in the reward tooltip.
+    std::string DescribeRewardItem(Player* bot, ItemTemplate const* item)
+    {
+        static const char* const kArmor[]  = { "misc", "cloth", "leather", "mail", "plate", "buckler", "shield",
+                                               "libram", "idol", "totem", "sigil" };
+        static const char* const kWeapon[] = { "one-hand axe", "two-hand axe", "bow", "gun", "one-hand mace",
+                                               "two-hand mace", "polearm", "one-hand sword", "two-hand sword", "weapon",
+                                               "staff", "exotic", "exotic", "fist weapon", "weapon", "dagger",
+                                               "thrown", "spear", "crossbow", "wand", "fishing pole" };
+        static const char* const kSlot[]   = { "", "head", "neck", "shoulder", "shirt", "chest", "waist", "legs",
+                                               "feet", "wrist", "hands", "finger", "trinket", "one-hand", "shield",
+                                               "ranged", "back", "two-hand", "bag", "tabard", "chest", "main hand",
+                                               "off hand", "held in off hand", "ammo", "thrown", "ranged", "quiver",
+                                               "relic" };
+
+        std::string kind;
+        if (item->Class == ITEM_CLASS_WEAPON && item->SubClass < std::size(kWeapon))
+            kind = kWeapon[item->SubClass];
+        else if (item->Class == ITEM_CLASS_ARMOR && item->SubClass < std::size(kArmor))
+        {
+            kind = kArmor[item->SubClass];
+            if (item->InventoryType < std::size(kSlot) && item->SubClass != ITEM_SUBCLASS_ARMOR_SHIELD)
+                kind += std::string(" ") + kSlot[item->InventoryType];
+        }
+        else if (item->InventoryType && item->InventoryType < std::size(kSlot))
+            kind = kSlot[item->InventoryType];
+        else
+            kind = "item";
+
+        std::string stats;
+        if (item->Armor)
+            stats += SafeFormat(", armor {}", item->Armor);
+        if (item->Damage[0].DamageMax > 0.0f)
+            stats += SafeFormat(", {:.0f}-{:.0f} damage", item->Damage[0].DamageMin, item->Damage[0].DamageMax);
+        for (uint32_t i = 0; i < item->StatsCount && i < MAX_ITEM_PROTO_STATS; ++i)
+        {
+            const int32 value = item->ItemStat[i].ItemStatValue;
+            if (!value)
+                continue;
+            const char* name = nullptr;
+            switch (item->ItemStat[i].ItemStatType)
+            {
+                case ITEM_MOD_AGILITY:           name = "Agi"; break;
+                case ITEM_MOD_STRENGTH:          name = "Str"; break;
+                case ITEM_MOD_INTELLECT:         name = "Int"; break;
+                case ITEM_MOD_SPIRIT:            name = "Spi"; break;
+                case ITEM_MOD_STAMINA:           name = "Sta"; break;
+                case ITEM_MOD_ATTACK_POWER:      name = "attack power"; break;
+                case ITEM_MOD_SPELL_POWER:       name = "spell power"; break;
+                case ITEM_MOD_CRIT_RATING:       name = "crit"; break;
+                case ITEM_MOD_HIT_RATING:        name = "hit"; break;
+                case ITEM_MOD_HASTE_RATING:      name = "haste"; break;
+                case ITEM_MOD_DEFENSE_SKILL_RATING: name = "defense"; break;
+                case ITEM_MOD_DODGE_RATING:      name = "dodge"; break;
+                case ITEM_MOD_MANA_REGENERATION: name = "mp5"; break;
+                default:                         name = "other"; break;
+            }
+            stats += SafeFormat(", +{} {}", value, name);
+        }
+
+        return SafeFormat("{} ({}{}){}", item->Name1, kind, stats,
+                          bot->CanUseItem(item) == EQUIP_ERR_OK ? "" : " - can't use");
+    }
+
     // "- [783] A Threat Within (level 1): ready to turn in"
     std::string DescribeQuestLog(Player* bot)
     {
@@ -1436,6 +1503,15 @@ namespace
                                                                 : "in progress";
             out += SafeFormat("{}- [{}] {} (level {}): {}", out.empty() ? "" : "\n", id, q->GetTitle(),
                               q->GetQuestLevel() > 0 ? q->GetQuestLevel() : int32(bot->GetLevel()), state);
+
+            // The choice a player makes at the quest giver; theirs to make.
+            if (status == QUEST_STATUS_COMPLETE && q->GetRewChoiceItemsCount() > 1)
+            {
+                out += SafeFormat("\n  rewards to choose from (quest {} reward <n>):", id);
+                for (uint32_t i = 0; i < q->GetRewChoiceItemsCount(); ++i)
+                    if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(q->RewardChoiceItemId[i]))
+                        out += SafeFormat(" {}) {};", i + 1, DescribeRewardItem(bot, item));
+            }
         }
         return out;
     }
@@ -1519,6 +1595,21 @@ namespace
             uint32_t(cur.freeBagSlots), uint32_t(cur.questsActive));
         if (!cur.professions.empty())
             ctx.state += " Professions: " + Progress_DescribeProfessions(cur.professions) + ".";
+        ctx.state += SafeFormat(" Free primary profession slots: {}.", bot->GetFreePrimaryProfessionPoints());
+        if (bot->GetLevel() >= 10)
+        {
+            std::string specs;
+            for (int specNo = 0; specNo < MAX_SPECNO; ++specNo)
+            {
+                const std::string& name = sPlayerbotAIConfig.premadeSpecName[bot->getClass()][specNo];
+                if (name.empty())
+                    break;
+                specs += (specs.empty() ? "" : ", ") + name;
+            }
+            ctx.state += SafeFormat(" Unspent talent points: {}.", bot->GetFreeTalentPoints());
+            if (!specs.empty())
+                ctx.state += " Talent specs (talents spec <name>): " + specs + ".";
+        }
         if (tier == Tier::Foreground && g_EnableChatBotSnapshotTemplate)
             ctx.state += "\n" + GenerateBotGameStateSnapshot(bot);
 

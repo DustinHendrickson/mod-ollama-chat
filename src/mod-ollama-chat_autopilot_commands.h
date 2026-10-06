@@ -50,6 +50,7 @@ struct AutopilotErrand
     uint8_t             service   = 0;      // AutopilotService
     uint32_t            npcEntry  = 0;
     uint32_t            questId   = 0;
+    uint8_t             rewardChoice = 0;   // 1-based, from "quest <id> reward <n>"; 0 = not chosen
     std::string         label;              // "the repair vendor Corina Steele"
     uint32_t            startedAt = 0;
     AutopilotTrip       trip;
