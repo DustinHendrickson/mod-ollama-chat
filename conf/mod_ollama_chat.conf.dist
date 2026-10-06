@@ -2354,6 +2354,22 @@ OllamaChat.Autopilot.NoHandouts = 1
 #        Default: 1
 OllamaChat.Autopilot.KeepOnline = 1
 
+#    Running with no real players online (a selfbot, or an empty realm)
+#        Autopilot itself does not need a player nearby: the model is asked
+#        and the bot walks either way. Playerbots does. A bot with no real
+#        player near is idled for most of the time (AiPlayerbot.BotActiveAlone,
+#        10% by default, less under SmartScale): only urgent actions run, so it
+#        does not grind, loot, buff or fight back properly. A selfbot counts
+#        as a real player for this, but only in its own zone and within
+#        BotActiveAloneForceWhenInRadius. To keep every bot fully awake, set in
+#        playerbots.conf:
+#            AiPlayerbot.BotActiveAlone = 100
+#            AiPlayerbot.botActiveAloneSmartScale = 0
+#        (all bots active: the heaviest load), or the lighter
+#            AiPlayerbot.BotActiveAloneForceWhenInMap = 1
+#        (every bot on the same continent as a real player or selfbot). The
+#        monitor's Overview page shows "playerbots activity" per bot.
+
 #    OllamaChat.Autopilot.Route.QueriesPerVisit
 #        Long walks. A walk further than 60 yards follows a route built on
 #        the server's navmesh (mmaps), the way mod-city-siege routes its

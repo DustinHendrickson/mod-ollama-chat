@@ -4021,6 +4021,11 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
         {
             const BotState state = ai->GetState();
             Kv(out, "playerbots engine", state == BOT_STATE_COMBAT ? "combat" : state == BOT_STATE_DEAD ? "dead" : "non-combat");
+            // Playerbots idles bots with no real player near (AiPlayerbot.BotActiveAlone):
+            // only urgent actions run, so no grinding, looting or buffing.
+            Kv(out, "playerbots activity", ai->AllowActivity(ALL_ACTIVITY)
+                ? "active"
+                : "idle: no real player near (AiPlayerbot.BotActiveAlone and ForceWhenIn*)");
             Kv(out, "live strategies", DescribeLiveStrategies(ai));
             Kv(out, "now", DescribeActivity(bot, ob));
         }

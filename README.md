@@ -796,6 +796,18 @@ isn't a character, so it shows on nobody's friend list. It carries the note
 `ollama autopilot`, is rebuilt at startup and is removed when the bot leaves
 autopilot.
 
+**Running with no real players online** (a selfbot, or an empty realm):
+autopilot itself doesn't need anyone nearby, but playerbots idles a bot with
+no real player near for most of the time (`AiPlayerbot.BotActiveAlone`, 10%
+by default). An idle bot runs only urgent actions, so it doesn't grind, loot
+or buff. A selfbot counts as a real player, but only for bots in its zone or
+within `BotActiveAloneForceWhenInRadius`. To keep every bot awake, set
+`AiPlayerbot.BotActiveAlone = 100` and `AiPlayerbot.botActiveAloneSmartScale = 0`
+in `playerbots.conf` (heaviest load), or the lighter
+`AiPlayerbot.BotActiveAloneForceWhenInMap = 1` (bots on the same continent as
+a real player or selfbot). The monitor's Overview shows each bot's
+"playerbots activity".
+
 Some things this module can't change per bot:
 
 - **Free eating and drinking:** playerbots' global `AiPlayerbot.BotCheats`
