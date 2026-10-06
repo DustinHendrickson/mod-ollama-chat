@@ -217,6 +217,14 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   recorded in the bot's `"last movement"` value at `MOVEMENT_NORMAL`, so
   playerbots' own out-of-combat movement waits and combat still outranks it.
   Holds on a deck use `MOVEMENT_FORCED`.
+- **Never loosen the core's bot navmesh filter.** `PathGenerator::CreateFilter`
+  gives headless (bot) sessions no steep slopes, no lava/slime and water at
+  20x cost. Calling `SetExcludeFlags` replaces those exclusions -- once that
+  let bots climb mountainsides. Every autopilot path goes through
+  `AutopilotRoute_Filter` and `SetSlopeCheck(true)`.
+- **Autopilot's walk yields to combat.** It runs as an escort spline that a
+  caster cannot cast through; any visit (and a per-sweep check for walking
+  bots) that finds the bot attacked stops it (`AutopilotMove_Yield`).
 - **Never `MovePoint` with pathfinding for autopilot moves.** When the
   navmesh has no path it silently moves in a straight line (through walls, up
   cliffs). `AutopilotMove_To` computes the path itself and walks it with

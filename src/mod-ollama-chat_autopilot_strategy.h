@@ -53,6 +53,11 @@ bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generateP
 void AutopilotMove_Hold(PlayerbotAI* ai, uint32_t ms, bool overCombat);
 
 bool AutopilotMove_IsMoving(PlayerbotAI* ai);
+
+// Attacked: stop autopilot's own walk at once (a caster cannot cast while its
+// path spline is still running) and release its claim on the bot's movement,
+// so playerbots' combat AI has the bot. True when a walk was stopped.
+bool AutopilotMove_Yield(PlayerbotAI* ai);
 void AutopilotMove_Stop(PlayerbotAI* ai);
 
 // Turn in / pick up quests at this NPC, through playerbots' own action.

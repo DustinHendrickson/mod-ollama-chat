@@ -61,6 +61,8 @@ struct AutopilotRoute
     float    corridorReach  = 250.0f;  // shortened while the far end's tile is not loaded
     std::vector<AutopilotRoutePoint> anchors;   // waypoints along playerbots' road network
     size_t   anchor         = 0;
+    AutopilotRoutePoint goal;           // what the current corridor aims at
+    bool     goalIsEnd      = true;     // that is the destination, not an anchor
     bool     corridorToDest = false;   // the current corridor ends at the destination
     AutopilotRoutePoint legStart;   // the walk cursor when the corridor was made
 
@@ -87,6 +89,13 @@ struct AutopilotRoute
 };
 
 void AutopilotRoute_LoadConfig();
+
+class PathGenerator;
+
+// The navmesh filter every autopilot path uses, routes and moves alike: the
+// core's own filter for bots (no steep slopes, no lava, water expensive),
+// never loosened; Route.WaterCost can only make water costlier.
+void AutopilotRoute_Filter(Player* bot, PathGenerator& generator);
 
 // Start a route from the bot to (map, x, y, z). Spends no queries.
 void AutopilotRoute_Begin(Player* bot, uint32_t map, float x, float y, float z, AutopilotRoute& route);

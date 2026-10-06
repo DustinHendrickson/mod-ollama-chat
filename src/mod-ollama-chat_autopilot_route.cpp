@@ -7,6 +7,7 @@
 #include "TravelMgr.h"
 #include "TravelNode.h"
 #include "Player.h"
+#include "WorldSession.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,8 +23,7 @@ namespace
     {
         uint32_t queriesPerVisit = 6;
         float    nodeSpacing     = 28.0f;
-        float    steepCost       = 25.0f;
-        float    waterCost       = 8.0f;
+        float    waterCost       = 20.0f;
         uint32_t lookaheadNodes  = 12;
     };
 
@@ -52,15 +52,7 @@ namespace
         return { bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() };
     }
 
-    // Prefer the ground a traveller would actually take: roads over
-    // hillsides, bridges over rivers, never lava. Costs, not exclusions, so a
-    // ramp that is the only way up still works.
-    void Filter(PathGenerator& generator)
-    {
-        generator.SetNavTerrainCost(NAV_GROUND_STEEP, g_rc.steepCost);
-        generator.SetNavTerrainCost(NAV_WATER, g_rc.waterCost);
-        generator.SetExcludeFlags(uint16(NAV_MAGMA | NAV_SLIME));
-    }
+    void Filter(Player* bot, PathGenerator& generator) { AutopilotRoute_Filter(bot, generator); }
 
     // A corner's XY is the useful part; its Z is whatever surface Detour
     // snapped to, often the hillside above a road. Search down from just above
@@ -148,7 +140,7 @@ namespace
         ++r.queries;
         PathGenerator generator(bot);
         generator.SetUseStraightPath(true);
-        Filter(generator);
+        Filter(bot, generator);
 
         r.corridor.clear();
         r.corner = 0;
@@ -167,6 +159,8 @@ namespace
             ++r.anchor;
         const bool viaAnchor = r.anchor < r.anchors.size();
         const AutopilotRoutePoint goal = viaAnchor ? r.anchors[r.anchor] : r.dest;
+        r.goal      = goal;
+        r.goalIsEnd = !viaAnchor;
 
         AutopilotRoutePoint target = goal;
         const float toGoal = D2(r.cursor, goal);
@@ -235,7 +229,8 @@ namespace
         ++r.queries;
         PathGenerator generator(bot);
         generator.SetUseStraightPath(false);
-        Filter(generator);
+        Filter(bot, generator);
+        generator.SetSlopeCheck(true);   // drop steps too steep to walk
 
         if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, to.x, to.y, to.z, false))
             return false;
@@ -322,8 +317,7 @@ void AutopilotRoute_LoadConfig()
     RouteConfig c;
     c.queriesPerVisit = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Route.QueriesPerVisit", 6));
     c.nodeSpacing     = std::clamp(sConfigMgr->GetOption<float>("OllamaChat.Autopilot.Route.NodeSpacing", 28.0f), 8.0f, 60.0f);
-    c.steepCost       = std::clamp(sConfigMgr->GetOption<float>("OllamaChat.Autopilot.Route.SteepCost", 25.0f), 1.0f, 1000.0f);
-    c.waterCost       = std::clamp(sConfigMgr->GetOption<float>("OllamaChat.Autopilot.Route.WaterCost", 8.0f), 1.0f, 1000.0f);
+    c.waterCost       = std::clamp(sConfigMgr->GetOption<float>("OllamaChat.Autopilot.Route.WaterCost", 20.0f), 1.0f, 1000.0f);
     g_rc = c;
 }
 
@@ -367,12 +361,13 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
         {
             r.legStart = r.cursor;
             step = CorridorLeg(bot, r);
-            // No corridor: aim the walk straight at the destination. Smooth
-            // queries often get round what the straight query could not.
+            // No corridor: aim the walk at the current goal -- the next road
+            // anchor when there is one, the destination only after the last.
+            // Smooth queries often get round what the straight query could not.
             if (step == Step::Exhausted)
             {
-                r.corridor.push_back(r.dest);
-                r.corridorToDest = true;
+                r.corridor.push_back(r.goal);
+                r.corridorToDest = r.goalIsEnd;
                 step = Step::Progress;
             }
         }
@@ -441,4 +436,23 @@ bool AutopilotRoute_Next(Player* bot, AutopilotRoute& r, AutopilotRoutePoint& ou
         ++index;
     out = r.nodes[index];
     return true;
+}
+
+void AutopilotRoute_Filter(Player* bot, PathGenerator& generator)
+{
+    // This core already gives bot (headless) sessions the filter a traveller
+    // wants: steep slopes excluded outright, lava and slime excluded, water at
+    // twenty times the cost of ground (PathGenerator::CreateFilter). Never
+    // loosen it -- replacing its exclude flags once let bots climb
+    // mountainsides and swim far more readily. Only a stricter water cost is
+    // applied on top.
+    if (bot->GetSession() && bot->GetSession()->IsHeadless())
+    {
+        if (g_rc.waterCost > 20.0f)
+            generator.SetNavTerrainCost(NAV_WATER, g_rc.waterCost);
+        return;
+    }
+
+    generator.SetExcludeFlags(uint16(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP));
+    generator.SetNavTerrainCost(NAV_WATER, std::max(20.0f, g_rc.waterCost));
 }

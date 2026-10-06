@@ -326,6 +326,7 @@ namespace
         trip.route        = AutopilotRoute();
         trip.issued       = SIZE_MAX;
         trip.best         = FLT_MAX;
+        trip.lastReached  = 0;
         trip.bestAt       = now;
         trip.tookOff      = false;
         trip.boarded      = false;
@@ -524,10 +525,15 @@ namespace
             return LegResult::Done;
 
         // Stuck: no real progress for a while. Reroute twice, then give up.
-        if (d + 5.0f < trip.best)
+        // On a route, progress is reaching its points: a road around a mountain
+        // range carries the bot away from the destination for minutes, and
+        // that is not being stuck. Off a route, it is getting closer.
+        const size_t reached = trip.routed ? trip.route.next : 0;
+        if (reached > trip.lastReached || d + 5.0f < trip.best)
         {
-            trip.best   = d;
-            trip.bestAt = now;
+            trip.lastReached = std::max(trip.lastReached, reached);
+            trip.best        = std::min(trip.best, d);
+            trip.bestAt      = now;
         }
         else if (now - trip.bestAt > g_tc.stuckSeconds)
         {
@@ -535,6 +541,7 @@ namespace
             {
                 AutopilotMove_Stop(ai);
                 AutopilotRoute_Rebuild(bot, trip.route);
+                trip.lastReached = 0;   // a new route counts its points from zero
                 trip.issued = SIZE_MAX;
                 trip.bestAt = now;
                 note = "stuck on the way to " + leg.label + ", finding another way";
@@ -1116,6 +1123,7 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
         {
             const uint32_t rebuilds = trip.route.rebuilds;
             AutopilotRoute_Rebuild(bot, trip.route);
+            trip.lastReached = 0;   // a new route counts its points from zero
             trip.route.rebuilds = rebuilds;   // not a "stuck" rebuild
             trip.issued = SIZE_MAX;
         }

@@ -2321,15 +2321,16 @@ OllamaChat.Autopilot.Route.QueriesPerVisit = 6
 #        Default: 28
 OllamaChat.Autopilot.Route.NodeSpacing = 28
 
-#    OllamaChat.Autopilot.Route.SteepCost
 #    OllamaChat.Autopilot.Route.WaterCost
-#        How much routes avoid steep ground and water, as a cost multiplier
-#        (1-1000). High enough to prefer roads and bridges; a ramp or ford
-#        that is the only way still gets used. Lava and slime are never
-#        crossed.
-#        Default: 25 and 8
-OllamaChat.Autopilot.Route.SteepCost = 25
-OllamaChat.Autopilot.Route.WaterCost = 8
+#        Bots on this core already path with a strict filter: no steep
+#        slopes at all, no lava or slime, and water at 20 times the cost of
+#        ground, so they swim only when there is no reasonable way round.
+#        Autopilot never loosens it; this can only make water costlier
+#        (values above 20). Every path is also slope-checked, and a bot only
+#        ever moves along a real navmesh path. Long walks follow
+#        playerbots' road network (its travel nodes).
+#        Default: 20
+OllamaChat.Autopilot.Route.WaterCost = 20
 
 # ----------------------------------------------
 # When the LLM is asked, and the budget

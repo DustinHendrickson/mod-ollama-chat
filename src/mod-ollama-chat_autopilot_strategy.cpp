@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_autopilot_strategy.h"
+#include "mod-ollama-chat_autopilot_route.h"
 
 #include "Log.h"
 
@@ -142,6 +143,8 @@ bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generateP
         // walk it only if it is a real one; otherwise do not move, and let
         // the trip reroute or report that it is stuck.
         PathGenerator path(bot);
+        AutopilotRoute_Filter(bot, path);   // the core's bot filter: no steep slopes, water costly
+        path.SetSlopeCheck(true);           // drop steps too steep to walk
         if (!path.CalculatePath(x, y, z, false) ||
             (path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
             path.GetPath().size() < 2)
@@ -199,4 +202,24 @@ bool AutopilotQuest_TalkTo(PlayerbotAI* ai, Creature* npc)
     // to take one from.
     bot->SetTarget(npc->GetGUID());
     return ai->DoSpecificAction("talk to quest giver", Event(), true);
+}
+
+bool AutopilotMove_Yield(PlayerbotAI* ai)
+{
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    if (!bot || bot->IsInFlight())
+        return false;
+
+    // Only autopilot's own walk (its paths run as an escort-type spline);
+    // playerbots' own combat moves are point and chase movement, left alone.
+    if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() != ESCORT_MOTION_TYPE)
+        return false;
+
+    bot->GetMotionMaster()->Clear();
+    bot->StopMoving();
+    // Release the claim on the bot's movement at once, so nothing of
+    // playerbots' waits out the rest of a walk that is not happening.
+    LastMove(ai).Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                     bot->GetOrientation(), 0.0f, MovementPriority::MOVEMENT_NORMAL);
+    return true;
 }

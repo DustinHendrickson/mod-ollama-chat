@@ -250,6 +250,7 @@ namespace
         AutopilotErrand errand;
         AutopilotTrip   corpseTrip;     // a ghost walking back to its body
         uint32_t        nextTaxiLook = 0;   // when to look for a flight master nearby
+        uint32_t        lastCombatAt = 0;   // last seen fighting or attacked
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -309,6 +310,7 @@ namespace
     std::unordered_set<uint64_t>         g_realOnline; // real players, for tiers
     std::unordered_set<uint32_t>         g_realGuilds; // guilds with a human member, online or not
     std::unordered_set<uint64_t>         g_aboard;     // at a dock or on a boat: visited every sweep
+    std::unordered_set<uint64_t>         g_walking;    // on a trip: checked every sweep for attackers
     size_t                               g_cursor        = 0;
     uint32_t                             g_enrolledCount = 0;
     uint32_t                             g_cappedCount   = 0;   // enrolled via a capped rule
@@ -1941,6 +1943,11 @@ namespace
             g_aboard.insert(guid);
         else
             g_aboard.erase(guid);
+
+        if (ob.errand.active)
+            g_walking.insert(guid);
+        else
+            g_walking.erase(guid);
     }
 
     void Control(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
@@ -1982,10 +1989,18 @@ namespace
         if (g_cfg.control && !sit.inCombat)
             DiscoverFlightPoint(bot, guid, ob, now);
 
-        if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
-            StepErrand(bot, ai, guid, row, ob, now);
-        else if (sit.inCombat)
+        // Attacked: get out of the way of playerbots' combat AI immediately.
+        // After the fight, give it a few seconds (loot, a heal), and never
+        // walk off while the bot sits to eat or drink.
+        const bool threatened = sit.inCombat || !bot->getAttackers().empty();
+        if (threatened)
+        {
+            ob.lastCombatAt = now;
+            AutopilotMove_Yield(ai);
             ob.errand.trip.interrupted = true;
+        }
+        else if (g_cfg.control && sit.CanUseNonCombat() && now - ob.lastCombatAt >= 4 && !bot->IsSitState())
+            StepErrand(bot, ai, guid, row, ob, now);
 
         // A plan that never came back (provider down, server restarted the
         // dispatcher) must not block the next one forever.
@@ -2977,6 +2992,28 @@ void Autopilot_Update(uint32_t diff)
             ++full;
     }
 
+    // Bots on a trip get a cheap look every sweep for attackers, so a walk
+    // never runs on while the bot is being hit (the full visit may be seconds
+    // away on a busy realm). Only the yield; the trip resumes on a full visit.
+    const std::vector<uint64_t> walking(g_walking.begin(), g_walking.end());
+    for (uint64_t guid : walking)
+    {
+        auto on = g_online.find(guid);
+        Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(guid));
+        PlayerbotAI* ai = BotAI(bot);
+        if (on == g_online.end() || !ai || !bot->IsInWorld() || !on->second.errand.active)
+        {
+            g_walking.erase(guid);
+            continue;
+        }
+        if (bot->IsInCombat() || !bot->getAttackers().empty())
+        {
+            on->second.lastCombatAt = now;
+            on->second.errand.trip.interrupted = true;
+            AutopilotMove_Yield(ai);
+        }
+    }
+
     // Bots waiting at a dock or aboard a ship get a look every sweep: a ship
     // is docked for well under a minute, and the rotation can be slower than
     // that on a busy realm. Only the trip is advanced here.
@@ -3088,6 +3125,7 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
 
     g_realOnline.erase(guid);
     g_aboard.erase(guid);
+    g_walking.erase(guid);
 
     auto onIt = g_online.find(guid);
     if (onIt == g_online.end())

@@ -88,6 +88,7 @@ struct AutopilotTrip
     AutopilotRoute       route;
     size_t               issued = SIZE_MAX;
     float                best = 0.0f;            // nearest to the leg target so far
+    size_t               lastReached = 0;         // route points reached so far
     uint32_t             bestAt = 0;
 
     // Vehicle state.
