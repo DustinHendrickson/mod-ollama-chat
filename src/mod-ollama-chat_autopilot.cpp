@@ -3913,8 +3913,8 @@ namespace
             Kv(out, "    next node", next);
             Kv(out, "    walking", t.issued == SIZE_MAX ? std::string("NO - no usable path to the next node")
                                                          : SafeFormat("to node {}", t.issued));
-            Kv(out, "    road anchors", SafeFormat("{} of {}", std::min(r.anchor, r.anchors.size()),
-                                                   r.anchors.size()));
+            Kv(out, "    road anchors", SafeFormat("{} of {} ({})", std::min(r.anchor, r.anchors.size()),
+                                                   r.anchors.size(), r.anchorNote.empty() ? "-" : r.anchorNote));
             Kv(out, "    corridor", SafeFormat("corner {} of {} | reach {:.0f} yd | stalls {} | steps off slopes {}",
                                                r.corner, r.corridor.size(), r.corridorReach, r.stalls, r.stepOffs));
             Kv(out, "    cost", SafeFormat("{} navmesh queries | {} rebuilds", r.queries, r.rebuilds));

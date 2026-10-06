@@ -324,10 +324,11 @@ A walk further than 60 yards follows a route
 (`mod-ollama-chat_autopilot_route.cpp`), mod-city-siege's two-pass design,
 built lazily:
 
-1. **Road anchors.** Playerbots' travel-node road network:
-   `TravelNodeMap::getRoute(node, node)` between the nodes nearest the start
-   and the destination, under our own `try_to_lock` on its mutex, walk links
-   only. Never `getFullPath` (it leaks its lock on an empty route). An anchor
+1. **Road anchors.** For walks of 150 yd or more, playerbots' travel-node
+   road network: `TravelNodeMap::getRoute(node, node)` between the three
+   nodes nearest each end (within 600 yd), under our own `try_to_lock` on
+   its mutex, followed up to the first link that isn't a walk. The monitor
+   shows why there are none when there are none. Never `getFullPath` (it leaks its lock on an empty route). An anchor
    a corridor cannot get closer to is skipped.
 2. **Corridor.** `findStraightPath` toward the next anchor or the
    destination, at most 250 yards ahead, halved while the far tile is not

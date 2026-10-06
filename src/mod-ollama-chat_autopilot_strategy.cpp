@@ -321,9 +321,15 @@ bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generateP
         PathGenerator* chosen = &checked;
         if (!usable(checked, built))
         {
+            // Without the slope check, but only a path whose too-steep steps
+            // all touch water (a river bank): never one up a mountainside.
             AutopilotRoute_Filter(bot, plain);
-            built  = plain.CalculatePath(x, y, z, false) || built;
-            chosen = &plain;
+            const bool plainBuilt = plain.CalculatePath(x, y, z, false);
+            if (usable(plain, plainBuilt) && AutopilotRoute_ClimbsOnlyWhereWet(bot, plain.GetPath()))
+            {
+                built  = true;
+                chosen = &plain;
+            }
         }
         PathGenerator& path = *chosen;
         if (!usable(path, built))

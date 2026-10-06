@@ -101,11 +101,22 @@ namespace
         return s;
     }
 
+    // The faction the character belongs to by race. Not its current faction:
+    // GM mode sets that to 35, friendly to everything, and every hostility
+    // test then fails (no monsters to hunt, odd services).
+    FactionTemplateEntry const* OwnFaction(Player* bot)
+    {
+        if (ChrRacesEntry const* race = sChrRacesStore.LookupEntry(bot->getRace()))
+            if (FactionTemplateEntry const* f = sFactionTemplateStore.LookupEntry(race->FactionID))
+                return f;
+        return bot->GetFactionTemplateEntry();
+    }
+
     // Not hostile to the bot: friendly towns and neutral goblin ports both
     // serve it.
     bool Usable(Player* bot, const Spawn& s)
     {
-        FactionTemplateEntry const* mine = bot->GetFactionTemplateEntry();
+        FactionTemplateEntry const* mine = OwnFaction(bot);
         FactionTemplateEntry const* theirs = sFactionTemplateStore.LookupEntry(s.faction);
         return mine && theirs && !mine->IsHostileTo(*theirs) && !theirs->IsHostileTo(*mine);
     }
@@ -690,7 +701,7 @@ const std::vector<uint32_t>& AutopilotWorld_QuestEnders(uint32_t questId)
 bool AutopilotWorld_HuntingGround(Player* bot, AutopilotPlace& out)
 {
     auto it = g_mobs.find(bot->GetMapId());
-    FactionTemplateEntry const* mine = bot->GetFactionTemplateEntry();
+    FactionTemplateEntry const* mine = OwnFaction(bot);
     if (it == g_mobs.end() || !mine)
         return false;
 

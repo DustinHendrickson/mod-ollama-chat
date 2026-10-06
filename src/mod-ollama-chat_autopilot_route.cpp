@@ -1,4 +1,5 @@
 #include "mod-ollama-chat_autopilot_route.h"
+#include "mod-ollama-chat-utilities.h"
 
 #include "Config.h"
 #include "Map.h"
@@ -154,20 +155,34 @@ namespace
     // node-to-node A* below takes the lock itself, without waiting for it.
     void Anchor(Player* bot, AutopilotRoute& r)
     {
-        if (D2(r.cursor, r.dest) < 400.0f)
+        if (D2(r.cursor, r.dest) < 150.0f)
+        {
+            r.anchorNote = "short walk: no road needed";
             return;
+        }
 
         TravelNodeMap& nodeMap = TravelNodeMap::instance();
         std::shared_lock<std::shared_timed_mutex> lock(nodeMap.m_nMapMtx, std::try_to_lock);
         if (!lock.owns_lock())
+        {
+            r.anchorNote = "road network busy (playerbots is editing it)";
             return;
+        }
 
+        // The road network's nodes sit at towns, crossroads and the like, often
+        // several hundred yards apart in open country: look that far.
         const WorldPosition from(bot);
         const WorldPosition to(r.map, r.dest.x, r.dest.y, r.dest.z);
-        std::vector<TravelNode*> starts = nodeMap.getNodes(from, 200.0f);
-        std::vector<TravelNode*> ends   = nodeMap.getNodes(to, 200.0f);
-        if (starts.size() > 2) starts.resize(2);
-        if (ends.size() > 2)   ends.resize(2);
+        std::vector<TravelNode*> starts = nodeMap.getNodes(from, 600.0f);
+        std::vector<TravelNode*> ends   = nodeMap.getNodes(to, 600.0f);
+        if (starts.empty() || ends.empty())
+        {
+            r.anchorNote = starts.empty() ? "no road node within 600 yd of the bot"
+                                          : "no road node within 600 yd of the destination";
+            return;
+        }
+        if (starts.size() > 3) starts.resize(3);
+        if (ends.size() > 3)   ends.resize(3);
 
         std::vector<TravelNode*> nodes;
         for (TravelNode* s : starts)
@@ -187,7 +202,10 @@ namespace
                 break;
         }
         if (nodes.size() < 2)
+        {
+            r.anchorNote = "no road route between the nearest nodes";
             return;
+        }
 
         std::vector<AutopilotRoutePoint> points;
         auto keep = [&](const WorldPosition& w)
@@ -197,19 +215,28 @@ namespace
             if (points.empty() || D2(points.back(), q) >= 120.0f)
                 points.push_back(q);
         };
+        // Follow the road as far as it walks on this map; a flight, boat or
+        // portal link ends it there (the travel planner handles those).
         for (size_t i = 0; i + 1 < nodes.size(); ++i)
         {
             if (nodes[i]->getMapId() != r.map || nodes[i + 1]->getMapId() != r.map)
-                return;
+                break;
             auto* links = nodes[i]->getLinks();
             auto link = links->find(nodes[i + 1]);
             if (link == links->end() || link->second->getPathType() != TravelNodePathType::walk)
-                return;   // not a walk: leave it to the corridors
+                break;
             keep(*nodes[i]->getPosition());
             for (const WorldPosition& w : link->second->getPath())
                 keep(w);
+            if (i + 2 == nodes.size())
+                keep(*nodes.back()->getPosition());
         }
-        keep(*nodes.back()->getPosition());
+        if (points.size() < 2)
+        {
+            r.anchorNote = "the road route is not a walk from here";
+            return;
+        }
+        r.anchorNote = SafeFormat("following the road: {} nodes", nodes.size());
         r.anchors = std::move(points);
         r.anchor  = 0;
     }
@@ -362,7 +389,8 @@ namespace
     // checked first; where that stops short (a river bank counts as too steep
     // a step), the same query without it -- still on the core's bot filter,
     // which leaves out steep ground.
-    bool SmoothQuery(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to, bool slopeCheck)
+    bool SmoothQuery(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to, bool slopeCheck,
+                     bool onlyWetClimbs = false)
     {
         ++r.queries;
         PathGenerator generator(bot);
@@ -378,6 +406,10 @@ namespace
         const Movement::PointsArray& points = generator.GetPath();
         if (points.size() < 2)
             return false;
+        // Without the slope check, a step too steep to walk is allowed only
+        // where water is involved (a river bank); never up a mountainside.
+        if (onlyWetClimbs && !AutopilotRoute_ClimbsOnlyWhereWet(bot, points))
+            return false;
 
         const G3D::Vector3& end = generator.GetActualEndPosition();
         const AutopilotRoutePoint reached{ end.x, end.y, end.z };
@@ -392,7 +424,7 @@ namespace
 
     bool SmoothLeg(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to)
     {
-        return SmoothQuery(bot, r, to, true) || SmoothQuery(bot, r, to, false);
+        return SmoothQuery(bot, r, to, true) || SmoothQuery(bot, r, to, false, true);
     }
 
     // Pass 2: walk toward the current corner (or the destination once the
@@ -620,4 +652,28 @@ void AutopilotRoute_Filter(Player* bot, PathGenerator& generator)
 
     generator.SetExcludeFlags(uint16(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP));
     generator.SetNavTerrainCost(NAV_WATER, std::max(20.0f, g_rc.waterCost));
+}
+
+bool AutopilotRoute_ClimbsOnlyWhereWet(Player* bot, const Movement::PointsArray& points)
+{
+    Map* map = bot->GetMap();
+    if (!map)
+        return false;
+    const float height = bot->GetCollisionHeight();
+    const uint32 phase = bot->GetPhaseMask();
+    auto wet = [&](const G3D::Vector3& p)
+    {
+        // In the water, or the bank just above it.
+        return map->IsInWater(phase, p.x, p.y, p.z, height) || map->IsInWater(phase, p.x, p.y, p.z - 1.5f, height);
+    };
+    for (size_t i = 1; i < points.size(); ++i)
+    {
+        const G3D::Vector3& a = points[i - 1];
+        const G3D::Vector3& b = points[i];
+        if (PathGenerator::IsWalkableClimb(a.x, a.y, a.z, b.x, b.y, b.z, height))
+            continue;
+        if (!wet(a) && !wet(b))
+            return false;   // a steep step on dry ground: a mountainside
+    }
+    return true;
 }

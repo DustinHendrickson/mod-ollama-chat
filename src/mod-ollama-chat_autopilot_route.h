@@ -1,6 +1,8 @@
 #ifndef MOD_OLLAMA_CHAT_AUTOPILOT_ROUTE_H
 #define MOD_OLLAMA_CHAT_AUTOPILOT_ROUTE_H
 
+#include "MoveSplineInitArgs.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -82,6 +84,7 @@ struct AutopilotRoute
     bool        complete = false;   // nodes reach the destination
     bool        failed   = false;
     std::string why;
+    std::string anchorNote;           // why the road network is or is not followed (monitor)
 
     bool     waiting     = false;   // until the bot nears the cursor (tiles load)
     uint32_t queries     = 0;       // navmesh queries spent so far
@@ -98,6 +101,11 @@ class PathGenerator;
 // core's own filter for bots (no steep slopes, no lava, water expensive),
 // never loosened; Route.WaterCost can only make water costlier.
 void AutopilotRoute_Filter(Player* bot, PathGenerator& generator);
+
+// A path found without the core's slope check is walkable only if every step
+// too steep for the slope check touches water: a river bank, never a
+// mountainside. World thread.
+bool AutopilotRoute_ClimbsOnlyWhereWet(Player* bot, const Movement::PointsArray& points);
 
 // Start a route from the bot to (map, x, y, z). Spends no queries.
 void AutopilotRoute_Begin(Player* bot, uint32_t map, float x, float y, float z, AutopilotRoute& route);

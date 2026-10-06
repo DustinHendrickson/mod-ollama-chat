@@ -222,11 +222,14 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   gives headless (bot) sessions no steep slopes, no lava/slime and water at
   20x cost. Calling `SetExcludeFlags` replaces those exclusions -- once that
   let bots climb mountainsides. Every autopilot path goes through
-  `AutopilotRoute_Filter`. `SetSlopeCheck(true)` is tried first, but its
-  result is dropped when it gets nowhere: the core cuts a slope-checked path
-  at the first step it finds too steep, a river bank included, and a bot
-  handed that stub stood at the bank for good. The retry without it stays on
-  the bot filter.
+  `AutopilotRoute_Filter`. `SetSlopeCheck(true)` is tried first. The core
+  cuts a slope-checked path at the first step it finds too steep, a river
+  bank included, and a bot handed that stub stood at the bank for good. So
+  when it gets nowhere, a retry without the slope check is taken **only if**
+  `AutopilotRoute_ClimbsOnlyWhereWet` passes: every step that fails the
+  core's own `PathGenerator::IsWalkableClimb` must touch water. An
+  unchecked retry put bots back on mountainsides; the navmesh's
+  `NAV_GROUND_STEEP` only marks the very steepest polygons.
 - **The walk waits for casts.** Playerbots never starts a spell with a cast
   time while the bot moves, and a move order cancels a cast in progress. So
   `Control` holds the walk while the bot casts (and 2 s after, for a chained
@@ -243,9 +246,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   at most 8 yd, in line of sight and without a climb (onto a portal, off a
   slope the filter excludes). A two-point path is padded to three, because
   the escort generator hands two points to `MoveTo` with pathfinding on.
-  Long routes are anchored on playerbots' road network: the nearest travel
-  nodes and `TravelNodeMap::getRoute(node, node)` under our own `try_to_lock`
-  on `m_nMapMtx`, walk links only. **Never call `getFullPath`**: it returns
+  Long routes (150 yd and up) are anchored on playerbots' road network: the
+  three nearest travel nodes within 600 yd of each end (nodes are sparse in
+  open country; 200 yd found none, so walks went straight over the hills),
+  `TravelNodeMap::getRoute(node, node)` under our own `try_to_lock` on
+  `m_nMapMtx`, followed up to the first link that isn't a walk.
+  `AutopilotRoute::anchorNote` says why a route has no anchors, and the
+  monitor's Travel page shows it. **Never call `getFullPath`**: it returns
   with the shared lock still held when it finds no route, and allocates a
   node per call. Corridors never aim at an unloaded tile (the core answers
   those with a NOT_USING_PATH shortcut), and an anchor a corridor cannot
@@ -340,6 +347,10 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   objective is done or after `QuestHuntMinutes`, and the target is cleared.
   Grind on its own takes the *nearest* mob; quest need only counts for its
   out-of-range picks while rpg is active, which autopilot turns off.
+- **Hostility uses the racial faction** (`OwnFaction`: `sChrRacesStore` ->
+  `FactionID`), not `GetFactionTemplateEntry()`. GM mode sets the current
+  faction to 35, friendly to everything, and a GM-mode bot then found no
+  monsters to hunt.
 - **Professions run on playerbots where it can, ours where it cannot.**
   Gathering, corpse looting and skinning are playerbots' `gather` and `loot`
   (`LootObject` reads the node's lock for the skill, and checks for a
