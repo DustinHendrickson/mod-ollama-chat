@@ -2452,6 +2452,16 @@ OllamaChat.Autopilot.BackgroundIntervalMinutes = 30
 #        Default: 30
 OllamaChat.Autopilot.DefaultPlanMinutes = 30
 
+#    OllamaChat.Autopilot.RequireRealPlayer
+#        1: a bot is asked only while a real player is around it (the scopes
+#        below); with nobody around it keeps its last orders.
+#        0: autopilot runs every enrolled bot whether or not anyone is
+#        online, each asked every DecisionIntervalMinutes. For a realm with
+#        no players or only a selfbot (a selfbot is not a real player).
+#        Raise LlmCallsPerHour and MaxConcurrentPlans to match.
+#        Default: 1
+OllamaChat.Autopilot.RequireRealPlayer = 1
+
 #    OllamaChat.Autopilot.ForegroundScope
 #    OllamaChat.Autopilot.BackgroundScope
 #        How far a real player's presence reaches:

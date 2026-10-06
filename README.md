@@ -796,8 +796,10 @@ isn't a character, so it shows on nobody's friend list. It carries the note
 `ollama autopilot`, is rebuilt at startup and is removed when the bot leaves
 autopilot.
 
-**Running with no real players online** (a selfbot, or an empty realm):
-autopilot itself doesn't need anyone nearby, but playerbots idles a bot with
+**Running with no real players online** (a selfbot, or an empty realm): set
+`OllamaChat.Autopilot.RequireRealPlayer = 0`. By default a bot is asked only
+while a real player is around it (a selfbot doesn't count); with this off,
+every enrolled bot is asked every `DecisionIntervalMinutes`. Separately, playerbots idles a bot with
 no real player near for most of the time (`AiPlayerbot.BotActiveAlone`, 10%
 by default). An idle bot runs only urgent actions, so it doesn't grind, loot
 or buff. A selfbot counts as a real player, but only for bots in its zone or

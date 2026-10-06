@@ -113,6 +113,7 @@ namespace
         Scope    foregroundScope         = Scope::Zone;
         Scope    backgroundScope         = Scope::Map;
         Tier     minimumTier             = Tier::Dormant;
+        bool     requireRealPlayer       = true;    // false: every bot planned as if watched
 
         // Guilds with a human member.
         bool     selectRealPlayerGuilds  = false;
@@ -759,6 +760,10 @@ namespace
     // character. World thread, g_mutex held.
     Tier ComputeTier(Player* bot)
     {
+        // No player needed: every enrolled bot is planned at the full rate.
+        if (!g_cfg.requireRealPlayer)
+            return Tier::Foreground;
+
         Tier tier = Tier::Dormant;
         auto raise = [&tier](Tier t) { if (t > tier) tier = t; };
 
@@ -3182,6 +3187,7 @@ void Autopilot_LoadConfig()
 
     c.foregroundScope         = parseScope("OllamaChat.Autopilot.ForegroundScope", "zone", Scope::Zone);
     c.backgroundScope         = parseScope("OllamaChat.Autopilot.BackgroundScope", "map", Scope::Map);
+    c.requireRealPlayer       = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.RequireRealPlayer", true);
     c.minimumTier             = parseTier("OllamaChat.Autopilot.MinimumTier", "dormant", Tier::Dormant);
     c.selectRealPlayerGuilds  = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Select.RealPlayerGuilds", false);
     c.realGuildTier           = parseTier("OllamaChat.Autopilot.RealPlayerGuildTier", "background", Tier::Background);
