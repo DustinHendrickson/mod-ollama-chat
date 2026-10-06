@@ -9,9 +9,12 @@
 #include "Map.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "Opcodes.h"
 #include "QuestDef.h"
+#include "QuestPackets.h"
 #include "SharedDefines.h"
 #include "Trainer.h"
+#include "WorldPacket.h"
 #include "WorldSession.h"
 
 #include "PlayerbotAI.h"
@@ -54,7 +57,10 @@ namespace
         "around them, so send them here to fight)\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
         "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself. When a quest ready to "
-        "turn in offers rewards to choose from (listed under it), pick one: quest <id> reward <n>\n"
+        "turn in offers rewards to choose from (listed under it), pick one: quest <id> reward <n>. Each quest "
+        "ready to turn in says who takes it and where: one on another continent is a long trip, so weigh it\n"
+        "- abandon <id> : drop a quest from the log, as a player does with one not worth the trip or not for "
+        "them (marked in the log)\n"
         "- talents spec <name> : follow one of their class's talent specs (listed with their facts) and spend "
         "every unspent point along it; give it again after levelling to spend new points. Which spec is the "
         "character's choice. talents autopick lets their AI choose instead\n"
@@ -371,6 +377,40 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 40.0f, display, now);
     }
 
+    // "abandon 6121" or "abandon Lessons Anew": drop a quest from the log the
+    // way the client's Abandon button does (playerbots' drop needs a master).
+    if (StartsWithWord(lower, "abandon"))
+    {
+        const std::string arg = Trim(lower.substr(7));
+        uint32_t questId = 0;
+        try { questId = static_cast<uint32_t>(std::stoul(arg)); } catch (...) { questId = 0; }
+        uint16 slot = MAX_QUEST_LOG_SIZE;
+        for (uint16 s = 0; s < MAX_QUEST_LOG_SIZE && slot == MAX_QUEST_LOG_SIZE; ++s)
+            if (uint32 id = bot->GetQuestSlotQuestId(s))
+            {
+                Quest const* q = sObjectMgr->GetQuestTemplate(id);
+                if (id == questId || (!questId && q && !arg.empty() && Lower(q->GetTitle()).find(arg) != std::string::npos))
+                {
+                    slot    = s;
+                    questId = id;
+                }
+            }
+        if (slot == MAX_QUEST_LOG_SIZE)
+            return "that quest is not in the log";
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (errand.active && errand.questId == questId)
+            AutopilotCommands_StopErrand(ai, errand);
+        WorldPacket raw(CMSG_QUESTLOG_REMOVE_QUEST, 1);
+        raw << uint8(slot);
+        WorldPackets::Quest::QuestLogRemoveQuest packet(std::move(raw));
+        packet.Read();
+        bot->GetSession()->HandleQuestLogRemoveQuest(packet);
+        return bot->GetQuestSlotQuestId(slot) == questId
+            ? std::string("could not abandon it (a quest item it gave them cannot be taken back)")
+            : "done: abandoned " + (quest ? quest->GetTitle() : std::to_string(questId));
+    }
+
     if (StartsWithWord(lower, "quest"))
     {
         std::string arg = Trim(lower.substr(5));
@@ -399,6 +439,11 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         const QuestStatus status = quest ? bot->GetQuestStatus(questId) : QUEST_STATUS_NONE;
         if (!quest || (status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE))
             return "that quest is not in the log";
+        // A quest for another class or race cannot be turned in or done; a
+        // trip across the world for it would be wasted.
+        if (!bot->SatisfyQuestClass(quest, false) || !bot->SatisfyQuestRace(quest, false))
+            return "that quest is not for their class or race and cannot be finished; abandon " +
+                   std::to_string(questId) + " to clear it";
         if (rewardChoice && rewardChoice > quest->GetRewChoiceItemsCount())
             return quest->GetRewChoiceItemsCount()
                 ? SafeFormat("that quest's reward choices are 1 to {}", quest->GetRewChoiceItemsCount())

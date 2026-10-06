@@ -104,6 +104,12 @@ struct AutopilotTrip
     uint32_t             tSampleAt = 0;
 
     bool                 interrupted = false;    // a fight or a death paused the trip
+
+    // The crossing (boat, portal, trigger) the current plan uses, and the
+    // ones that failed on this trip: a player who finds a portal dead takes
+    // the boat instead of giving up.
+    size_t               crossing = SIZE_MAX;
+    std::vector<size_t>  avoid;
 };
 
 void AutopilotTravel_LoadConfig();

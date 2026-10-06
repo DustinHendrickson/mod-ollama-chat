@@ -1,6 +1,8 @@
 #ifndef MOD_OLLAMA_CHAT_AUTOPILOT_STRATEGY_H
 #define MOD_OLLAMA_CHAT_AUTOPILOT_STRATEGY_H
 
+#include <cstdint>
+
 // --------------------------------------------------------------------------
 // The `autopilot` playerbots strategy.
 //
@@ -40,6 +42,10 @@ bool AutopilotStrategy_NoHandouts();
 // Playerbots revives a bot through its re-roll (bags emptied) once its
 // "death count" reaches 5; keep it below that. World thread.
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai);
+
+// While a bot is on a trip, its grind strategy neither pulls nor wanders (the
+// marker strategy's multiplier). World thread sets it; any thread reads.
+void AutopilotStrategy_SetTravelling(uint64_t botGuid, bool on);
 
 // --------------------------------------------------------------------------
 // Moving a bot for the autopilot. World thread only.

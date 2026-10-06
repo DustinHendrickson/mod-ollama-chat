@@ -147,6 +147,9 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
     giver` (which would pick by its own stat weights and also takes any
     follow-up quest). Without a choice, the usable reward with the highest
     item level.
+- **`abandon <id|title>`.** Drops a quest through `HandleQuestLogRemoveQuest`,
+  the client's Abandon button. A quest for another class or race is refused
+  by `quest` and marked in the prompt.
 - **`talents spec <name>`.** Playerbots' own command: applies one of the
   class's premade specs for the current level. A bare `talents` only prints
   help. `talents autopick` leaves the spec to playerbots.
@@ -271,6 +274,15 @@ Boarding:
 - **Riding:** hold all movement (`MOVEMENT_FORCED`); the core carries
   passengers across maps. **Getting off:** walk straight ashore.
 - Bots at a dock or aboard are stepped every sweep, outside the rotation.
+
+**Staying on the road.** While a trip is under way (the travelling set,
+`AutopilotStrategy_SetTravelling`), the marker multiplier zeroes grind's
+`attack anything` and `move random`: no pulling neutral beasts, no
+wandering. The combat engine still answers attackers.
+
+**Another way.** A crossing whose leg fails while the bot is still on its
+side is added to the trip's `avoid` list and the trip replans, so a portal
+that does nothing falls back to a boat.
 
 **Stuck.** If a walk makes no real progress for `Travel.StuckSeconds`, its
 route is rebuilt (twice) before the trip fails and the model is told.

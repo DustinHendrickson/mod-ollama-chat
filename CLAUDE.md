@@ -291,6 +291,22 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   when the queue is empty. Running them all at once made each trip replace
   the last, so only the final order ever happened. A plan with a trip
   replaces the queue.
+- **A trip holds grind.** The marker strategy's multiplier zeroes grind's
+  `attack anything` and `move random` while the bot is in
+  `AutopilotStrategy_SetTravelling`'s set. `Control` refreshes that set on
+  every visit and only adds a bot that is on its own with an errand under
+  way, so a stale entry can never stop a grouped bot grinding in a dungeon.
+  Without the hold, grind pulled neutral mobs and wandered, and the walk lost
+  every time.
+- **A failed crossing is avoided, not fatal.** `AutopilotTrip::crossing` is
+  the crossing the current plan uses. When any leg fails while the bot is
+  still on that side, it goes into `avoid` and the trip replans (bounded by
+  `kMaxPlans`), so a dead custom portal falls back to the boat.
+- **Quests that are not the bot's.** A random bot can hold quests for
+  another class or race. The prompt marks them, `quest` refuses them
+  (`SatisfyQuestClass`/`SatisfyQuestRace`), and `abandon <id>` drops one
+  through `HandleQuestLogRemoveQuest` (playerbots' `drop` needs a master).
+  Finished quests show who takes them and where (`DescribeQuestEnder`).
 - **A player's choices are the model's.** Quest rewards (`quest <id> reward
   <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
   by stat weights), professions (`goto profession <name>`; a trainer's skill

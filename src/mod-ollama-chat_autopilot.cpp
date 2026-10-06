@@ -26,6 +26,7 @@
 #include "Log.h"
 #include "GameTime.h"
 #include "Map.h"
+#include "MapMgr.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -1513,6 +1514,33 @@ namespace
                           bot->CanUseItem(item) == EQUIP_ERR_OK ? "" : " - can't use");
     }
 
+    // "Grif Wildheart in Dun Morogh, 120 yd" / "... in Darnassus, on another
+    // continent": who takes a finished quest and how far that is, so a turn-in
+    // across the world is the model's informed choice.
+    std::string DescribeQuestEnder(Player* bot, uint32_t questId)
+    {
+        AutopilotPlace place;
+        bool found = false;
+        for (uint32_t ender : AutopilotWorld_QuestEnders(questId))
+        {
+            AutopilotPlace p;
+            if (!AutopilotWorld_NearestSpawn(bot, ender, p))
+                continue;
+            if (!found || (p.map == bot->GetMapId() && (place.map != bot->GetMapId() || p.distance < place.distance)))
+            {
+                place = p;
+                found = true;
+            }
+        }
+        if (!found)
+            return "nobody to turn it in to could be found";
+        const uint32 zone = sMapMgr->GetZoneId(PHASEMASK_NORMAL, place.map, place.x, place.y, place.z);
+        const std::string where = zone ? Progress_ZoneName(zone) : std::string("an unknown place");
+        if (place.map != bot->GetMapId())
+            return SafeFormat("{} in {}, on another continent", place.name, where);
+        return SafeFormat("{} in {}, {:.0f} yd away", place.name, where, place.distance);
+    }
+
     // "- [783] A Threat Within (level 1): ready to turn in"
     std::string DescribeQuestLog(Player* bot)
     {
@@ -1529,6 +1557,14 @@ namespace
                                                                 : "in progress";
             out += SafeFormat("{}- [{}] {} (level {}): {}", out.empty() ? "" : "\n", id, q->GetTitle(),
                               q->GetQuestLevel() > 0 ? q->GetQuestLevel() : int32(bot->GetLevel()), state);
+
+            if (!bot->SatisfyQuestClass(q, false) || !bot->SatisfyQuestRace(q, false))
+            {
+                out += " - NOT FOR THEIR CLASS OR RACE: it cannot be finished; abandon it";
+                continue;
+            }
+            if (status == QUEST_STATUS_COMPLETE)
+                out += " - turn in to " + DescribeQuestEnder(bot, id);
 
             // The choice a player makes at the quest giver; theirs to make.
             if (status == QUEST_STATUS_COMPLETE && q->GetRewChoiceItemsCount() > 1)
@@ -2133,6 +2169,7 @@ namespace
             g_walking.insert(guid);
         else
             g_walking.erase(guid);
+        AutopilotStrategy_SetTravelling(guid, ob.errand.active);
     }
 
     void Control(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
@@ -2149,6 +2186,10 @@ namespace
         // Teleport holds run while dead too: that is when the revive teleport
         // would happen.
         HoldTeleports(bot, guid, ob, sit, now);
+        // Grind holds only while the bot is on its own and on a trip; never
+        // in a group, a dungeon, or after the errand ended some other way.
+        AutopilotStrategy_SetTravelling(guid, g_cfg.control && sit.CanUseNonCombat() && ob.errand.active);
+
         // Five deaths and playerbots revives the bot through its re-roll.
         if (g_cfg.control && g_cfg.noHandouts)
             AutopilotBot_ClearDeathCount(ai);
@@ -3464,6 +3505,7 @@ void AutopilotPlayerScript::OnPlayerLogout(Player* player)
     g_realOnline.erase(guid);
     g_aboard.erase(guid);
     g_walking.erase(guid);
+    AutopilotStrategy_SetTravelling(guid, false);
 
     auto onIt = g_online.find(guid);
     if (onIt == g_online.end())

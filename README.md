@@ -717,9 +717,12 @@ Every line is in `.ollama autopilot history <bot>`.
 
 - **The character:** level, class, zone, gold, gear durability and free
   bag slots.
-- **Quests:** its quest log with ids. Under a quest that's ready to turn in,
-  each reward choice is listed with its kind, armor or damage, stats, and
-  whether the bot can use it.
+- **Quests:** its quest log with ids. A quest that's ready to turn in says
+  who takes it and where: the zone and distance, or "on another continent".
+  Under it, each reward choice is listed with its kind, armor or damage,
+  stats, and whether the bot can use it. A quest that isn't for the bot's
+  class or race is marked, so the LLM abandons it instead of crossing the
+  world for it.
 - **Professions and talents:** its professions with skill levels, and how
   many primary profession slots are free. From level 10, its unspent talent
   points and its class's talent specs.
@@ -744,7 +747,7 @@ Planner tab shows the full prompt it was sent.
 | Area | Orders | Where |
 |---|---|---|
 | Behaviours | `nc +x,-y` / `co +x,-y`: any playerbots strategy except the overhead controllers (grind, quest, gather, loot, lfg, bg, pvp, flee, potions, aoe, ...) | Combat ones everywhere; the rest only while the bot is on its own |
-| Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in. The prompt lists a finished quest's reward choices (kind, stats, usable or not), and `quest <id> reward <n>` takes the one the character wants | On its own |
+| Quests | `quest <id>` goes to where the objective is (a creature it still needs, or the quest's map marker). Once the quest is complete, it goes to whoever takes it in and turns it in. The prompt lists a finished quest's reward choices (kind, stats, usable or not), and `quest <id> reward <n>` takes the one the character wants. `abandon <id>` drops a quest, as the client's Abandon button does. A quest that isn't for the bot's class or race is refused | On its own |
 | Errands | `goto repair / vendor / trainer / inn / flightmaster` goes there and uses it: repairs and sells junk, learns every affordable class spell, sets the inn as home, or learns the flight point. `goto profession <name>` goes to that profession's trainer and learns it, its next rank and its recipes; the prompt shows the free profession slots, and which professions to take is the character's choice. `goto bank / auction` only goes there; at a bank, `bank <item>` stores items. Bots can't trade at the auction house | On its own |
 | Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
 | Hunting | `goto hunt` goes to the nearest group of monsters of the bot's level; `nc +grind` fights what is around it | On its own |
@@ -829,6 +832,13 @@ NewRpg.
   hundred yards ahead as it walks. A bot standing on a slope too steep to
   path from steps a few yards onto walkable ground first. A stuck bot
   reroutes twice before the trip fails. Without mmaps, it walks straight at the destination.
+- **Staying on the road.** While the bot is on a trip, its `grind` strategy
+  doesn't pull monsters in reach (neutral beasts included) or wander off when
+  there's nothing to fight. The trip is the order. Whatever attacks it is
+  still fought, and grind picks up again on arrival.
+- **Another way.** If a boat, portal or trigger doesn't work (a portal that
+  does nothing, a dock it can't reach), the bot tries another crossing
+  rather than giving up the trip.
 - **Casting on the way.** The walk waits while the bot casts (a pet summon,
   a buff) and stops for two seconds every thirty, as a player would, because
   playerbots never starts a spell with a cast time while the bot moves. A

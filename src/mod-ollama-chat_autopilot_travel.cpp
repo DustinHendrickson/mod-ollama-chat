@@ -156,7 +156,7 @@ namespace
 
     // The first crossing toward `target`: on a shortest chain, the one whose
     // start is nearest the bot.
-    const Crossing* FirstHop(Player* bot, uint32_t target)
+    const Crossing* FirstHop(Player* bot, uint32_t target, const std::vector<size_t>& avoid)
     {
         const TeamId team = bot->GetTeamId();
         const auto dist = HopsTo(target, team);
@@ -169,6 +169,8 @@ namespace
         for (const Crossing& c : g_crossings)
         {
             if (c.FromMap() != bot->GetMapId() || !Usable(c, team))
+                continue;
+            if (std::find(avoid.begin(), avoid.end(), size_t(&c - g_crossings.data())) != avoid.end())
                 continue;
             auto next = dist.find(c.ToMap());
             if (next == dist.end() || next->second != here->second - 1)
@@ -403,17 +405,20 @@ namespace
     {
         trip.legs.clear();
         trip.leg = 0;
+        trip.crossing = SIZE_MAX;
         ResetLeg(trip, now);
         if (++trip.plans > kMaxPlans)
             return "too many changes of plan on the way";
 
         if (bot->GetMapId() != trip.dest.map)
         {
-            const Crossing* c = FirstHop(bot, trip.dest.map);
+            const Crossing* c = FirstHop(bot, trip.dest.map, trip.avoid);
             if (!c)
                 return SafeFormat("no boat, zeppelin or portal {} can take leads from {} toward {}",
                                   bot->GetTeamId() == TEAM_ALLIANCE ? "the Alliance" : "the Horde",
                                   MapName(bot->GetMapId()), MapName(trip.dest.map));
+
+            const size_t crossingIndex = size_t(c - g_crossings.data());
 
             // Far from the dock or portal: fly there first if it saves real
             // distance (Westfall to the Stormwind docks), then plan again.
@@ -430,6 +435,7 @@ namespace
 
             if (c->kind != CrossKind::Transport)
             {
+                trip.crossing = crossingIndex;
                 AutopilotLeg walk;
                 walk.type   = AutopilotLegType::Walk;
                 walk.to     = c->enter;
@@ -447,6 +453,7 @@ namespace
                 return "";
             }
 
+            trip.crossing = crossingIndex;
             const Dock& from = g_docks[c->from];
             const Dock& to   = g_docks[c->to];
 
@@ -1177,6 +1184,20 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
             case LegResult::Going:
                 return AutopilotTripState::Going;
             case LegResult::Fail:
+                // A boat, portal or trigger that did not work, while the bot is
+                // still on this side of it: try another way, as a player would.
+                if (trip.crossing < g_crossings.size() &&
+                    bot->GetMapId() == g_crossings[trip.crossing].FromMap() && !bot->IsInFlight())
+                {
+                    const std::string failedName = g_crossings[trip.crossing].name;
+                    trip.avoid.push_back(trip.crossing);
+                    if (std::string why = Plan(bot, trip, now); why.empty())
+                    {
+                        note = (legNote.empty() ? failedName + " did not work" : legNote) +
+                               "; trying another way";
+                        break;
+                    }
+                }
                 AutopilotTravel_Stop(ai, trip);
                 return AutopilotTripState::Failed;
             case LegResult::Done:

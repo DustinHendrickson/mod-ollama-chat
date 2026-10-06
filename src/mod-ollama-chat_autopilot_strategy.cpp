@@ -18,6 +18,8 @@
 #include "Strategy.h"
 
 #include <atomic>
+#include <mutex>
+#include <unordered_set>
 #include <vector>
 
 #include "DKAiObjectContext.h"
@@ -39,6 +41,17 @@ namespace
     // discards an action whose relevance multiplies to nothing).
     std::atomic<bool> g_noHandouts{ true };
 
+    // Bots on a trip (an errand under way), set from the world thread and read
+    // by the multiplier on map threads.
+    std::mutex                   g_travelMutex;
+    std::unordered_set<uint64_t> g_travelling;
+
+    bool IsTravelling(Player* bot)
+    {
+        std::lock_guard<std::mutex> lock(g_travelMutex);
+        return g_travelling.count(bot->GetGUID().GetRawValue()) > 0;
+    }
+
     class AutopilotHoldMultiplier : public Multiplier
     {
     public:
@@ -46,9 +59,23 @@ namespace
 
         float GetValue(Action* action) override
         {
-            if (!action || !g_noHandouts.load(std::memory_order_relaxed))
+            if (!action)
                 return 1.0f;
             const std::string name = action->getName();
+
+            // On a trip, the trip is the order: grind's pulling of whatever is
+            // in reach (neutral beasts too) and its wandering when there is
+            // nothing would drag the bot off the road. What attacks it is
+            // still fought (that is the combat engine). Grind resumes on
+            // arrival.
+            if (name == "attack anything" || name == "move random")
+            {
+                Player* bot = botAI->GetBot();
+                return bot && IsTravelling(bot) ? 0.0f : 1.0f;
+            }
+
+            if (!g_noHandouts.load(std::memory_order_relaxed))
+                return 1.0f;
 
             // Free talents, trainer and quest spells, skills, consumables and
             // a gear upgrade at every level up; the periodic re-roll and
@@ -169,6 +196,15 @@ void AutopilotStrategy_SetNoHandouts(bool on)
 bool AutopilotStrategy_NoHandouts()
 {
     return g_noHandouts.load(std::memory_order_relaxed);
+}
+
+void AutopilotStrategy_SetTravelling(uint64_t botGuid, bool on)
+{
+    std::lock_guard<std::mutex> lock(g_travelMutex);
+    if (on)
+        g_travelling.insert(botGuid);
+    else
+        g_travelling.erase(botGuid);
 }
 
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai)
