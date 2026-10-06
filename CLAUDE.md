@@ -213,10 +213,11 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   1)` set *before* `ProcessBot` marks the death itself (otherwise its own
   1–5 minute revive timer overwrites ours). Clear both when the bot is alive
   again, or the next death is revived (and teleported) at once.
-- **Autopilot moves bots itself** (`AutopilotMove_To`): a `MovePoint`
-  recorded in the bot's `"last movement"` value at `MOVEMENT_NORMAL`, so
-  playerbots' own out-of-combat movement waits and combat still outranks it.
-  Holds on a deck use `MOVEMENT_FORCED`.
+- **Autopilot moves bots itself** (`AutopilotMove_To`): a navmesh path walked
+  with `MoveSplinePath` (an escort spline), recorded in the bot's
+  `"last movement"` value at `MOVEMENT_NORMAL`, so playerbots' own
+  out-of-combat movement waits and combat still outranks it. Holds on a deck
+  use `MOVEMENT_FORCED`.
 - **Never loosen the core's bot navmesh filter.** `PathGenerator::CreateFilter`
   gives headless (bot) sessions no steep slopes, no lava/slime and water at
   20x cost. Calling `SetExcludeFlags` replaces those exclusions -- once that
@@ -283,12 +284,23 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   loot, achievements), which lock it again. A plain mutex there crashed or
   hung the server. Hooks must keep to updating existing entries, never
   inserting or erasing, so the sweep's references stay valid.
-- **Errand orders (`goto`, `quest`) run one at a time, in the order the model
-  gave them.** `RunCommands` starts the first and queues the rest in
-  `Online::errandQueue`; `StepErrand` starts the next when one ends, and asks
-  the model again only when the queue is empty. Running them all at once made
-  each replace the last, so only the final order ever happened. A plan with
-  any errand replaces the queue.
+- **Orders run in the order the model gave them.** `RunCommands` starts the
+  first `goto`/`quest` and queues every later order except `nc`/`co` in
+  `Online::errandQueue` (so "goto vendor, b vendor" buys at the vendor);
+  `StepErrand` runs the next when a trip ends, and asks the model again only
+  when the queue is empty. Running them all at once made each trip replace
+  the last, so only the final order ever happened. A plan with a trip
+  replaces the queue.
+- **A player's choices are the model's.** Quest rewards (`quest <id> reward
+  <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
+  by stat weights), professions (`goto profession <name>`; a trainer's skill
+  is read from what it teaches, and a bare `goto profession` asks which),
+  talent specs (`talents spec <name>`; a bare `talents` only prints help).
+  The prompt lists what each choice needs: reward choices under a finished
+  quest, free profession slots, unspent points and the class's specs. The
+  command reference in `AutopilotCommands_Reference` is the model's whole
+  documentation of its orders: keep it true to what the code does. It once
+  offered `autogear` (which conjures gear) and a `talents` that did nothing.
 - **Enrolled bots earn everything (`NoHandouts`).** Playerbots hands random
   bots things outside any strategy. The marker strategy's multiplier
   (`AutopilotHoldMultiplier`) returns 0 for `auto maintenance on levelup`,
@@ -311,8 +323,6 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   a bot whose timers lapsed is re-rolled 3-8 s after it logs in. `"add"` is
   written only for random-bot accounts (`IsAccountType(account, 1)`); on an
   alt it would make playerbots log the alt in as a random bot.
-- **Every order after a trip in a plan waits for the trip** (`errandQueue`),
-  except `nc`/`co`, so "goto vendor, b vendor" buys at the vendor.
 - **Every order goes through `AutopilotCommands_Normalize` and
   `AutopilotCommands_IsDenied`.** The deny check refuses playerbots' command
   separator and `#` prefixes, which `HandleCommand` would otherwise split or

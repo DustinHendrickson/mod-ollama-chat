@@ -663,9 +663,10 @@ each character is, what it wants, and what it does about it, and then gives
 the orders a player would whisper to their own bot:
 
 ```
-nc +grind,-quest          quest 783          goto trainer
-goto zone Tanaris         talents spec arms  autogear
-co +flee,+potions         nc +lfg            goto repair
+nc +grind,-quest          quest 783 reward 2   goto trainer
+goto zone Tanaris         talents spec arms    equip upgrade
+goto profession mining    goto vendor          b vendor
+co +flee,+potions         nc +lfg              goto repair
 ```
 
 Playerbots' own overhead controllers (`new rpg`, the older `rpg` wanderer and
@@ -698,20 +699,40 @@ Every line is in `.ollama autopilot history <bot>`.
   finish quests, run dungeons, or anything else in its own words. Progress is
   measured from the bot, not taken on the LLM's word.
 - **Orders.** Up to 8 per plan, run in order. Any playerbots command works
-  unless the operator denies it.
+  unless the operator denies it. Everything after a `goto` or `quest` waits
+  until the bot gets there ("goto vendor, b vendor" buys at the vendor);
+  strategy changes apply at once. A new plan with a trip replaces orders
+  still waiting.
+- **A player's choices.** Which quest reward to take, which professions to
+  learn, which talent spec to follow, what to buy and sell. Code never picks
+  these for an enrolled bot.
 - **When to look again.** Each plan says how long it holds. When a trip ends,
   the LLM is asked again within a minute (`QuickReplanSeconds`), so the bot
   doesn't stand idle.
 
 ### What the LLM sees
 
-The bot's level, class, zone, gold, gear and bags. Its quest log with ids.
-The nearest services, such as the trainer, repair vendor and inn. Zones that
-suit its level. Its live strategies and what it is doing right now (walking,
-flying, waiting for a boat). What each of its last orders actually did, so it
-can try something else when one fails. Its goal and progress, rewards in the
-last hour, recent events and temptations (a dungeon just unlocked, an epic
-drop, a capped profession).
+- **The character:** level, class, zone, gold, gear durability and free
+  bag slots.
+- **Quests:** its quest log with ids. Under a quest that's ready to turn in,
+  each reward choice is listed with its kind, armor or damage, stats, and
+  whether the bot can use it.
+- **Professions and talents:** its professions with skill levels, and how
+  many primary profession slots are free. From level 10, its unspent talent
+  points and its class's talent specs.
+- **Surroundings:** the nearest services (trainer, repair vendor, inn and so
+  on) and zones that suit its level.
+- **What it's doing:** its live strategies, what it's doing right now
+  (walking, flying, waiting for a boat), and the orders still queued.
+- **Feedback:** what each of its last orders actually did, so it can try
+  something else when one fails.
+- **History:** its goal and progress, rewards in the last hour, recent
+  events, and temptations (a dungeon just unlocked, an epic drop, a capped
+  profession).
+
+The order list it's given is in `mod-ollama-chat_autopilot_commands.cpp`
+(`OllamaChat.Autopilot.CommandReference` replaces it). The monitor addon's
+Planner tab shows the full prompt it was sent.
 
 ### What autopilot controls, and what it doesn't
 
@@ -778,9 +799,11 @@ per bot:
   strategies go back to what it had before autopilot, and any trip under
   way ends. When it leaves, the LLM's strategies return and it is asked what
   to do next.
-- **Buying, crafting and the auction house.** Selling junk, repairing and
-  training are covered. Anything else depends on a playerbots command the LLM
-  can give, such as `wts` or `craft`.
+- **Crafting and the auction house.** Selling, buying from vendors (`b
+  vendor`), repairing and training are covered. `nc +maintenance` lets the
+  bot's AI disenchant, enchant and learn recipes with its own skills and
+  materials. Crafting a chosen item and trading at the auction house have no
+  order yet; playerbots' `craft` needs a real master.
 - **Chat.** Chat replies don't mention the bot's plan yet. Autopilot and chat
   run side by side.
 - **Bots it can't plan for.** With nobody nearby (the default reach), a bot
@@ -799,6 +822,10 @@ NewRpg.
   hundred yards ahead as it walks. A bot standing on a slope too steep to
   path from steps a few yards onto walkable ground first. A stuck bot
   reroutes twice before the trip fails. Without mmaps, it walks straight at the destination.
+- **Casting on the way.** The walk waits while the bot casts (a pet summon,
+  a buff) and stops for two seconds every thirty, as a player would, because
+  playerbots never starts a spell with a cast time while the bot moves. A
+  bot attacked on the way stops at once and fights.
 - **Flights.** On the same continent, a flight is taken when it clearly
   saves distance and the bot can pay for it. Otherwise the bot walks. As for
   a player, only flight points the bot has discovered are used;
@@ -825,13 +852,16 @@ after a death instead of a corpse run. For autopilot bots:
 
 - The periodic teleport is pushed back every hour.
 - A dead bot releases, walks its ghost back to its body along a navmesh
-  route, and reclaims it. After `CorpseRunMinutes` (10) it is revived
-  playerbots' way instead.
+  route, and reclaims it once the game's resurrection timer allows. After
+  `CorpseRunMinutes` (10) it takes the spirit healer's resurrection, with
+  resurrection sickness and durability loss, as a player would.
 
 `NoRandomize` also holds playerbots' periodic re-roll, which would otherwise
-re-gear the bot and, at level 1–2 or the level cap, give it a new level
-somewhere else. `AiPlayerbot.AutoTeleportForLevel` in `playerbots.conf` is
-separate; turn it off for full coverage.
+empty the bot's bags, re-gear it and, at level 1–2 or the level cap, give
+it a new level somewhere else. Both holds are set at startup, before any bot
+logs in. Playerbots' level-up teleport (`AiPlayerbot.AutoTeleportForLevel`)
+is dropped for enrolled bots by `NoHandouts`; with `NoHandouts` off, turn it
+off in `playerbots.conf` for full coverage.
 
 **Handing back.** Before autopilot changes anything, the bot's strategies are
 recorded and saved in the database. When the bot is turned off or autopilot
@@ -930,11 +960,13 @@ Design notes are in [`docs/autopilot-plan.md`](docs/autopilot-plan.md).
   waits at a dock for `Travel.BoatWaitMinutes` and nothing comes, the trip
   fails and the LLM is told. The startup log line "indexed N boat/zeppelin
   crossings ..., N portal triggers and N city portals" shows what was found.
-- If a ship's deck can't be found by probing, the bot is made a passenger
-  beside it rather than miss the crossing.
-- Alts ask their master to choose a quest reward, and an autopilot bot has
-  none. If playerbots doesn't pick one, autopilot takes the usable choice
-  with the highest item level.
+- A bot walks onto the pier before looking for the deck, and never boards
+  blind: if no deck point is found, it waits for the next docking.
+- Quest rewards are the LLM's choice (`quest <id> reward <n>`). If it turns
+  a quest in without choosing, autopilot takes the usable choice with the
+  highest item level.
+- The Ollama Monitor addon (see *Debugging*) shows every enrolled bot live:
+  its plan, trip, the model's last prompt and reply, its chat and memory.
 - Decisions are only as good as your model. A small model may give thin
   identities or orders that don't fit. Each refused or failed order is shown
   to the LLM on its next plan and counted in `.ollama autopilot status`.
