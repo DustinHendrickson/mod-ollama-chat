@@ -27,6 +27,9 @@
 #include "Player.h"
 #include "QuestDef.h"
 #include "WorldSession.h"
+#include "Corpse.h"
+#include "Opcodes.h"
+#include "WorldPacket.h"
 
 #include "ChatHelper.h"
 #include "PlayerbotAI.h"
@@ -245,6 +248,7 @@ namespace
 
         // A walk to a service or a zone, from `goto`.
         AutopilotErrand errand;
+        AutopilotTrip   corpseTrip;     // a ghost walking back to its body
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -1039,6 +1043,56 @@ namespace
         }
     }
 
+
+    // The corpse run, as a player does it: release, walk the ghost back to the
+    // body along the navmesh route, and reclaim it through the same handler
+    // the client's "Resurrect" button reaches (it checks distance and the
+    // reclaim delay itself).
+    //
+    // Playerbots has its own (find corpse), but it only walks bots it counts
+    // as active -- the rest wait and are teleported to the body -- and it
+    // gives up ten minutes after the death. With NoTeleport holding back
+    // playerbots' teleporting revive, a ghost could otherwise stand at the
+    // graveyard until CorpseRunMinutes released the hold.
+    void RunCorpse(Player* bot, PlayerbotAI* ai, uint64_t guid, Online& ob, uint32_t now)
+    {
+        if (!g_cfg.control || bot->InBattleground())
+            return;
+
+        if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+        {
+            ai->DoSpecificAction("auto release", Event(), true);
+            return;
+        }
+
+        Corpse* corpse = bot->GetCorpse();
+        if (!corpse || corpse->GetMapId() != bot->GetMapId())
+            return;   // died in an instance: playerbots' own handling
+
+        if (bot->GetExactDist2d(corpse) <= 20.0f)
+        {
+            if (ob.corpseTrip.active)
+                AutopilotTravel_Stop(ai, ob.corpseTrip);
+            WorldPacket packet(CMSG_RECLAIM_CORPSE);
+            packet << bot->GetGUID();
+            bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+            return;
+        }
+
+        if (!ob.corpseTrip.active)
+        {
+            const std::string why = AutopilotTravel_Start(
+                bot, { corpse->GetMapId(), corpse->GetPositionX(), corpse->GetPositionY(), corpse->GetPositionZ() },
+                15.0f, 0, ob.corpseTrip, now, /*allowFlights*/ false);
+            if (!why.empty())
+                return;
+            RecordEvent(guid, "corpse_run", SafeFormat("walking back to the body ({} yd)",
+                                                       uint32_t(bot->GetExactDist2d(corpse))));
+        }
+
+        std::string note;
+        AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note);
+    }
     // ----------------------------------------------------------------------
     // Facts: rewards, temptations, goals, boundaries. g_mutex held.
     // ----------------------------------------------------------------------
@@ -1866,6 +1920,10 @@ namespace
     {
         const Situation sit = Classify(bot);
 
+        // Cheap (real players online only), and keeps status honest even for a
+        // bot that is not being planned for right now (dead, say).
+        ob.tier = ComputeTier(bot);
+
         if (!ob.historyRequested)
             RequestHistory(guid, ob);
 
@@ -1875,8 +1933,11 @@ namespace
         if (sit.dead)
         {
             ob.errand.trip.interrupted = true;
+            RunCorpse(bot, ai, guid, ob, now);
             return;
         }
+        if (ob.corpseTrip.active)
+            ob.corpseTrip = AutopilotTrip();   // alive again
 
         // Busy: on a trip, in a fight, or moving under its own strategies.
         if (!ob.lastBusyAt || ob.errand.active || sit.inCombat || bot->isMoving())

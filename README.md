@@ -707,8 +707,9 @@ random bots by teleport: every hour or so to a spot for their level, and
 after a death instead of a corpse run. For autopilot bots:
 
 - The periodic teleport is pushed back every hour.
-- A dead bot runs back to its body. After `CorpseRunMinutes` (10) it is
-  revived the normal way.
+- A dead bot releases, walks its ghost back to its body along a navmesh
+  route, and reclaims it. After `CorpseRunMinutes` (10) it is revived
+  playerbots' way instead.
 
 `NoRandomize` also holds playerbots' periodic re-roll, which would otherwise
 re-gear the bot and, at level 1–2 or the level cap, give it a new level

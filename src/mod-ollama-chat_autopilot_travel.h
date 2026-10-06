@@ -116,7 +116,7 @@ enum class AutopilotTripState : uint8_t { Going, Arrived, Failed };
 // Plan a trip. Returns "" or why it cannot be made ("no boat or zeppelin goes
 // there", ...).
 std::string AutopilotTravel_Start(Player* bot, const AutopilotTravelPoint& dest, float arriveRadius,
-                                  uint32_t npcEntry, AutopilotTrip& trip, uint32_t now);
+                                  uint32_t npcEntry, AutopilotTrip& trip, uint32_t now, bool allowFlights = true);
 
 // Advance the trip. `note` gets a diary line for milestones and failures
 // ("boarded The Purple Princess", "landed in Booty Bay", "stuck").

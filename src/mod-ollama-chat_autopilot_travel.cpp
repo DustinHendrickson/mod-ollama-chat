@@ -1070,9 +1070,10 @@ void AutopilotTravel_Build()
 }
 
 std::string AutopilotTravel_Start(Player* bot, const AutopilotTravelPoint& dest, float arriveRadius,
-                                  uint32_t npcEntry, AutopilotTrip& trip, uint32_t now)
+                                  uint32_t npcEntry, AutopilotTrip& trip, uint32_t now, bool allowFlights)
 {
     trip              = AutopilotTrip();
+    trip.noFlight     = !allowFlights;   // a ghost cannot take a flight
     trip.dest         = dest;
     trip.arriveRadius = arriveRadius;
     trip.npcEntry     = npcEntry;
