@@ -3811,6 +3811,7 @@ namespace
             case AutopilotErrandKind::Craft:          return "craft";
             case AutopilotErrandKind::Open:           return "open";
             case AutopilotErrandKind::Mailbox:        return "mailbox";
+            case AutopilotErrandKind::Npc:            return "person";
         }
         return "?";
     }

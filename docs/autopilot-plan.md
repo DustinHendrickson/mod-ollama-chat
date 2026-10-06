@@ -135,6 +135,10 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
   learn-spell that leads to one). On arrival everything learnable is taught:
   the profession itself if a slot is free, its next rank, recipes. A bare
   `goto profession` asks which; it never picks the nearest of any kind.
+- **`goto <name>`.** An NPC by name (exact, or part of a name of five letters
+  or more), nearest spawn on this continent first. The bot walks up to them
+  and talks to them (playerbots' `talk to quest giver`: quests taken,
+  finished ones handed in). Zone names win over people's.
 - **`goto zone <name>`.** Goes to the friendly service NPC nearest the zone's
   centre, on any continent. Sub-area names resolve to their zone.
 - **`goto hunt`.** The nearest group of monsters of the bot's level.
@@ -256,7 +260,7 @@ every flight or crossing:
 |---|---|
 | Another continent | walk to the dock → board → ride → step off; or walk into the Dark Portal; or use a city portal; replan |
 | Same continent, beyond `Travel.FlightMinYards`, a flight clearly shorter | walk to the nearest known flight master → fly to the known taxi node nearest the destination; replan |
-| Otherwise | walk; then step up to the NPC, if there is one |
+| Otherwise | walk; then the last steps to the NPC, if there is one: a routed walk to where they stand, done within touching distance |
 
 **Movement.** Autopilot moves the bot itself (`AutopilotMove_To`): it
 computes a navmesh path on the core's bot filter and walks it with

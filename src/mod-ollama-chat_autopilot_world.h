@@ -92,6 +92,10 @@ std::string AutopilotWorld_SpellFocusName(uint32_t focusId);   // "Forge", "Anvi
 // arrive by mail).
 bool AutopilotWorld_NearestMailbox(Player* bot, AutopilotPlace& out);
 
+// The nearest spawn of a creature by name ("Deputy Willem"; a part of a name
+// of five letters or more also matches), this continent first.
+bool AutopilotWorld_FindNpc(Player* bot, const std::string& name, AutopilotPlace& out);
+
 // A hunting ground for the bot's level on its own continent: the nearest
 // group of ordinary monsters (not elite) hostile to it, four levels below to
 // one above, at least 40 yards away. `name` describes them.

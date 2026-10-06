@@ -617,16 +617,30 @@ namespace
         return LegResult::Going;
     }
 
-    LegResult Approach(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now)
+    // The last steps to a person: a walk like any other leg (a route through
+    // the door and up the stairs, round walls), aimed at where they stand,
+    // done only within touching distance. A trainer inside the abbey is not
+    // reached from the yard outside. With no way there, the errand reports
+    // how far the bot got.
+    LegResult Approach(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
+                       std::string& note)
     {
-        Creature* npc = bot->FindNearestCreature(leg.entry, 60.0f);
-        if (!npc || bot->GetDistance(npc) <= kTouch)
+        Creature* npc = bot->FindNearestCreature(leg.entry, 100.0f);
+        if (npc && bot->GetDistance(npc) <= kTouch)
             return LegResult::Done;
-        if (now - trip.legStartedAt > g_tc.stuckSeconds)
-            return LegResult::Done;   // close enough; the errand decides what that means
-        if (!AutopilotMove_IsMoving(ai))
-            AutopilotMove_To(ai, npc->GetPositionX(), npc->GetPositionY(), npc->GetPositionZ(), true);
-        return LegResult::Going;
+
+        AutopilotLeg walk = leg;
+        walk.type   = AutopilotLegType::Walk;
+        walk.radius = kTouch - 1.0f;
+        if (npc)
+            walk.to = { npc->GetMapId(), npc->GetPositionX(), npc->GetPositionY(), npc->GetPositionZ() };
+        else if (bot->GetExactDist(leg.to.x, leg.to.y, leg.to.z) <= kTouch)
+            return LegResult::Done;   // at their spot, and nobody there: the errand says so
+
+        const LegResult r = Walk(bot, ai, trip, walk, now, note);
+        if (r == LegResult::Fail)
+            return LegResult::Done;   // no way closer; the errand reports the distance
+        return r;
     }
 
     LegResult Fly(Player* bot, PlayerbotAI* ai, AutopilotTrip& trip, const AutopilotLeg& leg, uint32_t now,
@@ -1169,7 +1183,7 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
         switch (leg.type)
         {
             case AutopilotLegType::Walk:     r = Walk(bot, ai, trip, leg, now, legNote);  break;
-            case AutopilotLegType::Approach: r = Approach(bot, ai, trip, leg, now);       break;
+            case AutopilotLegType::Approach: r = Approach(bot, ai, trip, leg, now, legNote); break;
             case AutopilotLegType::Fly:      r = Fly(bot, ai, trip, leg, now, legNote);   break;
             case AutopilotLegType::Board:    r = Board(bot, ai, trip, leg, now, legNote); break;
             case AutopilotLegType::Ride:     r = Ride(bot, ai, trip, leg, now, legNote);  break;

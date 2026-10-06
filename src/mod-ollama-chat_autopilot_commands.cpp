@@ -69,6 +69,8 @@ namespace
         "Fishing are free), its next rank once their skill allows, and recipes. Which professions to take up "
         "is the character's choice: Alchemy, Blacksmithing, Enchanting, Engineering, Herbalism, Inscription, "
         "Jewelcrafting, Leatherworking, Mining, Skinning, Tailoring; Cooking, First Aid, Fishing\n"
+        "- goto <name of a person> : walk up to that NPC (\"goto Deputy Willem\") and talk to them, taking the "
+        "quests they offer and handing in finished ones\n"
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
         "portals, and fly between flight points they have learned\n"
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
@@ -896,7 +898,18 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         std::string display;
         const uint32_t zoneId = AutopilotWorld_FindZone(name, display);
         if (!zoneId)
-            return "unknown zone or destination";
+        {
+            // "goto Deputy Willem": a person, by name. On arrival they talk to
+            // them, so quests are taken and handed in as a player would.
+            AutopilotPlace npc;
+            if (!StartsWithWord(what, "zone") && AutopilotWorld_FindNpc(bot, name, npc))
+            {
+                if (errand.active)
+                    AutopilotCommands_StopErrand(ai, errand);
+                return StartErrand(bot, errand, AutopilotErrandKind::Npc, 0, npc.entry, 0, npc, 5.0f, npc.name, now);
+            }
+            return "unknown zone, place or person";
+        }
         if (zoneId == bot->GetZoneId())
             return "already in " + display;
 
@@ -1684,7 +1697,17 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
         return u;
     }
 
-    Creature* npc = errand.npcEntry ? bot->FindNearestCreature(errand.npcEntry, 40.0f) : nullptr;
+    Creature* npc = errand.npcEntry ? bot->FindNearestCreature(errand.npcEntry, 60.0f) : nullptr;
+
+    // Only within reach counts: a trainer upstairs or behind a wall is not
+    // "there" from the yard outside. Say how far it got instead.
+    if (npc && bot->GetDistance(npc) > 8.0f &&
+        (errand.kind == AutopilotErrandKind::Service || errand.kind == AutopilotErrandKind::QuestTurnIn ||
+         errand.kind == AutopilotErrandKind::Npc))
+    {
+        u.note = SafeFormat("could not get to {}: stopped {:.0f} yd away", npc->GetName(), bot->GetDistance(npc));
+        return u;
+    }
     switch (errand.kind)
     {
         case AutopilotErrandKind::Place:
@@ -1720,6 +1743,18 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
         case AutopilotErrandKind::Open:
             errand.active = true;   // stays until it is open and emptied
             return OpenStep(bot, ai, errand, now);
+
+        case AutopilotErrandKind::Npc:
+            if (!npc)
+            {
+                u.note = "arrived, but " + errand.label + " was not there";
+                return u;
+            }
+            // As a player talks to someone: playerbots' quest-giver handling
+            // takes the quests they offer and hands in finished ones.
+            AutopilotQuest_TalkTo(ai, npc);
+            u.note = "talked to " + npc->GetName();
+            return u;
 
         case AutopilotErrandKind::Mailbox:
             if (GameObject* box = MailboxNear(bot))

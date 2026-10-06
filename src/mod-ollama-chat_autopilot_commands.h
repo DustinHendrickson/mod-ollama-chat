@@ -42,7 +42,8 @@ enum class AutopilotErrandKind : uint8_t
     QuestObjective,   // get there and work the objective
     Craft,            // (walk to a crafting station, then) craft a recipe N times
     Open,             // walk to an object and open or use it
-    Mailbox           // walk to a mailbox and collect the mail
+    Mailbox,          // walk to a mailbox and collect the mail
+    Npc               // walk to a person by name and talk to them
 };
 
 // A trip with a purpose: where, and what to do on arrival.

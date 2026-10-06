@@ -53,6 +53,9 @@ namespace
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_itemFromObjects;
     const std::vector<uint32_t> kNone;
 
+    // Creature names (lower case) -> entries with spawns, for "goto <npc>".
+    std::unordered_map<std::string, std::vector<uint32_t>> g_byName;
+
     // Crafting stations (forges, anvils, cooking fires...): spell focus id ->
     // spawn points. A recipe that needs one names the focus id.
     std::unordered_map<uint32_t, std::vector<SpawnAt>> g_focusById;
@@ -190,6 +193,7 @@ void AutopilotWorld_Build()
     g_spawns.clear();
     g_byEntry.clear();
     g_questEnders.clear();
+    g_byName.clear();
     g_goByEntry.clear();
     g_itemFromCreatures.clear();
     g_itemFromObjects.clear();
@@ -242,6 +246,8 @@ void AutopilotWorld_Build()
         CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(data.id);
         if (!t)
             continue;
+        if (g_byEntry[data.id].size() == 1)
+            g_byName[Lower(t->Name)].push_back(data.id);
 
         if (!t->npcflag && !data.npcflag && t->rank == CREATURE_ELITE_NORMAL && t->type != CREATURE_TYPE_CRITTER &&
             !(t->unit_flags & (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC)))
@@ -813,4 +819,37 @@ bool AutopilotWorld_NearestMailbox(Player* bot, AutopilotPlace& out)
     out.name     = "the mailbox";
     out.distance = bestDist;
     return true;
+}
+
+bool AutopilotWorld_FindNpc(Player* bot, const std::string& rawName, AutopilotPlace& out)
+{
+    const std::string name = Lower(rawName);
+    if (name.size() < 3)
+        return false;
+    std::vector<uint32_t> entries;
+    if (auto exact = g_byName.find(name); exact != g_byName.end())
+        entries = exact->second;
+    else if (name.size() >= 5)
+        for (auto const& [n, list] : g_byName)
+            if (n.find(name) != std::string::npos)
+                entries.insert(entries.end(), list.begin(), list.end());
+    if (entries.empty())
+        return false;
+
+    // The nearest spawn of any match, this continent first.
+    bool found = false;
+    for (uint32_t entry : entries)
+    {
+        AutopilotPlace p;
+        if (!AutopilotWorld_NearestSpawn(bot, entry, p))
+            continue;
+        const bool here = p.map == bot->GetMapId();
+        const bool bestHere = found && out.map == bot->GetMapId();
+        if (!found || (here && (!bestHere || p.distance < out.distance)))
+        {
+            out   = p;
+            found = true;
+        }
+    }
+    return found;
 }

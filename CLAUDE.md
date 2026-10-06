@@ -289,6 +289,14 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `PlayerbotAI::UpdateAI` attaching a bot to the transport under it every
   second. `MotionTransport::IsMoving` is private, so "docked" means near the
   stop and not moving since the last look.
+- **An NPC is reached, not approximated.** The final `Approach` leg is a
+  `Walk` (with its route, through doors and up stairs) aimed at where the
+  NPC stands, and it is done only within `kTouch`. On arrival, an errand with
+  an NPC that is further than 8 yd away reports "could not get to X: stopped
+  N yd away" instead of acting from the yard. The old approach made one path
+  attempt and called a timeout "close enough". `goto <name>` (errand kind
+  `Npc`, names indexed from creature spawns) talks to the NPC on arrival
+  through `AutopilotQuest_TalkTo`.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
 - **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it
