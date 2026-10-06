@@ -107,6 +107,10 @@ void AutopilotRoute_Filter(Player* bot, PathGenerator& generator);
 // mountainside. World thread.
 bool AutopilotRoute_ClimbsOnlyWhereWet(Player* bot, const Movement::PointsArray& points);
 
+// Walkable ground (on the bot's navmesh filter) near (x, y): where exploring
+// can head. False when there is none near enough, or the tile is not loaded.
+bool AutopilotRoute_WalkableNear(Player* bot, float x, float y, AutopilotRoutePoint& out);
+
 // Start a route from the bot to (map, x, y, z). Spends no queries.
 void AutopilotRoute_Begin(Player* bot, uint32_t map, float x, float y, float z, AutopilotRoute& route);
 

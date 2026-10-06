@@ -297,6 +297,14 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   attempt and called a timeout "close enough". `goto <name>` (errand kind
   `Npc`, names indexed from creature spawns) talks to the NPC on arrival
   through `AutopilotQuest_TalkTo`.
+- **Finding nothing is not the end of looking.** `goto hunt` with no known
+  hunting ground, and a quest hunt with no known spawn left, explore:
+  `ExploreNext` walks ~120 yd to walkable ground (`AutopilotRoute_WalkableNear`
+  snaps onto the navmesh) and turns 135 degrees per leg, so the legs spiral
+  out. After each `goto hunt` leg, `AutopilotWorld_PreyNear` (90 yd, live,
+  hostile to the racial faction, level -8..+2, not in combat) retargets the
+  trip at what it finds. The legs are capped (6 and 4), so a bot reports
+  "found nothing" to the model instead of wandering forever.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
 - **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it

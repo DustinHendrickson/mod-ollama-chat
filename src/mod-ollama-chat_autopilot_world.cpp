@@ -2,7 +2,10 @@
 #include "mod-ollama-chat_progress.h"
 #include "mod-ollama-chat-utilities.h"
 
+#include "CellImpl.h"
 #include "CreatureData.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "DBCStores.h"
 #include "GameGraveyard.h"
 #include "Log.h"
@@ -19,6 +22,7 @@
 #include <cctype>
 #include <cmath>
 #include <unordered_map>
+#include <list>
 #include <unordered_set>
 
 namespace
@@ -714,19 +718,25 @@ bool AutopilotWorld_HuntingGround(Player* bot, AutopilotPlace& out)
     // Monsters a player of this level would hunt: up to four levels below,
     // one above, hostile to the bot. Not right on top of it (whatever is
     // there, its grind strategy already sees).
+    // A wider band before giving up: some levels have few spawns of their own.
     const int32_t level = static_cast<int32_t>(bot->GetLevel());
     std::vector<std::pair<float, const Mob*>> fit;
-    for (const Mob& m : it->second)
+    for (const auto& [below, above] : { std::pair<int32_t, int32_t>{ 4, 1 }, std::pair<int32_t, int32_t>{ 8, 2 } })
     {
-        if (m.maxLevel < level - 4 || m.minLevel > level + 1)
-            continue;
-        FactionTemplateEntry const* theirs = sFactionTemplateStore.LookupEntry(m.faction);
-        if (!theirs || !theirs->IsHostileTo(*mine))
-            continue;
-        const float d = bot->GetDistance(m.x, m.y, m.z);
-        if (d < 40.0f)
-            continue;
-        fit.emplace_back(d, &m);
+        for (const Mob& m : it->second)
+        {
+            if (m.maxLevel < level - below || m.minLevel > level + above)
+                continue;
+            FactionTemplateEntry const* theirs = sFactionTemplateStore.LookupEntry(m.faction);
+            if (!theirs || !theirs->IsHostileTo(*mine))
+                continue;
+            const float d = bot->GetDistance(m.x, m.y, m.z);
+            if (d < 40.0f)
+                continue;
+            fit.emplace_back(d, &m);
+        }
+        if (!fit.empty())
+            break;
     }
     if (fit.empty())
         return false;
@@ -852,4 +862,59 @@ bool AutopilotWorld_FindNpc(Player* bot, const std::string& rawName, AutopilotPl
         }
     }
     return found;
+}
+
+namespace
+{
+    struct LivingCreatureCheck
+    {
+        Player* bot;
+        float   range;
+        bool operator()(Creature* c) const { return c && c->IsAlive() && bot->IsWithinDistInMap(c, range); }
+    };
+}
+
+bool AutopilotWorld_PreyNear(Player* bot, float range, AutopilotPlace& out)
+{
+    FactionTemplateEntry const* mine = OwnFaction(bot);
+    if (!mine)
+        return false;
+    std::list<Creature*> found;
+    LivingCreatureCheck check{ bot, range };
+    Acore::CreatureListSearcher<LivingCreatureCheck> searcher(bot, found, check);
+    Cell::VisitObjects(bot, searcher, range);
+
+    const int32_t level = static_cast<int32_t>(bot->GetLevel());
+    Creature* best = nullptr;
+    float bestDist = 0.0f;
+    for (Creature* c : found)
+    {
+        CreatureTemplate const* t = c->GetCreatureTemplate();
+        if (!t || c->GetNpcFlags() || t->rank != CREATURE_ELITE_NORMAL || t->type == CREATURE_TYPE_CRITTER ||
+            c->HasUnitFlag(UNIT_FLAG_NON_ATTACKABLE) || c->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE) ||
+            c->IsInCombat())
+            continue;
+        const int32_t theirs = static_cast<int32_t>(c->GetLevel());
+        if (theirs < level - 8 || theirs > level + 2)
+            continue;
+        FactionTemplateEntry const* faction = c->GetFactionTemplateEntry();
+        if (!faction || !faction->IsHostileTo(*mine))
+            continue;
+        const float d = bot->GetDistance(c);
+        if (!best || d < bestDist)
+        {
+            best     = c;
+            bestDist = d;
+        }
+    }
+    if (!best)
+        return false;
+    out.map      = best->GetMapId();
+    out.x        = best->GetPositionX();
+    out.y        = best->GetPositionY();
+    out.z        = best->GetPositionZ();
+    out.entry    = best->GetEntry();
+    out.name     = SafeFormat("{} (level {})", best->GetName(), best->GetLevel());
+    out.distance = bestDist;
+    return true;
 }

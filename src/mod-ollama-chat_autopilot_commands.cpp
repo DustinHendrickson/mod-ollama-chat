@@ -74,7 +74,8 @@ namespace
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
         "portals, and fly between flight points they have learned\n"
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
-        "around them, so send them here to fight)\n"
+        "around them, so send them here to fight). When none is known nearby they explore, a leg at a time, "
+        "and head for the first monsters their level they find\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
         "and turn it in. On arrival they stay and work the objective, the nearest thing needed first: "
         "creatures to kill, objects to use, and the creatures and objects that give the quest's items "
@@ -167,6 +168,30 @@ namespace
         return place.map == bot->GetMapId()
             ? SafeFormat("on the way to {} ({} yd)", label, uint32_t(bot->GetDistance(place.x, place.y, place.z)))
             : SafeFormat("on the way to {} (another continent)", label);
+    }
+
+    // Exploring when nothing is known nearby, as a player wanders off to look:
+    // a walk of ~120 yd to walkable ground, turning 135 degrees each leg so
+    // the walks spiral out rather than pace back and forth. False when out of
+    // legs or there is nowhere walkable to go.
+    bool ExploreNext(Player* bot, AutopilotErrand& errand, uint32_t now)
+    {
+        if (!errand.exploreLeft)
+            return false;
+        --errand.exploreLeft;
+        for (int k = 0; k < 8; ++k)
+        {
+            const float angle = errand.exploreAngle + float(k) * float(M_PI) / 4.0f;
+            AutopilotRoutePoint p;
+            if (!AutopilotRoute_WalkableNear(bot, bot->GetPositionX() + std::cos(angle) * 120.0f,
+                                             bot->GetPositionY() + std::sin(angle) * 120.0f, p))
+                continue;
+            if (!AutopilotTravel_Start(bot, { bot->GetMapId(), p.x, p.y, p.z }, 15.0f, 0, errand.trip, now).empty())
+                continue;
+            errand.exploreAngle = angle + float(M_PI) * 0.75f;
+            return true;
+        }
+        return false;
     }
 
     // On arrival at a trainer: learn what this trainer can teach and the bot
@@ -849,7 +874,24 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         {
             AutopilotPlace place;
             if (!AutopilotWorld_HuntingGround(bot, place))
-                return "no monsters of their level found on this continent";
+            {
+                // Nothing known for their level: go and look, a leg at a time,
+                // checking for live monsters after each.
+                AutopilotErrand next;
+                next.kind         = AutopilotErrandKind::Place;
+                next.exploring    = true;
+                next.exploreLeft  = 6;
+                next.exploreAngle = bot->GetOrientation();
+                next.label        = "exploring for something to hunt";
+                next.startedAt    = now;
+                if (errand.active)
+                    AutopilotCommands_StopErrand(ai, errand);
+                if (!ExploreNext(bot, next, now))
+                    return "no monsters of their level known nearby, and nowhere walkable to explore";
+                next.active = true;
+                errand      = std::move(next);
+                return "no hunting ground for their level is known nearby: exploring to find one";
+            }
             if (errand.active)
                 AutopilotCommands_StopErrand(ai, errand);
             return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 25.0f,
@@ -1374,6 +1416,10 @@ namespace
             }
         }
 
+        // Something found: a later dead end gets a fresh round of exploring.
+        if (creature || object)
+            errand.exploring = false;
+
         if (creature && (!object || creatureDist <= objectDist))
         {
             AutopilotBot_SetQuestTarget(ai, creature->GetGUID().GetRawValue());
@@ -1424,6 +1470,16 @@ namespace
         AutopilotPlace place;
         if (!AutopilotWorld_SpawnBeyond(bot, creatures, objects, 35.0f, place))
         {
+            // No known spawn left: look around, as a player would, before
+            // giving up on the area.
+            if (!errand.exploring)
+            {
+                errand.exploring    = true;
+                errand.exploreLeft  = 4;
+                errand.exploreAngle = bot->GetOrientation();
+            }
+            if (ExploreNext(bot, errand, now))
+                return u;
             EndHunt(ai, errand, u, SafeFormat("found no more of what {} needs nearby: {}", quest->GetTitle(),
                                               HuntProgress(bot, quest)));
             return u;
@@ -1711,6 +1767,30 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
     switch (errand.kind)
     {
         case AutopilotErrandKind::Place:
+            if (errand.exploring)
+            {
+                // After each leg: anything their level about? Head for it;
+                // otherwise the next leg, until the legs run out.
+                AutopilotPlace prey;
+                if (AutopilotWorld_PreyNear(bot, 90.0f, prey) &&
+                    AutopilotTravel_Start(bot, { prey.map, prey.x, prey.y, prey.z }, 15.0f, 0, errand.trip, now).empty())
+                {
+                    errand.exploring = false;
+                    errand.label     = "a hunting ground: " + prey.name;
+                    errand.active    = true;
+                    u.finished       = false;
+                    u.note           = "found " + prey.name + " while exploring";
+                    return u;
+                }
+                if (ExploreNext(bot, errand, now))
+                {
+                    errand.active = true;
+                    u.finished    = false;
+                    return u;
+                }
+                u.note = "explored nearby and found nothing their level to hunt";
+                return u;
+            }
             u.note = "arrived in " + errand.label;
             return u;
 

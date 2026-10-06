@@ -141,7 +141,12 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
   finished ones handed in). Zone names win over people's.
 - **`goto zone <name>`.** Goes to the friendly service NPC nearest the zone's
   centre, on any continent. Sub-area names resolve to their zone.
-- **`goto hunt`.** The nearest group of monsters of the bot's level.
+- **`goto hunt`.** The nearest group of monsters of the bot's level (first
+  4 below to 1 above, then 8 below to 2 above). With none known, the bot
+  explores: up to six legs of ~120 yd, spiralling out, checking 90 yd around
+  after each for live monsters its level and heading for the first found. A
+  quest hunt with no known spawn left explores the same way (four legs)
+  before it ends.
 - **`quest <id|title> [reward <n>]`.** The quest must be in the log.
   - **Incomplete:** go to the nearest spawn of a creature it still needs,
     an object it must use, or a creature or object that gives a missing

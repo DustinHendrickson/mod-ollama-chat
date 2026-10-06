@@ -677,3 +677,15 @@ bool AutopilotRoute_ClimbsOnlyWhereWet(Player* bot, const Movement::PointsArray&
     }
     return true;
 }
+
+bool AutopilotRoute_WalkableNear(Player* bot, float x, float y, AutopilotRoutePoint& out)
+{
+    Map* map = bot->GetMap();
+    if (!map)
+        return false;
+    AutopilotRoutePoint p = Reseat(map, { x, y, bot->GetPositionZ() }, bot->GetPositionZ());
+    if (!SnapToMesh(map, p, 25.0f, 40.0f))
+        return false;
+    out = p;
+    return true;
+}

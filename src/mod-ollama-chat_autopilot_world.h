@@ -96,6 +96,11 @@ bool AutopilotWorld_NearestMailbox(Player* bot, AutopilotPlace& out);
 // of five letters or more also matches), this continent first.
 bool AutopilotWorld_FindNpc(Player* bot, const std::string& name, AutopilotPlace& out);
 
+// Living monsters within range a player of this level would hunt (hostile to
+// the character's own faction, normal rank, not too far off its level), the
+// nearest: what exploring looks for.
+bool AutopilotWorld_PreyNear(Player* bot, float range, AutopilotPlace& out);
+
 // A hunting ground for the bot's level on its own continent: the nearest
 // group of ordinary monsters (not elite) hostile to it, four levels below to
 // one above, at least 40 yards away. `name` describes them.
