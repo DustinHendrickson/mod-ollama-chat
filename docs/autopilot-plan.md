@@ -140,8 +140,12 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
 - **`goto hunt`.** The nearest group of monsters of the bot's level.
 - **`quest <id|title> [reward <n>]`.** The quest must be in the log.
   - **Incomplete:** go to the nearest spawn of a creature it still needs,
-    else the centre of the quest's POI marker. On arrival nothing is done:
-    the model turns on what the objective needs.
+    else the centre of the quest's POI marker. With creatures still to kill,
+    the bot then hunts them: the nearest needed one is put in playerbots'
+    `prioritized targets` and attacked, and with none in sight it walks to
+    the next spawn point. This lasts until the objective is done or
+    `QuestHuntMinutes` pass. For items to loot or gather, the model turns on
+    what the objective needs.
   - **Complete:** go to the nearest creature that takes it in. The chosen
     reward is taken with `RewardQuest` before playerbots' `talk to quest
     giver` (which would pick by its own stat weights and also takes any

@@ -207,6 +207,26 @@ void AutopilotStrategy_SetTravelling(uint64_t botGuid, bool on)
         g_travelling.erase(botGuid);
 }
 
+void AutopilotBot_SetQuestTarget(PlayerbotAI* ai, uint64_t targetGuid)
+{
+    if (ai)
+        ai->GetAiObjectContext()->GetValue<GuidVector>("prioritized targets")->Set({ ObjectGuid(targetGuid) });
+}
+
+void AutopilotBot_ClearQuestTarget(PlayerbotAI* ai)
+{
+    if (ai)
+        ai->GetAiObjectContext()->GetValue<GuidVector>("prioritized targets")->Reset();
+}
+
+bool AutopilotBot_EngageQuestTarget(PlayerbotAI* ai)
+{
+    // Grind's own attack, which takes attackers -- the prioritized target among
+    // them -- first. Run directly, so it works with grind off too, and past the
+    // travelling hold (multipliers do not touch DoSpecificAction).
+    return ai && ai->DoSpecificAction("attack anything", Event(), true);
+}
+
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai)
 {
     if (!ai)

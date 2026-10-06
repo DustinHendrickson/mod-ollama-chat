@@ -56,7 +56,9 @@ namespace
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
         "around them, so send them here to fight)\n"
         "- quest <id> : go to where that quest's objective is; once it is complete, go to whoever takes it in "
-        "and turn it in. Turn on what the objective needs (grind, loot, gather) yourself. When a quest ready to "
+        "and turn it in. With creatures still to kill, they stay there and hunt them, the nearest needed one "
+        "first, until the objective is done (or a while has passed; you hear the count). For items to collect "
+        "or gather, turn on what the objective needs (loot, gather) yourself. When a quest ready to "
         "turn in offers rewards to choose from (listed under it), pick one: quest <id> reward <n>. Each quest "
         "ready to turn in says who takes it and where: one on another continent is a long trip, so weigh it\n"
         "- abandon <id> : drop a quest from the log, as a player does with one not worth the trip or not for "
@@ -81,6 +83,7 @@ namespace
         "guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg";
 
     std::string              g_reference;
+    uint32_t                 g_huntMinutes = 20;
     std::vector<std::string> g_denied;
 
     std::string Lower(std::string s)
@@ -230,6 +233,8 @@ void AutopilotCommands_Load()
     else
         for (size_t pos = g_reference.find("\\n"); pos != std::string::npos; pos = g_reference.find("\\n", pos + 1))
             g_reference.replace(pos, 2, "\n");
+
+    g_huntMinutes = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.QuestHuntMinutes", 20);
 
     g_denied.clear();
     for (const std::string& d : SplitString(
@@ -490,12 +495,144 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
     return "sent";
 }
 
+namespace
+{
+    // Creatures a quest still needs killed (or spoken to), by entry.
+    std::vector<uint32_t> NeededCreatures(Player* bot, Quest const* quest)
+    {
+        std::vector<uint32_t> out;
+        const uint16 slot = QuestSlot(bot, quest->GetQuestId());
+        if (slot >= MAX_QUEST_LOG_SIZE)
+            return out;
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            const int32 entry = quest->RequiredNpcOrGo[i];
+            if (entry > 0 && quest->RequiredNpcOrGoCount[i] &&
+                bot->GetQuestSlotCounter(slot, i) < quest->RequiredNpcOrGoCount[i])
+                out.push_back(uint32_t(entry));
+        }
+        return out;
+    }
+
+    // "Kobold Vermin 3/8"
+    std::string HuntProgress(Player* bot, Quest const* quest)
+    {
+        std::string out;
+        const uint16 slot = QuestSlot(bot, quest->GetQuestId());
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT && slot < MAX_QUEST_LOG_SIZE; ++i)
+        {
+            const int32 entry = quest->RequiredNpcOrGo[i];
+            if (entry <= 0 || !quest->RequiredNpcOrGoCount[i])
+                continue;
+            CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(uint32_t(entry));
+            out += SafeFormat("{}{} {}/{}", out.empty() ? "" : ", ", t ? t->Name : std::to_string(entry),
+                              bot->GetQuestSlotCounter(slot, i), quest->RequiredNpcOrGoCount[i]);
+        }
+        return out;
+    }
+
+    void EndHunt(PlayerbotAI* ai, AutopilotErrand& errand, AutopilotErrandUpdate& u, std::string note)
+    {
+        AutopilotBot_ClearQuestTarget(ai);
+        errand.hunting = false;
+        errand.active  = false;
+        u.finished     = true;
+        u.note         = std::move(note);
+    }
+
+    // A player on a kill quest: the nearest creature still needed, attacked
+    // first; none around, walk to where more of them stand. Ends when the
+    // objective is done or the time runs out (the model hears the progress).
+    AutopilotErrandUpdate Hunt(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, uint32_t now)
+    {
+        AutopilotErrandUpdate u;
+        Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
+        const QuestStatus status = quest ? bot->GetQuestStatus(errand.questId) : QUEST_STATUS_NONE;
+        if (!quest || status != QUEST_STATUS_INCOMPLETE)
+        {
+            EndHunt(ai, errand, u, quest && status == QUEST_STATUS_COMPLETE
+                ? SafeFormat("finished the objective of {}: ready to turn in", quest->GetTitle())
+                : std::string("the quest is no longer in the log"));
+            return u;
+        }
+
+        const std::vector<uint32_t> needed = NeededCreatures(bot, quest);
+        if (needed.empty())
+        {
+            EndHunt(ai, errand, u, SafeFormat("nothing left to kill for {} ({}); the rest needs items or something else",
+                                              quest->GetTitle(), HuntProgress(bot, quest)));
+            return u;
+        }
+        if (now >= errand.huntUntil)
+        {
+            EndHunt(ai, errand, u, SafeFormat("hunted for {} for {} minutes, not done yet: {}", quest->GetTitle(),
+                                              g_huntMinutes, HuntProgress(bot, quest)));
+            return u;
+        }
+
+        // Between spawn points: the walk there.
+        if (errand.trip.active)
+        {
+            std::string note;
+            if (AutopilotTravel_Update(bot, ai, errand.trip, now, note) == AutopilotTripState::Going)
+                return u;
+        }
+
+        if (bot->IsInCombat())
+            return u;   // the combat engine has it, quest target first
+
+        std::list<Creature*> nearby;
+        bot->GetCreatureListWithEntryInGrid(nearby, needed, 50.0f);
+        Creature* target = nullptr;
+        float best = 0.0f;
+        for (Creature* c : nearby)
+        {
+            if (!c || !c->IsAlive() || !bot->IsValidAttackTarget(c) ||
+                (c->hasLootRecipient() && !c->isTappedBy(bot)) || !bot->IsWithinLOSInMap(c))
+                continue;
+            const float d = bot->GetDistance(c);
+            if (!target || d < best)
+            {
+                target = c;
+                best   = d;
+            }
+        }
+
+        if (target)
+        {
+            AutopilotBot_SetQuestTarget(ai, target->GetGUID().GetRawValue());
+            if (best > 25.0f)
+            {
+                if (!AutopilotMove_IsMoving(ai))
+                    AutopilotMove_To(ai, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), true);
+            }
+            else
+                AutopilotBot_EngageQuestTarget(ai);
+            return u;
+        }
+
+        // None in sight: on to the next place they spawn.
+        AutopilotBot_ClearQuestTarget(ai);
+        AutopilotPlace place;
+        if (!AutopilotWorld_SpawnBeyond(bot, needed, 35.0f, place))
+        {
+            EndHunt(ai, errand, u, SafeFormat("found no more of what {} needs nearby: {}", quest->GetTitle(),
+                                              HuntProgress(bot, quest)));
+            return u;
+        }
+        AutopilotTravel_Start(bot, { place.map, place.x, place.y, place.z }, 15.0f, 0, errand.trip, now);
+        return u;
+    }
+}
+
 AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand,
                                                      uint32_t now)
 {
     AutopilotErrandUpdate u;
     if (!errand.active)
         return u;
+    if (errand.hunting)
+        return Hunt(bot, ai, errand, now);
 
     std::string note;
     const AutopilotTripState state = AutopilotTravel_Update(bot, ai, errand.trip, now, note);
@@ -522,8 +659,23 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             return u;
 
         case AutopilotErrandKind::QuestObjective:
+        {
+            // Creatures to kill: stay and hunt them, as a player would.
+            Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
+            if (quest && g_huntMinutes && bot->GetQuestStatus(errand.questId) == QUEST_STATUS_INCOMPLETE &&
+                !NeededCreatures(bot, quest).empty())
+            {
+                errand.active    = true;
+                errand.hunting   = true;
+                errand.huntUntil = now + g_huntMinutes * 60;
+                errand.label     = "hunting for " + quest->GetTitle();
+                u.finished       = false;
+                u.note           = SafeFormat("arrived; hunting for {} ({})", quest->GetTitle(), HuntProgress(bot, quest));
+                return u;
+            }
             u.note = "arrived at " + errand.label;
             return u;
+        }
 
         case AutopilotErrandKind::QuestTurnIn:
         {
@@ -644,5 +796,8 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
 void AutopilotCommands_StopErrand(PlayerbotAI* ai, AutopilotErrand& errand)
 {
     AutopilotTravel_Stop(ai, errand.trip);
+    if (errand.hunting)
+        AutopilotBot_ClearQuestTarget(ai);
+    errand.hunting = false;
     errand.active = false;
 }

@@ -47,6 +47,14 @@ void AutopilotBot_ClearDeathCount(PlayerbotAI* ai);
 // marker strategy's multiplier). World thread sets it; any thread reads.
 void AutopilotStrategy_SetTravelling(uint64_t botGuid, bool on);
 
+// A quest hunt's target, through playerbots' own "prioritized targets" (what
+// its "attack my target" uses): it counts as an attacker, so grind and the
+// combat engine take it first. Engage starts the attack on it now. World
+// thread.
+void AutopilotBot_SetQuestTarget(PlayerbotAI* ai, uint64_t targetGuid);
+void AutopilotBot_ClearQuestTarget(PlayerbotAI* ai);
+bool AutopilotBot_EngageQuestTarget(PlayerbotAI* ai);
+
 // --------------------------------------------------------------------------
 // Moving a bot for the autopilot. World thread only.
 //

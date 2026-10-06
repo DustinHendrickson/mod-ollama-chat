@@ -313,6 +313,18 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   (`SatisfyQuestClass`/`SatisfyQuestRace`), and `abandon <id>` drops one
   through `HandleQuestLogRemoveQuest` (playerbots' `drop` needs a master).
   Finished quests show who takes them and where (`DescribeQuestEnder`).
+- **A kill quest is hunted, not just visited.** A `quest` errand with
+  creatures still needed turns into a hunt on arrival (`errand.hunting`,
+  `Hunt` in commands.cpp). The nearest needed creature that is alive,
+  attackable, untapped and in sight goes into playerbots'
+  `"prioritized targets"`, which `AttackersValue` counts as an attacker, so
+  grind and the combat engine take it first. Within 25 yd,
+  `DoSpecificAction("attack anything")` starts the fight, even with grind
+  off and past the travelling hold. With none in sight, it walks to the next
+  spawn of a needed creature at least 35 yd away. It ends when the
+  objective is done or after `QuestHuntMinutes`, and the target is cleared.
+  Grind on its own takes the *nearest* mob; quest need only counts for its
+  out-of-range picks while rpg is active, which autopilot turns off.
 - **A player's choices are the model's.** Quest rewards (`quest <id> reward
   <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
   by stat weights), professions (`goto profession <name>`; a trainer's skill

@@ -526,6 +526,44 @@ std::string AutopilotWorld_ZonesForLevel(Player* bot)
     return out;
 }
 
+bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& entries, float minDistance,
+                                AutopilotPlace& out)
+{
+    const SpawnAt* best = nullptr;
+    uint32_t bestEntry = 0;
+    float bestDist = 0.0f;
+    for (uint32_t entry : entries)
+    {
+        auto it = g_byEntry.find(entry);
+        if (it == g_byEntry.end())
+            continue;
+        for (const SpawnAt& s : it->second)
+        {
+            if (s.map != bot->GetMapId())
+                continue;
+            const float d = bot->GetDistance(s.x, s.y, s.z);
+            if (d < minDistance)
+                continue;
+            if (!best || d < bestDist)
+            {
+                best      = &s;
+                bestEntry = entry;
+                bestDist  = d;
+            }
+        }
+    }
+    if (!best)
+        return false;
+    out.map      = best->map;
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = bestEntry;
+    out.name     = NameOf(bestEntry);
+    out.distance = bestDist;
+    return true;
+}
+
 bool AutopilotWorld_NearestSpawn(Player* bot, uint32_t entry, AutopilotPlace& out)
 {
     auto it = g_byEntry.find(entry);

@@ -72,6 +72,12 @@ bool AutopilotWorld_ZonePlace(Player* bot, uint32_t zoneId, AutopilotPlace& out,
 // otherwise anywhere (distance 0). Any creature, not just services.
 bool AutopilotWorld_NearestSpawn(Player* bot, uint32_t entry, AutopilotPlace& out);
 
+// The nearest spawn point on the bot's map of any of these creatures that is
+// at least minDistance away: where to look next for a quest's creatures when
+// none are around.
+bool AutopilotWorld_SpawnBeyond(Player* bot, const std::vector<uint32_t>& entries, float minDistance,
+                                AutopilotPlace& out);
+
 // A hunting ground for the bot's level on its own continent: the nearest
 // group of ordinary monsters (not elite) hostile to it, four levels below to
 // one above, at least 40 yards away. `name` describes them.

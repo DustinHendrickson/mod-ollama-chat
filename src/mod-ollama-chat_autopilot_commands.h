@@ -54,6 +54,12 @@ struct AutopilotErrand
     std::string         label;              // "the repair vendor Corina Steele"
     uint32_t            startedAt = 0;
     AutopilotTrip       trip;
+
+    // A quest with creatures still to kill does not end on arrival: the bot
+    // hunts them -- nearest needed creature first, walking between their spawn
+    // points -- until the objective is done or OllamaChat.Autopilot.QuestHuntMinutes.
+    bool                hunting   = false;
+    uint32_t            huntUntil = 0;
 };
 
 void AutopilotCommands_Load();

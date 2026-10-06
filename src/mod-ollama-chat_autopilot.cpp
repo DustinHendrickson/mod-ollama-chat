@@ -1445,6 +1445,8 @@ namespace
             return "fighting";
         if (!ob.errand.active)
             return "standing by: no errand under way";
+        if (ob.errand.hunting && !ob.errand.trip.active)
+            return ob.errand.label + " (the nearest creature it still needs, first)";
         const std::string how = AutopilotTravel_Describe(bot, ob.errand.trip);
         return how.empty() ? "on the way to " + ob.errand.label : how + ", bound for " + ob.errand.label;
     }
