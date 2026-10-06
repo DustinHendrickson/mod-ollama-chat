@@ -8,6 +8,7 @@
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_monitor.h"
+#include "mod-ollama-chat_buffs.h"
 #include "mod-ollama-chat_capability.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_memory.h"
@@ -937,6 +938,7 @@ void LoadOllamaChatConfig()
     // After the snapshot setting above: autopilot depends on it.
     Autopilot_LoadConfig();
     Monitor_LoadConfig();
+    Buffs_LoadConfig();
 
     LoadPersonalityTemplatesFromDB();
 

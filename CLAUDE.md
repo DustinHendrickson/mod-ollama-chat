@@ -314,6 +314,17 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
 
+## Passer-by buffs (`mod-ollama-chat_buffs.cpp`)
+
+World thread, from the module tick, a fixed `BotsPerSecond` in rotation. Buffs
+are found in each bot's spellbook by shape, not by spell id: instant, at
+least 10 minutes, no reagents, every effect an aura on `TARGET_UNIT_TARGET_ALLY`
+of a stat, armour, resistance, attack power, regen, health or damage-shield
+type. That excludes self-only and group buffs without a list to keep up.
+Casting goes through `PlayerbotAI::CanCastSpell` / `CastSpell`. A cast that
+will not go off on someone is remembered for `retrySeconds`, so a bot does
+not retry it every pass.
+
 ## Monitor addon (`addon/OllamaMonitor`, `mod-ollama-chat_monitor.cpp`)
 
 A GM-only debug window. The client whispers itself on the addon channel

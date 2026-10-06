@@ -594,6 +594,26 @@ module can do.
 Race and class voices can be overridden per server in the
 `mod_ollama_chat_voice` table without a rebuild.
 
+## Passer-by Buffs
+
+In the old world a stranger running past would often throw you a Power Word:
+Fortitude or a Mark of the Wild. Bots do the same now. Out of combat, a bot
+buffs friendly players near it (and other bots, unless
+`OllamaChat.Buff.BuffBots` is 0) with the buffs its class knows, and
+sometimes waves. It won't buff someone it dislikes: anyone whose sentiment
+is below `OllamaChat.Buff.MinSentiment`.
+
+Buffs are taken from each bot's own spellbook. Only instant, long-lasting,
+single-target buffs for allies are used: Fortitude, Divine Spirit, Shadow
+Protection, Arcane Intellect, Mark of the Wild, Thorns and the paladin
+blessings. Paladins give one blessing per person: Kings if they know it,
+otherwise Wisdom for mana users and Might for everyone else.
+
+Bots never buff over a buff someone already has, and they don't stop to
+buff while mounted, low on mana, eating or casting. A PvP-flagged player
+only gets buffed by a bot that is flagged too. All of these settings live
+under `OllamaChat.Buff.*` in the conf.
+
 ## Body Language
 
 Replies are accompanied by movement so they read as conversation rather than as

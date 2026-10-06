@@ -2597,3 +2597,72 @@ OllamaChat.Monitor.Enable = 1
 #        keep it at GM level or above.
 #        Default: 3
 OllamaChat.Monitor.MinSecurity = 3
+
+###############################################################################
+#
+#   OLLAMA CHAT - PASSER-BY BUFFS
+#
+# The old-world courtesy: a stranger's Fortitude, Mark of the Wild or Arcane
+# Intellect as you run past. Bots out of combat buff friendly players near
+# them -- and, with BuffBots, other bots -- with the buffs their class knows,
+# unless they dislike the person (sentiment below MinSentiment). Sometimes
+# they wave.
+#
+# Buffs come from each bot's own spellbook: instant, long-lasting,
+# single-target ally buffs (stats, armour, resistances, attack power,
+# regeneration, health, Thorns). Self-only spells, group versions (Prayer of
+# ..., Gift of the Wild, Greater Blessings) and situational ones (Water
+# Walking, Amplify Magic) are never cast. A paladin gives one blessing per
+# person: Kings if it knows it, else Wisdom for mana users and Might for the
+# rest. Nobody is buffed over a buff they already have, mounted bots and bots
+# low on mana do not stop to buff, and a PvP-flagged player is only buffed by
+# a bot that is flagged too.
+###############################################################################
+
+#    OllamaChat.Buff.Enable
+#        Bots buff friendly passers-by.
+#        Default: 1
+OllamaChat.Buff.Enable = 1
+
+#    OllamaChat.Buff.Range
+#        How near (yards) someone must be to get a buff. 5 to 40.
+#        Default: 25
+OllamaChat.Buff.Range = 25
+
+#    OllamaChat.Buff.MinSentiment
+#        A bot does not buff someone it feels worse about than this
+#        (sentiment runs 0 hostile .. 1 friendly). With
+#        OllamaChat.EnableSentimentTracking off, everyone sits at
+#        OllamaChat.SentimentDefaultValue and is buffed.
+#        Default: 0.3
+OllamaChat.Buff.MinSentiment = 0.3
+
+#    OllamaChat.Buff.BuffBots
+#        Bots buff other bots too, not only real players. With 0, only real
+#        players get buffed.
+#        Default: 1
+OllamaChat.Buff.BuffBots = 1
+
+#    OllamaChat.Buff.MinIntervalSeconds
+#    OllamaChat.Buff.MaxIntervalSeconds
+#        After buffing someone, a bot waits a random time in this range before
+#        it buffs the next person, so a crowd is not buffed in one burst.
+#        Default: 8, 20
+OllamaChat.Buff.MinIntervalSeconds = 8
+OllamaChat.Buff.MaxIntervalSeconds = 20
+
+#    OllamaChat.Buff.MinManaPct
+#        A bot below this much mana keeps it for itself.
+#        Default: 40
+OllamaChat.Buff.MinManaPct = 40
+
+#    OllamaChat.Buff.WaveChance
+#        Percent chance the bot waves at whoever it just buffed.
+#        Default: 25
+OllamaChat.Buff.WaveChance = 25
+
+#    OllamaChat.Buff.BotsPerSecond
+#        Bots that look around for someone to buff, per second, taking turns.
+#        Keeps the cost flat however many bots are online.
+#        Default: 15
+OllamaChat.Buff.BotsPerSecond = 15
