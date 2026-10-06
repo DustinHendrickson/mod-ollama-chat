@@ -317,6 +317,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `maintenance` / `autogear` / `bis` / `cheat` orders are refused. Global
   `AiPlayerbot.BotCheats` (food) and the standalone level reset module
   cannot be lifted per bot from here.
+- **The level-bracket shield is a `character_social` row.** Both bracket
+  implementations skip a bot that is anyone's friend (`flags = 1`).
+  `SyncBracketShield` writes `(guid 0, friend = bot, flags 1, note 'ollama
+  autopilot')` for enrolled bots as their rows save, deletes it when they
+  leave, and `Autopilot_Load` rebuilds all of ours at startup. Guid 0 is no
+  character, so the row is on nobody's list. Only rows with that note are
+  ever ours to touch.
 - **Playerbots' re-roll and refresh empty the bags.** `Randomize` and
   `Refresh` call `ClearInventory()`. Their timers are held from `OnStartup`
   (`Autopilot_Load`) for every enrolled random bot, not only from the sweep:

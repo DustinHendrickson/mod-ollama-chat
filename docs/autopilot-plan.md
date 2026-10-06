@@ -204,10 +204,13 @@ A zero multiplier makes `Engine::DoNextAction` drop the action. It does not
 stop `ExecuteAction` / `DoSpecificAction`, so never call those for these
 actions. The marker is on all three engines (dead included) for this.
 
+Level brackets (`mod-player-bot-level-brackets` and playerbots' own) skip
+friend-listed bots, so enrolled bots get a `character_social` row owned by
+guid 0 (`SyncBracketShield`, rebuilt at startup, note `ollama autopilot`).
+
 Not reachable per bot: playerbots' global cheats (`AiPlayerbot.BotCheats`,
 e.g. `food`), and `mod-player-bot-reset`'s reset at level 80 (its
-`ResetBotLevel.ExcludeNames`). `mod-player-bot-level-brackets` skips bots on
-a friend list, in a guild with a real player, or in its `ExcludeNames`.
+`ResetBotLevel.ExcludeNames`).
 
 ## Travel
 

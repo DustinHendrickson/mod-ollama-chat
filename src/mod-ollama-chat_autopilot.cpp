@@ -2400,8 +2400,38 @@ namespace
         return true;
     }
 
+    // Level brackets (mod-player-bot-level-brackets, and playerbots' own
+    // RandomBotLevelMgr) move random bots to another level by re-rolling them,
+    // but leave alone any bot on someone's friend list (character_social,
+    // flags 1). A row owned by guid 0 -- no character, so nobody's list shows
+    // it -- with our note puts an enrolled bot there without touching those
+    // modules.
+    constexpr const char* kSocialNote = "ollama autopilot";
+
+    void SyncBracketShield(const std::vector<uint32_t>& add, const std::vector<uint32_t>& remove)
+    {
+        auto join = [](const std::vector<uint32_t>& lows, bool tuples)
+        {
+            std::string out;
+            for (uint32_t low : lows)
+            {
+                if (!out.empty())
+                    out += ',';
+                out += tuples ? SafeFormat("(0, {}, 1, '{}')", low, kSocialNote) : std::to_string(low);
+            }
+            return out;
+        };
+        if (!add.empty())
+            CharacterDatabase.Execute("INSERT IGNORE INTO character_social (guid, friend, flags, note) VALUES " +
+                                      join(add, true));
+        if (!remove.empty())
+            CharacterDatabase.Execute(SafeFormat("DELETE FROM character_social WHERE guid = 0 AND note = '{}' "
+                                                 "AND friend IN ({})", kSocialNote, join(remove, false)));
+    }
+
     void SaveRowsLocked()
     {
+        std::vector<uint32_t> shield, unshield;
         std::string values;
         uint32_t    count = 0;
         const uint32_t now = Progress_Now();
@@ -2463,11 +2493,13 @@ namespace
                 esc(row.baseline, 4000), row.planUntil, row.lastPlanAt,
                 row.enrolledAt, now);
             row.dirty = false;
+            (row.enrolled && g_cfg.noRandomize ? shield : unshield).push_back(ObjectGuid(guid).GetCounter());
 
             if (++count >= 200)
                 flush();
         }
         flush();
+        SyncBracketShield(shield, unshield);
     }
 
     // Dungeon-finder proposals seen for enrolled bots, answered on the world
@@ -3180,6 +3212,22 @@ void Autopilot_Load()
         if (held)
             LOG_INFO("server.loading", "[Ollama Chat] Autopilot: held playerbots' re-roll and teleport for {} enrolled random bots{}.",
                      held, g_cfg.keepOnline ? " and asked for them to be logged in" : "");
+    }
+
+    // The level-bracket shield, rebuilt from the table: ours out, enrolled
+    // bots back in (if NoRandomize still wants them kept where they are).
+    CharacterDatabase.DirectExecute(SafeFormat("DELETE FROM character_social WHERE guid = 0 AND note = '{}'",
+                                               kSocialNote));
+    if (g_cfg.enable && g_cfg.noRandomize)
+    {
+        std::vector<uint32_t> shield;
+        for (auto const& [guid, row] : g_rows)
+            if (row.enrolled)
+                shield.push_back(ObjectGuid(guid).GetCounter());
+        SyncBracketShield(shield, {});
+        if (!shield.empty())
+            LOG_INFO("server.loading", "[Ollama Chat] Autopilot: {} enrolled bots kept out of level-bracket re-rolls "
+                     "(friend-list rows owned by guid 0).", shield.size());
     }
 
     // Lands in Autopilot_Update before the first bots log in.
