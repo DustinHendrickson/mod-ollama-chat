@@ -2332,7 +2332,7 @@ OllamaChat.Autopilot.Route.WaterCost = 8
 #   foreground  a real player is within ForegroundScope, or a guildmate is
 #               online: at most every DecisionIntervalMinutes
 #   background  a real player is within BackgroundScope: at most every
-#               GoalRefreshMinutes
+#               BackgroundIntervalMinutes
 #   dormant     otherwise: not asked; it keeps its last orders until someone
 #               comes near (a new bot keeps its playerbots defaults until then)
 # Every plan spends one token from a shared hourly budget, and planning is
@@ -2356,12 +2356,18 @@ OllamaChat.Autopilot.LlmCallsPerHour = 300
 OllamaChat.Autopilot.MaxConcurrentPlans = 2
 
 #    OllamaChat.Autopilot.DecisionIntervalMinutes
-#    OllamaChat.Autopilot.GoalRefreshMinutes
-#        Minimum minutes between plans for one foreground / background bot.
-#        Events (level, goal done, boundaries) may ask sooner.
-#        Default: 15 and 90
+#    OllamaChat.Autopilot.BackgroundIntervalMinutes
+#        Minimum minutes between routine plans for one foreground / background
+#        bot. A finished trip asks again within QuickReplanSeconds whatever
+#        the tier, and events (a level, a goal done or stalled, an alert,
+#        leaving a dungeon or group) may ask after 5 minutes. The LLM is the
+#        only thing steering an autopilot bot, so keep these short enough
+#        that a settled bot is looked at again in reasonable time.
+#        (BackgroundIntervalMinutes used to be called GoalRefreshMinutes; the
+#        old name is still read if the new one is not set.)
+#        Default: 15 and 30
 OllamaChat.Autopilot.DecisionIntervalMinutes = 15
-OllamaChat.Autopilot.GoalRefreshMinutes = 90
+OllamaChat.Autopilot.BackgroundIntervalMinutes = 30
 
 #    OllamaChat.Autopilot.DefaultPlanMinutes
 #        How long a plan holds when the LLM does not say (5-180).

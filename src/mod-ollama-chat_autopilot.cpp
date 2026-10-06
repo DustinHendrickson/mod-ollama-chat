@@ -89,7 +89,7 @@ namespace
         uint32_t llmCallsPerHour         = 300;
         uint32_t maxConcurrentPlans      = 2;
         uint32_t decisionIntervalMinutes = 15;      // foreground
-        uint32_t goalRefreshMinutes      = 90;      // background
+        uint32_t backgroundMinutes       = 30;      // background
         uint32_t defaultPlanMinutes      = 30;
         uint32_t quickReplanSeconds      = 60;      // after an errand ends
         float    foregroundRange         = 100.0f;  // yards, for Scope::Range
@@ -1403,7 +1403,7 @@ namespace
         // kUrgentGapSeconds, so a burst of events is one plan, not several.
         const uint32_t sinceLast = row.lastPlanAt ? now - row.lastPlanAt : UINT32_MAX;
         const uint32_t gap = (ob.tier == Tier::Foreground ? g_cfg.decisionIntervalMinutes
-                                                          : g_cfg.goalRefreshMinutes) * 60;
+                                                          : g_cfg.backgroundMinutes) * 60;
         const bool allowed = force || sinceLast >= gap || (ob.urgentPlan && sinceLast >= kUrgentGapSeconds) ||
                              (ob.quickPlan && sinceLast >= g_cfg.quickReplanSeconds);
         if (!allowed)
@@ -2416,7 +2416,7 @@ namespace
             "  tiers right now: {} foreground, {} background, {} dormant.", tiers[2], tiers[1], tiers[0]));
         const uint32_t wanted =
             tiers[2] * 60 / std::max<uint32_t>(1, g_cfg.decisionIntervalMinutes) +
-            tiers[1] * 60 / std::max<uint32_t>(1, g_cfg.goalRefreshMinutes);
+            tiers[1] * 60 / std::max<uint32_t>(1, g_cfg.backgroundMinutes);
         handler->SendSysMessage(SafeFormat(
             "  LLM: up to ~{} plans/hour at the tier intervals; the budget allows {}/hour. Bots that cannot be "
             "planned for keep doing what the model last chose; dormant bots wait until a player comes near.",
@@ -2583,7 +2583,11 @@ void Autopilot_LoadConfig()
     c.llmCallsPerHour         = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.LlmCallsPerHour", 300);
     c.maxConcurrentPlans      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.MaxConcurrentPlans", 2));
     c.decisionIntervalMinutes = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DecisionIntervalMinutes", 15));
-    c.goalRefreshMinutes      = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 90));
+    // GoalRefreshMinutes is the old name, from when the LLM only revisited
+    // goals; still honoured if a conf sets it and not the new one.
+    c.backgroundMinutes       = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>(
+        "OllamaChat.Autopilot.BackgroundIntervalMinutes",
+        sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.GoalRefreshMinutes", 30, false)));
     c.defaultPlanMinutes      = std::clamp<uint32_t>(sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.DefaultPlanMinutes", 30), 5, 180);
     c.quickReplanSeconds      = std::max<uint32_t>(10, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.QuickReplanSeconds", 60));
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);

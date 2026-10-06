@@ -767,7 +767,7 @@ How often it may ask depends on its tier:
 | Tier | When (defaults) | Asks at most every |
 |---|---|---|
 | foreground | a real player in the same zone, or a guildmate online | `DecisionIntervalMinutes` (15) |
-| background | a real player on the same map | `GoalRefreshMinutes` (90) |
+| background | a real player on the same map | `BackgroundIntervalMinutes` (30) |
 | dormant | nobody around | not asked; keeps its last orders |
 
 All plans share `LlmCallsPerHour` (300). If you have the hardware or API
