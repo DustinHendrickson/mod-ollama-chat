@@ -281,13 +281,13 @@ gotoButton:SetPoint("LEFT", followButton, "RIGHT", 4, 0)
 
 local replanButton = MakeButton("Replan now", 90, function()
     local b = SelectedBot()
-    if b then SendChatMessage(".ollama autopilot replan " .. b.name, "SAY") end
+    if b then Send("CMD replan " .. b.name) end
 end)
 replanButton:SetPoint("LEFT", gotoButton, "RIGHT", 4, 0)
 
 local statusButton = MakeButton("Status to chat", 100, function()
     local b = SelectedBot()
-    if b then SendChatMessage(".ollama autopilot status " .. b.name, "SAY") end
+    if b then Send("CMD status " .. b.name) end
 end)
 statusButton:SetPoint("LEFT", replanButton, "RIGHT", 4, 0)
 
@@ -305,7 +305,7 @@ StaticPopupDialogs["OLLAMAMONITOR_TURN_OFF"] = {
     button1 = YES,
     button2 = NO,
     OnAccept = function(self, name)
-        SendChatMessage(".ollama autopilot off " .. name, "SAY")
+        Send("CMD off " .. name)
         M.listAt = 0   -- refresh the list soon: the bot leaves it
     end,
     timeout = 0,
@@ -335,7 +335,7 @@ local offButton = MakeButton("Turn off", 80, function()
         Print("select a bot, or target one, to turn autopilot on")
         return
     end
-    SendChatMessage(".ollama autopilot on " .. name, "SAY")
+    Send("CMD on " .. name)
     M.listAt = 0   -- refresh the list soon: the bot joins it
 end)
 offButton:SetPoint("LEFT", plainButton, "RIGHT", 4, 0)

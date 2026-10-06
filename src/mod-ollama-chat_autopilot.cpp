@@ -3549,6 +3549,18 @@ ChatCommandTable const& Autopilot_CommandTable()
     return table;
 }
 
+bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name)
+{
+    if (!gm || !gm->GetSession())
+        return false;
+    ChatHandler handler(gm->GetSession());
+    if (sub == "on")     return HandleOn(&handler, name), true;
+    if (sub == "off")    return HandleOff(&handler, name), true;
+    if (sub == "replan") return HandleReplan(&handler, name), true;
+    if (sub == "status") return HandleStatus(&handler, name.empty() ? Optional<std::string>() : Optional<std::string>(name)), true;
+    return false;
+}
+
 // ==========================================================================
 // Hooks. The progress hooks run on map threads; each touches only the player
 // it was handed and module state under g_mutex (taken by WithEnrolledRow).

@@ -37,6 +37,7 @@
 //   PAGE <guid> <page>               B \t guid \t page | P \t c|e \t text ... | Z \t guid \t page
 //   WATCH <guid> / UNWATCH           W \t on|off|wait \t guid \t name \t note
 //   GOTO <guid>                      M \t text
+//   CMD on|off|replan|status <name>  (system messages, as the .ollama command)
 //                                    G \t guid   (a PAGE for a bot no longer online)
 //
 // Page lines longer than one message are split; "c" marks a piece the next
@@ -479,6 +480,17 @@ namespace
                                         Clean(Cut(Progress_ZoneName(r.zone), 40)), r.tier, Clean(r.state),
                                         Clean(Cut(r.doing, 100))));
             Send(player, SafeFormat("LZ\t{}", rows.size()));
+            return;
+        }
+
+        // The window's buttons. Gated by Monitor.MinSecurity like the rest of
+        // the window, not by the GM level of the .ollama chat commands.
+        if (verb == "CMD")
+        {
+            std::string sub, name;
+            in >> sub >> name;
+            if (!Autopilot_MonitorCommand(player, sub, name))
+                Send(player, "M\tUnknown monitor command: " + Clean(sub));
             return;
         }
 

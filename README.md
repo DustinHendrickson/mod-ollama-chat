@@ -473,13 +473,15 @@ window, right-click switches to log only, drag to move it).
     you are teleported along. A dungeon can't be followed: the camera
     waits until the bot comes out.
   - **Teleport to** moves you to the bot.
-  - **Replan now** and **Status to chat** run the matching
-    `.ollama autopilot` command.
+  - **Replan now** and **Status to chat** do what the matching
+    `.ollama autopilot` command does. Every button goes through the
+    monitor, so it needs only `OllamaChat.Monitor.MinSecurity`, not the
+    GM level of the `.ollama` commands.
   - **Turn off / Turn on.** While the selected bot is on autopilot, the
-    button reads Turn off. After you confirm, it runs
-    `.ollama autopilot off <bot>`: the bot's strategies go back to what it
+    button reads Turn off. After you confirm, it does what
+    `.ollama autopilot off <bot>` does: the bot's strategies go back to what it
     had before autopilot, and it leaves the list. The button then reads Turn
-    on, which runs `.ollama autopilot on` for that bot. With nothing
+    on, which does `.ollama autopilot on` for that bot. With nothing
     selected, Turn on uses your current target.
   - **Plain text** turns off colours, so text copies cleanly. Every page
     is selectable, and Ctrl+C copies it.

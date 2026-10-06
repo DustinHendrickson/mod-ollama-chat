@@ -63,6 +63,11 @@ bool Autopilot_IsActive();
 // Why Autopilot_IsActive() is false, one line per cause; empty when active.
 std::vector<std::string> Autopilot_InactiveReasons();
 
+// The monitor window's buttons (on, off, replan, status <name>), answered as
+// system messages to `gm` exactly like the .ollama autopilot commands. The
+// caller checks OllamaChat.Monitor.MinSecurity. False for an unknown `sub`.
+bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name);
+
 // `.ollama autopilot ...`
 Acore::ChatCommands::ChatCommandTable const& Autopilot_CommandTable();
 
