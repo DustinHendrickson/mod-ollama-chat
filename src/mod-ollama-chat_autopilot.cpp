@@ -686,7 +686,7 @@ namespace
         }
     };
 
-    Situation Classify(Player* bot, PlayerbotAI* ai)
+    Situation Classify(Player* bot)
     {
         Situation s;
         s.dead       = !bot->IsAlive();
@@ -1338,7 +1338,7 @@ namespace
         ctx.zones       = AutopilotWorld_ZonesForLevel(bot);
         ctx.lastResults = row.lastResults;
 
-        const Situation sit = Classify(bot, ai);
+        const Situation sit = Classify(bot);
         ctx.concerns = sit.Limits();
         if (!ob.lastAlert.empty() && now - ob.lastAlertAt < kHour)
             ctx.concerns += SafeFormat("{}Worry ({}): {}.", ctx.concerns.empty() ? "" : "\n",
@@ -1532,7 +1532,7 @@ namespace
         // so the next prompt says so.
         std::vector<std::string> results;
         if (ob && bot && ai && g_cfg.control)
-            results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot, ai), now);
+            results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot), now);
         else if (!d.commands.empty())
         {
             for (const std::string& c : d.commands)
@@ -1839,7 +1839,7 @@ namespace
 
     void Control(Player* bot, PlayerbotAI* ai, uint64_t guid, Row& row, Online& ob, uint32_t now)
     {
-        const Situation sit = Classify(bot, ai);
+        const Situation sit = Classify(bot);
 
         if (!ob.historyRequested)
             RequestHistory(guid, ob);
@@ -2471,7 +2471,7 @@ namespace
             return true;
 
         PlayerbotAI* ai = BotAI(bot);
-        if (!Classify(bot, ai).CanUseCombat())
+        if (!Classify(bot).CanUseCombat())
         {
             ob->urgentPlan = true;
             handler->SendSysMessage(SafeFormat(
