@@ -298,6 +298,29 @@ local plainButton = MakeButton("Plain text", 80, function(self)
 end)
 plainButton:SetPoint("LEFT", statusButton, "RIGHT", 4, 0)
 
+-- Taking a bot off autopilot hands its strategies back to what it had
+-- before, so ask first.
+StaticPopupDialogs["OLLAMAMONITOR_TURN_OFF"] = {
+    text = "Take %s off autopilot?\n\nIts strategies go back to what it had before autopilot, and the LLM stops giving it orders.",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function(self, name)
+        SendChatMessage(".ollama autopilot off " .. name, "SAY")
+        M.listAt = 0   -- refresh the list soon: the bot leaves it
+    end,
+    timeout = 0,
+    whileDead = 1,
+    hideOnEscape = 1,
+}
+
+local offButton = MakeButton("Turn off", 80, function()
+    local b = SelectedBot()
+    if not b then return end
+    local dialog = StaticPopup_Show("OLLAMAMONITOR_TURN_OFF", b.name)
+    if dialog then dialog.data = b.name end
+end)
+offButton:SetPoint("LEFT", plainButton, "RIGHT", 4, 0)
+
 local tabs = {}
 local ShowPage
 for i, p in ipairs(PAGES) do
@@ -607,7 +630,7 @@ local COMPACT_BACKDROP = {
 }
 -- Everything that is not the log.
 local FULL_ONLY = {
-    title, status, listPanel, followButton, gotoButton, replanButton, statusButton, plainButton,
+    title, status, listPanel, followButton, gotoButton, replanButton, statusButton, plainButton, offButton,
     updatedText, cameraText, sayLabel, sayBox,
 }
 for _, t in ipairs(tabs) do table.insert(FULL_ONLY, t) end
