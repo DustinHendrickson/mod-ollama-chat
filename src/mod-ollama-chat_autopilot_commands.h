@@ -41,7 +41,8 @@ enum class AutopilotErrandKind : uint8_t
     QuestTurnIn,      // talk to the NPC on arrival
     QuestObjective,   // get there and work the objective
     Craft,            // (walk to a crafting station, then) craft a recipe N times
-    Open              // walk to an object and open or use it
+    Open,             // walk to an object and open or use it
+    Mailbox           // walk to a mailbox and collect the mail
 };
 
 // A trip with a purpose: where, and what to do on arrival.
@@ -68,6 +69,10 @@ struct AutopilotErrand
     uint32_t            craftSpell = 0;
     uint32_t            craftLeft  = 0;
     uint32_t            craftDone  = 0;
+    uint32_t            craftItem  = 0;      // what it makes, to count what lands in the bags
+    uint32_t            craftHad   = 0;
+    uint32_t            craftMisses = 0;
+    bool                craftCasting = false;
     uint64_t            objectGuid = 0;
 };
 

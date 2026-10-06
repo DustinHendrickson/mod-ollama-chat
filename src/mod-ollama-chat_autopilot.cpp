@@ -3726,6 +3726,7 @@ namespace
             case AutopilotErrandKind::QuestObjective: return "quest objective";
             case AutopilotErrandKind::Craft:          return "craft";
             case AutopilotErrandKind::Open:           return "open";
+            case AutopilotErrandKind::Mailbox:        return "mailbox";
         }
         return "?";
     }

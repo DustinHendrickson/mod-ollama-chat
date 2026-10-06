@@ -348,6 +348,20 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   (`AutopilotCommands_DescribeCraftable`) and what is around the bot
   (`AutopilotCommands_DescribeSurroundings`: bodies, nodes with the skill
   each needs, chests, fishing pools, stations).
+- **Auction house and mail use the client's handlers.** `ah sell`/`ah buy`
+  build `CMSG_AUCTION_SELL_ITEM` / `CMSG_AUCTION_PLACE_BID` and call
+  `HandleAuctionSellItem` / `HandleAuctionPlaceBid` with an auctioneer
+  within reach, so the core charges the deposit and cut. Listings are read
+  from `sAuctionMgr->GetAuctionsMap(auctioneer faction)`. Everything the
+  auction house sends arrives by mail, so `goto mailbox` (mailbox
+  gameobjects indexed at startup) takes money and items through
+  `HandleMailTakeMoney` / `HandleMailTakeItem`, skipping cash-on-delivery.
+  Without it, purchases would never reach the bags.
+- **Crafting checks before it casts.** `MissingTool` (`SpellInfo::Totem` and
+  `TotemCategory`; a category is named by the first item of it) and
+  `StationNear` (a spell-focus object of the recipe's focus id within its
+  `spellFocus.dist`) run before every cast. A craft counts only when the
+  item count in the bags rises (`craftCasting`/`craftHad`).
 - **A player's choices are the model's.** Quest rewards (`quest <id> reward
   <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
   by stat weights), professions (`goto profession <name>`; a trainer's skill

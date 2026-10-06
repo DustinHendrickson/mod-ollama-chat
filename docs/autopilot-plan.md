@@ -159,8 +159,17 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
 - **`craft <recipe> [count|all]`.** A known recipe (a create-item spell on a
   skill line), from the bot's own materials. If the recipe needs a station
   (`RequiresSpellFocus`: forge, anvil, cooking fire), the bot walks to the
-  nearest one first. It casts once per visit until the count is made or the
-  materials run out.
+  nearest one first. It checks for the recipe's tool and a station within
+  reach before each cast, casts once per visit, and counts a craft only when
+  the item lands in the bags, until the count is made or the materials run
+  out.
+- **`ah look|sell|buy <item> [price]`.** At an auctioneer, through the
+  client's auction handlers (deposit and cut charged by the core). A sale is
+  one stack, by default just under the cheapest offer. A purchase is the
+  cheapest offer within the price and the bot's gold.
+- **`goto mailbox`.** Walks to the nearest mailbox and takes every delivered
+  item and coin (not cash-on-delivery), which is where auction purchases and
+  sale money arrive.
 - **`disenchant <item>`.** Casts Disenchant on a bag item, with the bot's own
   Enchanting.
 - **`open <object>`.** Walks to a node, chest or object nearby. A chest or

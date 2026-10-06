@@ -57,6 +57,7 @@ namespace
     // spawn points. A recipe that needs one names the focus id.
     std::unordered_map<uint32_t, std::vector<SpawnAt>> g_focusById;
     std::unordered_map<uint32_t, std::string>          g_focusName;   // "Forge", "Anvil"...
+    std::vector<SpawnAt>                               g_mailboxes;
 
     // quest id -> creature entries that take it in.
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
@@ -183,6 +184,7 @@ void AutopilotWorld_Build()
     g_itemFromObjects.clear();
     g_focusById.clear();
     g_focusName.clear();
+    g_mailboxes.clear();
     g_mobs.clear();
 
     if (QuestRelations const* enders = sObjectMgr->GetCreatureQuestInvolvedRelationMap())
@@ -209,12 +211,16 @@ void AutopilotWorld_Build()
     {
         if (questObjects.count(data.id))
             g_goByEntry[data.id].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
-        if (GameObjectTemplate const* t = sObjectMgr->GetGameObjectTemplate(data.id))
-            if (t->type == GAMEOBJECT_TYPE_SPELL_FOCUS && t->spellFocus.focusId)
-            {
-                g_focusById[t->spellFocus.focusId].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
-                g_focusName.emplace(t->spellFocus.focusId, t->name);
-            }
+        GameObjectTemplate const* t = sObjectMgr->GetGameObjectTemplate(data.id);
+        if (!t)
+            continue;
+        if (t->type == GAMEOBJECT_TYPE_MAILBOX)
+            g_mailboxes.push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
+        if (t->type == GAMEOBJECT_TYPE_SPELL_FOCUS && t->spellFocus.focusId)
+        {
+            g_focusById[t->spellFocus.focusId].push_back(SpawnAt{ data.mapid, data.posX, data.posY, data.posZ });
+            g_focusName.emplace(t->spellFocus.focusId, t->name);
+        }
     }
 
     size_t count = 0;
@@ -769,4 +775,31 @@ std::string AutopilotWorld_SpellFocusName(uint32_t focusId)
 {
     auto it = g_focusName.find(focusId);
     return it == g_focusName.end() ? std::string("a crafting station") : it->second;
+}
+
+bool AutopilotWorld_NearestMailbox(Player* bot, AutopilotPlace& out)
+{
+    const SpawnAt* best = nullptr;
+    float bestDist = 0.0f;
+    for (const SpawnAt& s : g_mailboxes)
+    {
+        if (s.map != bot->GetMapId())
+            continue;
+        const float d = bot->GetDistance(s.x, s.y, s.z);
+        if (!best || d < bestDist)
+        {
+            best     = &s;
+            bestDist = d;
+        }
+    }
+    if (!best)
+        return false;
+    out.map      = best->map;
+    out.x        = best->x;
+    out.y        = best->y;
+    out.z        = best->z;
+    out.entry    = 0;
+    out.name     = "the mailbox";
+    out.distance = bestDist;
+    return true;
 }

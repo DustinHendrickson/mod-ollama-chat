@@ -3,6 +3,7 @@
 #include "mod-ollama-chat_autopilot_world.h"
 #include "mod-ollama-chat-utilities.h"
 
+#include "AuctionHouseMgr.h"
 #include "Bag.h"
 #include "CellImpl.h"
 #include "Config.h"
@@ -15,6 +16,8 @@
 #include "SpellMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
+#include "GameTime.h"
+#include "Mail.h"
 #include "ItemTemplate.h"
 #include "Log.h"
 #include "Map.h"
@@ -58,8 +61,9 @@ namespace
         "- goto <service> : go to the nearest repair, vendor, trainer, profession, inn or flightmaster and use "
         "it (repair and sell junk, make the inn their home, learn the flight point there). trainer = their "
         "own class trainer, for new spells and ranks as they level; or "
-        "to the nearest bank or auction house (they only go there; at a bank, bank <item> stores an item and "
-        "bank -<item> takes one out; they cannot trade at the auction house)\n"
+        "to the nearest bank, auction house or mailbox (at a bank, bank <item> stores an item and bank "
+        "-<item> takes one out; at the auction house, the ah orders below; at a mailbox, the mail is "
+        "collected)\n"
         "- goto profession <name> : go to that profession's trainer and learn what it teaches them: the "
         "profession itself (a new primary profession needs a free slot -- two at most; Cooking, First Aid and "
         "Fishing are free), its next rank once their skill allows, and recipes. Which professions to take up "
@@ -93,7 +97,12 @@ namespace
         "nearby (needs Fishing and a fishing pole); open <object> walks to a node, chest or other object "
         "nearby and opens or uses it; craft <recipe> [count|all] makes something from their own materials "
         "(they walk to a forge, anvil or fire first if it needs one); disenchant <item> (Enchanting). "
-        "Making things still worth skill points raises the profession\n"
+        "Making things still worth skill points raises the profession. A craft that needs a tool (a "
+        "blacksmith hammer, a mining pick) or a station says so; they check before they start\n"
+        "- AUCTION HOUSE AND MAIL (goto auction first; prices like 1g 50s): ah look <item> shows the cheapest "
+        "offers; ah sell <item> [price each] lists one stack (default: just under the cheapest offer); ah buy "
+        "<item> [max price each] buys the cheapest offer they can afford. Purchases, sale money and expired "
+        "auctions arrive by mail: goto mailbox collects everything waiting\n"
         "- follow / stay : follow the group leader or stay put\n"
         "ORDER OF ORDERS: orders run in the order you give them. Everything after a goto or quest waits until "
         "they get there (so goto vendor, then b vendor, buys at the vendor), except nc/co changes, which apply "
@@ -345,6 +354,181 @@ namespace
         return line && line->name[0] ? std::string(line->name[0]) : std::to_string(skill);
     }
 
+    // --- money, the auction house and the mail ----------------------------------
+
+    // "1g 50s 3c"
+    std::string MoneyText(uint64_t copper)
+    {
+        const uint64_t g = copper / 10000, s = (copper / 100) % 100, c = copper % 100;
+        std::string out;
+        if (g) out += SafeFormat("{}g", g);
+        if (s) out += SafeFormat("{}{}s", out.empty() ? "" : " ", s);
+        if (c || out.empty()) out += SafeFormat("{}{}c", out.empty() ? "" : " ", c);
+        return out;
+    }
+
+    // Trailing price words: "1g 50s", "75s", "120c". Strips them from `text`;
+    // returns 0 when there is no price.
+    uint64_t TakePrice(std::string& text)
+    {
+        uint64_t total = 0;
+        bool any = false;
+        for (;;)
+        {
+            const size_t sp = text.rfind(' ');
+            const std::string word = sp == std::string::npos ? text : text.substr(sp + 1);
+            if (word.size() < 2)
+                break;
+            const char unit = word.back();
+            const std::string digits = word.substr(0, word.size() - 1);
+            if ((unit != 'g' && unit != 's' && unit != 'c') || digits.empty() ||
+                !std::all_of(digits.begin(), digits.end(), [](unsigned char ch) { return std::isdigit(ch); }))
+                break;
+            uint64_t value = 0;
+            try { value = std::stoull(digits); } catch (...) { break; }
+            total += value * (unit == 'g' ? 10000 : unit == 's' ? 100 : 1);
+            any = true;
+            text = sp == std::string::npos ? std::string() : Trim(text.substr(0, sp));
+        }
+        return any ? total : 0;
+    }
+
+    struct NpcFlagCheck
+    {
+        Player*  bot;
+        uint32_t flag;
+        float    range;
+        bool operator()(Creature* c) const
+        {
+            return c && c->IsAlive() && c->HasNpcFlag(NPCFlags(flag)) && bot->IsWithinDistInMap(c, range);
+        }
+    };
+
+    // An auctioneer within talking distance, if any.
+    Creature* AuctioneerNear(Player* bot)
+    {
+        std::list<Creature*> found;
+        NpcFlagCheck check{ bot, UNIT_NPC_FLAG_AUCTIONEER, 8.0f };
+        Acore::CreatureListSearcher<NpcFlagCheck> searcher(bot, found, check);
+        Cell::VisitObjects(bot, searcher, 8.0f);
+        for (Creature* c : found)
+            if (bot->GetNPCIfCanInteractWith(c->GetGUID(), UNIT_NPC_FLAG_AUCTIONEER))
+                return c;
+        return nullptr;
+    }
+
+    // The auctions an auctioneer shows for items whose name holds `name`, not
+    // the bot's own, with a buyout, cheapest per item first.
+    std::vector<AuctionEntry*> Offers(Player* bot, Creature* auctioneer, const std::string& name)
+    {
+        std::vector<AuctionEntry*> out;
+        AuctionHouseObject* house = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
+        if (!house)
+            return out;
+        for (auto const& [id, entry] : house->GetAuctions())
+        {
+            if (!entry || !entry->buyout || entry->owner == bot->GetGUID() || !entry->itemCount)
+                continue;
+            ItemTemplate const* t = sObjectMgr->GetItemTemplate(entry->item_template);
+            if (t && Lower(t->Name1).find(name) != std::string::npos)
+                out.push_back(entry);
+        }
+        std::sort(out.begin(), out.end(), [](AuctionEntry const* a, AuctionEntry const* b)
+        {
+            return uint64_t(a->buyout) * b->itemCount < uint64_t(b->buyout) * a->itemCount;
+        });
+        return out;
+    }
+
+    // A mailbox within reach.
+    GameObject* MailboxNear(Player* bot)
+    {
+        for (GameObject* go : ObjectsNear(bot, 8.0f))
+            if (go->GetGoType() == GAMEOBJECT_TYPE_MAILBOX &&
+                bot->GetGameObjectIfCanInteractWith(go->GetGUID(), GAMEOBJECT_TYPE_MAILBOX))
+                return go;
+        return nullptr;
+    }
+
+    // Take every delivered item and coin from the mail, the way the client's
+    // mailbox does (cash-on-delivery mail is left alone).
+    std::string CollectMail(Player* bot, GameObject* mailbox)
+    {
+        uint32_t items = 0, letters = 0;
+        uint64_t money = 0;
+        const time_t now = GameTime::GetGameTime().count();
+        std::vector<std::pair<uint32_t, std::vector<uint32_t>>> todo;   // mail id -> item low guids
+        std::vector<std::pair<uint32_t, uint32_t>> cash;                // mail id -> money
+        for (Mail const* m : bot->GetMails())
+        {
+            if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > now || m->COD)
+                continue;
+            std::vector<uint32_t> guids;
+            for (MailItemInfo const& i : m->items)
+                guids.push_back(i.item_guid);
+            if (!guids.empty())
+                todo.emplace_back(m->messageID, std::move(guids));
+            if (m->money)
+                cash.emplace_back(m->messageID, m->money);
+        }
+        for (auto const& [mailId, amount] : cash)
+        {
+            WorldPacket p(CMSG_MAIL_TAKE_MONEY, 12);
+            p << mailbox->GetGUID() << mailId;
+            bot->GetSession()->HandleMailTakeMoney(p);
+            money += amount;
+            ++letters;
+        }
+        for (auto const& [mailId, guids] : todo)
+        {
+            for (uint32_t lowGuid : guids)
+            {
+                if (!bot->GetMail(mailId))
+                    break;
+                WorldPacket p(CMSG_MAIL_TAKE_ITEM, 16);
+                p << mailbox->GetGUID() << mailId << lowGuid;
+                bot->GetSession()->HandleMailTakeItem(p);
+                ++items;
+            }
+            ++letters;
+        }
+        if (!letters)
+            return "no mail waiting";
+        return SafeFormat("collected the mail: {} item{} and {}", items, items == 1 ? "" : "s", MoneyText(money));
+    }
+
+    // --- crafting requirements --------------------------------------------------
+
+    // A tool the recipe needs that the bags do not hold, by name; "" if none.
+    std::string MissingTool(Player* bot, SpellInfo const* info)
+    {
+        for (uint32 totem : info->Totem)
+            if (totem && !bot->HasItemCount(totem, 1))
+                if (ItemTemplate const* t = sObjectMgr->GetItemTemplate(totem))
+                    return t->Name1;
+        for (uint32 category : info->TotemCategory)
+        {
+            if (!category || bot->HasItemTotemCategory(category))
+                continue;
+            // The category has no name of its own; the first item of it does.
+            for (auto const& [id, t] : *sObjectMgr->GetItemTemplateStore())
+                if (t.TotemCategory == category)
+                    return t.Name1;
+            return "a tool";
+        }
+        return "";
+    }
+
+    // A crafting station of this kind within its working distance.
+    bool StationNear(Player* bot, uint32_t focusId)
+    {
+        for (GameObject* go : ObjectsNear(bot, 25.0f))
+            if (go->GetGoType() == GAMEOBJECT_TYPE_SPELL_FOCUS && go->GetGOInfo()->spellFocus.focusId == focusId &&
+                bot->IsWithinDistInMap(go, std::max<float>(3.0f, float(go->GetGOInfo()->spellFocus.dist))))
+                return true;
+        return false;
+    }
+
     // What a quest still needs from the world, by kind: creatures to kill
     // (or speak to), objects to use, and the creatures and objects that give
     // the items still missing.
@@ -542,6 +726,117 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
                                             : std::string("in the middle of a crossing")) +
                "; give the order once they arrive";
 
+    // The auction house, through the same handlers the client's auction window
+    // uses (they charge the deposit and the cut). At an auctioneer: goto auction.
+    //   ah look <item>              the cheapest offers, for the next plan
+    //   ah sell <item> [price]      one stack, priced per item ("1g 50s");
+    //                               default: just under the cheapest offer, else
+    //                               four times what a vendor pays
+    //   ah buy <item> [max price]   the cheapest offer, per item at most the
+    //                               max; it arrives by mail (goto mailbox)
+    if (StartsWithWord(lower, "ah"))
+    {
+        std::string rest = Trim(lower.substr(2));
+        const bool look = StartsWithWord(rest, "look"), sell = StartsWithWord(rest, "sell"),
+                   buy = StartsWithWord(rest, "buy");
+        if (!look && !sell && !buy)
+            return "use ah look <item>, ah sell <item> [price], or ah buy <item> [max price]";
+        rest = Trim(rest.substr(look ? 4 : sell ? 4 : 3));
+        const uint64_t price = TakePrice(rest);
+        if (rest.empty())
+            return "say which item";
+
+        Creature* auctioneer = AuctioneerNear(bot);
+        if (!auctioneer)
+            return "no auctioneer within reach: goto auction first";
+
+        if (look)
+        {
+            const std::vector<AuctionEntry*> offers = Offers(bot, auctioneer, rest);
+            if (offers.empty())
+                return "nobody is selling that here";
+            std::string out = SafeFormat("{} offer{}: ", offers.size(), offers.size() == 1 ? "" : "s");
+            for (size_t i = 0; i < offers.size() && i < 4; ++i)
+            {
+                ItemTemplate const* t = sObjectMgr->GetItemTemplate(offers[i]->item_template);
+                out += SafeFormat("{}{} x{} for {} ({} each)", i ? "; " : "", t ? t->Name1 : "?",
+                                  offers[i]->itemCount, MoneyText(offers[i]->buyout),
+                                  MoneyText(offers[i]->buyout / offers[i]->itemCount));
+            }
+            return out;
+        }
+
+        if (sell)
+        {
+            Item* item = FindBagItem(bot, rest);
+            if (!item)
+                return "no item called that in their bags";
+            ItemTemplate const* t = item->GetTemplate();
+            if (item->IsSoulBound() || t->HasFlag(ITEM_FLAG_CONJURED))
+                return t->Name1 + " cannot be sold at the auction house (bound or conjured)";
+            const uint32_t count = item->GetCount();
+            uint64_t each = price;
+            if (!each)
+            {
+                const std::vector<AuctionEntry*> offers = Offers(bot, auctioneer, Lower(t->Name1));
+                each = !offers.empty() ? std::max<uint64_t>(1, offers[0]->buyout / offers[0]->itemCount * 95 / 100)
+                                       : std::max<uint64_t>(1, uint64_t(t->SellPrice) * 4);
+            }
+            const uint64_t buyout = std::min<uint64_t>(each * count, MAX_MONEY_AMOUNT);
+            const uint64_t bid    = std::max<uint64_t>(1, buyout * 8 / 10);
+            const uint64_t before = bot->GetMoney();
+            WorldPacket p(CMSG_AUCTION_SELL_ITEM, 64);
+            p << auctioneer->GetGUID() << uint32(1) << item->GetGUID() << uint32(count) << uint32(bid) << uint32(buyout)
+              << uint32(MIN_AUCTION_TIME * 2 / MINUTE);   // 24 hours, in minutes
+            const std::string name = t->Name1;
+            const ObjectGuid itemGuid = item->GetGUID();
+            bot->GetSession()->HandleAuctionSellItem(p);
+            if (bot->GetItemByGuid(itemGuid))   // still in the bags: not listed
+                return "could not list " + name + " (the deposit, or the auction house refused it)";
+            return SafeFormat("listed {} x{} for {} ({} each, deposit {}); the money comes by mail when it sells",
+                              name, count, MoneyText(buyout), MoneyText(each),
+                              MoneyText(before > bot->GetMoney() ? before - bot->GetMoney() : 0));
+        }
+
+        // buy
+        const std::vector<AuctionEntry*> offers = Offers(bot, auctioneer, rest);
+        for (AuctionEntry* a : offers)
+        {
+            const uint64_t each = a->buyout / a->itemCount;
+            if (price && each > price)
+                break;   // sorted by price: nothing cheaper follows
+            if (a->buyout > bot->GetMoney())
+                continue;
+            ItemTemplate const* t = sObjectMgr->GetItemTemplate(a->item_template);
+            const std::string name = t ? t->Name1 : "the item";
+            const uint32_t count = a->itemCount, cost = a->buyout;
+            const uint64_t before = bot->GetMoney();
+            WorldPacket p(CMSG_AUCTION_PLACE_BID, 16);
+            p << auctioneer->GetGUID() << a->Id << cost;
+            bot->GetSession()->HandleAuctionPlaceBid(p);
+            if (bot->GetMoney() >= before)
+                return "could not buy " + name + " (the auction house refused the bid)";
+            return SafeFormat("bought {} x{} for {}; it comes by mail (goto mailbox)", name, count, MoneyText(cost));
+        }
+        return offers.empty() ? std::string("nobody is selling that here")
+                              : price ? "nothing for that at " + MoneyText(price) + " each or less that they can afford"
+                                      : std::string("they cannot afford any of the offers");
+    }
+
+    // The mail: what the auction house sends (purchases, sale money, expired
+    // auctions) and what others send. Collected at a mailbox.
+    if (lower == "goto mailbox" || lower == "goto mail")
+    {
+        if (GameObject* box = MailboxNear(bot))
+            return CollectMail(bot, box);
+        AutopilotPlace place;
+        if (!AutopilotWorld_NearestMailbox(bot, place))
+            return "no mailbox on this continent";
+        if (errand.active)
+            AutopilotCommands_StopErrand(ai, errand);
+        return StartErrand(bot, errand, AutopilotErrandKind::Mailbox, 0, 0, 0, place, 4.0f, "the mailbox", now);
+    }
+
     if (StartsWithWord(lower, "goto"))
     {
         const std::string what = Trim(lower.substr(4));
@@ -645,11 +940,14 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         if (!can)
             return SafeFormat("not enough materials for {}: needs {}", recipe->name, MissingMaterials(bot, info));
         const uint32_t count = std::min<uint32_t>({ all ? can : want, can, 20 });
+        if (const std::string tool = MissingTool(bot, info); !tool.empty())
+            return SafeFormat("{} needs a {} in their bags", recipe->name, tool);
 
         AutopilotErrand next;
         next.kind       = AutopilotErrandKind::Craft;
         next.craftSpell = recipe->spell;
         next.craftLeft  = count;
+        next.craftItem  = recipe->item;
         next.label      = SafeFormat("crafting {} x{}", recipe->name, count);
         next.startedAt  = now;
 
@@ -659,7 +957,7 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
             if (!AutopilotWorld_NearestSpellFocus(bot, info->RequiresSpellFocus, station))
                 return SafeFormat("{} needs {}, and there is none on this continent", recipe->name,
                                   AutopilotWorld_SpellFocusName(info->RequiresSpellFocus));
-            if (station.distance > 6.0f)
+            if (!StationNear(bot, info->RequiresSpellFocus))
             {
                 const std::string why = AutopilotTravel_Start(bot, { station.map, station.x, station.y, station.z },
                                                               4.0f, 0, next.trip, now);
@@ -1073,20 +1371,39 @@ namespace
 
         if (!info)
             return finish("that recipe is gone"), u;
+
+        // The last cast: made only if the item is now in the bags.
+        if (errand.craftCasting)
+        {
+            errand.craftCasting = false;
+            if (bot->GetItemCount(errand.craftItem, false) > errand.craftHad)
+            {
+                --errand.craftLeft;
+                ++errand.craftDone;
+            }
+            else if (++errand.craftMisses >= 3)
+                return finish(SafeFormat("crafting {} kept failing after {} made", made, errand.craftDone)), u;
+        }
+
         if (!errand.craftLeft)
             return finish(SafeFormat("crafted {} x{}", made, errand.craftDone)), u;
         if (!Craftable(bot, info))
             return finish(SafeFormat("ran out of materials for {} after {}", made, errand.craftDone)), u;
 
+        if (const std::string tool = MissingTool(bot, info); !tool.empty())
+            return finish(SafeFormat("no {} in their bags any more; made {} {}", tool, errand.craftDone, made)), u;
+        if (info->RequiresSpellFocus && !StationNear(bot, info->RequiresSpellFocus))
+            return finish(SafeFormat("no {} within reach; made {} {}",
+                                     AutopilotWorld_SpellFocusName(info->RequiresSpellFocus), errand.craftDone, made)), u;
         if (bot->isMoving())
             AutopilotMove_Stop(ai);
+        errand.craftHad = bot->GetItemCount(errand.craftItem, false);
         if (!ai->CanCastSpell(errand.craftSpell, bot, true) || !ai->CastSpell(errand.craftSpell, bot))
             return finish(SafeFormat("could not craft {} here after {} (a tool or {} missing?)", made, errand.craftDone,
                                      info->RequiresSpellFocus
                                          ? AutopilotWorld_SpellFocusName(info->RequiresSpellFocus)
                                          : std::string("something else"))), u;
-        --errand.craftLeft;
-        ++errand.craftDone;
+        errand.craftCasting = true;   // counted once the item is in the bags
         return u;
     }
 
@@ -1143,7 +1460,9 @@ std::string AutopilotCommands_DescribeCraftable(Player* bot)
         if (!can)
             continue;
         const bool raises = RaisesSkill(bot, r.spell);
-        lines.push_back({ SafeFormat("{} x{}{}{}", r.name, can, raises ? " (raises skill)" : "",
+        const std::string tool = MissingTool(bot, info);
+        lines.push_back({ SafeFormat("{} x{}{}{}{}", r.name, can, raises ? " (raises skill)" : "",
+                                     tool.empty() ? std::string() : " (needs a " + tool + ")",
                                      info->RequiresSpellFocus
                                          ? " (at a " + AutopilotWorld_SpellFocusName(info->RequiresSpellFocus) + ")"
                                          : std::string()),
@@ -1315,6 +1634,13 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
 
         case AutopilotErrandKind::Open:
             return OpenStep(bot, ai, errand);
+
+        case AutopilotErrandKind::Mailbox:
+            if (GameObject* box = MailboxNear(bot))
+                u.note = CollectMail(bot, box);
+            else
+                u.note = "arrived, but no mailbox within reach";
+            return u;
 
         case AutopilotErrandKind::QuestTurnIn:
         {
