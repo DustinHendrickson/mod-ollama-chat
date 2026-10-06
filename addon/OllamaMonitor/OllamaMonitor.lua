@@ -281,6 +281,11 @@ sizeButton:SetSize(28, 28)
 sizeButton:SetPoint("RIGHT", close, "LEFT", 4, 0)
 sizeButton:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
 
+-- Above the title bar, which takes the mouse for dragging and would
+-- otherwise swallow their clicks.
+close:SetFrameLevel(titleBar:GetFrameLevel() + 5)
+sizeButton:SetFrameLevel(titleBar:GetFrameLevel() + 5)
+
 -- Banner under the title bar: why autopilot is off, or why we may not look.
 local banner = CreateFrame("Frame", nil, frame)
 banner:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT", 0, 0)
@@ -736,8 +741,6 @@ for i, p in ipairs(PAGES) do
     tabs[i] = t
 end
 
-local updatedText = tabBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-updatedText:SetPoint("RIGHT", 0, 2)
 
 -- Footer: camera, whisper, refresh and text toggles.
 local footer = CreateFrame("Frame", nil, main)
@@ -752,7 +755,7 @@ cameraDot:SetTexture(WHITE)
 
 local cameraText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 cameraText:SetPoint("LEFT", cameraDot, "RIGHT", 6, 0)
-cameraText:SetPoint("RIGHT", footer, "RIGHT", -230, 0)
+cameraText:SetPoint("RIGHT", footer, "RIGHT", -330, 0)
 cameraText:SetHeight(12)
 cameraText:SetJustifyH("LEFT")
 
@@ -772,6 +775,10 @@ local autoCheck = MakeCheck("OllamaMonitorAuto", "Auto refresh", "Auto refresh",
         OllamaMonitorDB.auto = self:GetChecked() and true or false
     end)
 autoCheck:SetPoint("TOPRIGHT", footer, "TOPRIGHT", -150, 2)
+
+-- When the page last came in; beside the refresh toggle it belongs to.
+local updatedText = footer:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+updatedText:SetPoint("RIGHT", autoCheck, "LEFT", -8, 0)
 
 local plainCheck = MakeCheck("OllamaMonitorPlain", "Plain text", "Plain text",
     "No colours, so text copies cleanly (select it, then Ctrl+C).", function(self)
