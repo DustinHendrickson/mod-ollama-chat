@@ -262,17 +262,24 @@ namespace
                 const float x = t->GetPositionX() + r * std::cos(a);
                 const float y = t->GetPositionY() + r * std::sin(a);
 
-                float from = top;
-                for (int layer = 0; layer < 6 && from > bottom; ++layer)
+                float from  = top;
+                float above = FLT_MAX;   // the surface over this one, if any
+                for (int layer = 0; layer < 8 && from > bottom; ++layer)
                 {
                     float dist = from - bottom;
                     const G3D::Ray ray(G3D::Vector3(x, y, from), G3D::Vector3(0.0f, 0.0f, -1.0f));
                     if (!t->m_model->intersectRay(ray, dist, false, bot->GetPhaseMask(), VMAP::ModelIgnoreFlags::Nothing))
                         break;
                     const float z = from - dist;
-                    from = z - 0.5f;   // look for the next surface below this one
+                    const float headroom = above - z;
+                    above = z;
+                    from  = z - 0.5f;   // look for the next surface below this one
 
-                    // Somewhere to stand: the core must count it as on this ship.
+                    // A deck has room to stand on it (floors under the deck and
+                    // the hull bottom do not), sits near the pier the bot is on,
+                    // and the core must count it as on this ship.
+                    if (headroom < 2.2f || std::fabs(z - boardZ) > 8.0f)
+                        continue;
                     if (bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), x, y, z + 0.5f, nullptr) != t)
                         continue;
 
@@ -694,7 +701,9 @@ namespace
         // does not move while docked.
         if (!trip.deckFound)
         {
-            trip.deckFound = Deck(bot, t, leg.land.z, trip.deck);
+            // The bot stands on the pier (it walked there on the navmesh), so
+            // its own height is the height of the way on.
+            trip.deckFound = Deck(bot, t, bot->GetPositionZ(), trip.deck);
             if (!trip.deckFound && !trip.deckProbed)
                 note = "could not find a way onto the deck of " + leg.label + "; waiting for it to dock again";
             trip.deckProbed = true;
@@ -978,9 +987,15 @@ void AutopilotTravel_Build()
                 d.hordeOnly    += h ? 1 : 0;
             }
 
-            if (std::fabs(data.posZ - d.z) < 40.0f && dist < nearest[i])
+            // Where to stand ashore: a spawn on the pier, not a crab or fish in
+            // the water below it (the stop is the ship's origin, about at the
+            // waterline). Dock staff (anything with an NPC role) are the
+            // surest sign of the pier, so the rest count as 30 yards further.
+            CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(data.id);
+            const float score = dist + ((ct && (ct->npcflag | data.npcflag)) ? 0.0f : 30.0f);
+            if (data.posZ >= d.z - 1.0f && data.posZ - d.z < 40.0f && score < nearest[i])
             {
-                nearest[i] = dist;
+                nearest[i] = score;
                 d.lx = data.posX;
                 d.ly = data.posY;
                 d.lz = data.posZ;
