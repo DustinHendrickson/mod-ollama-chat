@@ -66,7 +66,7 @@ namespace
         "and take breaks. If an order did not work last time, do something else.\n"
         "\n"
         "THE CHARACTER\n"
-        "{bot_name}, level {bot_level} {bot_race} {bot_class}{guild}.\n"
+        "{bot_name}, level {bot_level} {bot_gender} {bot_race} {bot_class}{guild}.\n"
         "{personality}"
         "Identity: {identity}\n"
         "Doing: {doing} (for {doing_minutes} minutes). Current goal: {goal}\n"
@@ -324,6 +324,7 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
     ReplaceAll(text, "bot_name", ctx.botName);
     ReplaceAll(text, "bot_level", std::to_string(ctx.level));
     ReplaceAll(text, "bot_race", ctx.race);
+    ReplaceAll(text, "bot_gender", ctx.gender);
     ReplaceAll(text, "bot_class", ctx.cls);
     ReplaceAll(text, "guild", ctx.guild.empty() ? "" : ", of the guild <" + NoBraces(ctx.guild) + ">");
     ReplaceAll(text, "personality", ctx.personality.empty() ? "" : "Personality: " + NoBraces(ctx.personality) + "\n");

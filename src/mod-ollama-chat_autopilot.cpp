@@ -1585,6 +1585,7 @@ namespace
         ctx.botName = bot->GetName();
         ctx.level   = bot->GetLevel();
         ctx.race    = ai->GetChatHelper()->FormatRace(bot->getRace());
+        ctx.gender  = bot->getGender() == GENDER_FEMALE ? "female" : "male";
         ctx.cls     = ai->GetChatHelper()->FormatClass(bot->getClass());
         if (Guild* guild = bot->GetGuild())
             ctx.guild = guild->GetName();
@@ -3895,6 +3896,11 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
     if (page == "overview")
     {
         Head(out, "Bot");
+        if (ai)
+            Kv(out, "character", SafeFormat("level {} {} {} {}", bot->GetLevel(),
+                                            bot->getGender() == GENDER_FEMALE ? "female" : "male",
+                                            ai->GetChatHelper()->FormatRace(bot->getRace()),
+                                            ai->GetChatHelper()->FormatClass(bot->getClass())));
         Kv(out, "where", SafeFormat("{} - map {} ({:.1f}, {:.1f}, {:.1f}){}", Progress_ZoneName(bot->GetZoneId()),
                                     bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
                                     bot->GetTransport() ? " - on a transport" : ""));

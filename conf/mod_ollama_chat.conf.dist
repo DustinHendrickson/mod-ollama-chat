@@ -2487,7 +2487,7 @@ OllamaChat.Autopilot.SystemPrompt = ""
 #        instructions and command reference first so prompt caching works.
 #        Placeholders (replaced literally, so JSON braces need no escaping):
 #          {commands} {goal_kinds} {max_commands} {identity_rule}
-#          {bot_name} {bot_level} {bot_race} {bot_class} {guild} {personality}
+#          {bot_name} {bot_level} {bot_gender} {bot_race} {bot_class} {guild} {personality}
 #          {identity} {doing} {doing_minutes} {goal} {strategies}
 #          {activity} {errand} {concerns} {quests} {services} {zones}
 #          {results} {rewards} {decisions} {progress} {events} {temptations}

@@ -32,6 +32,7 @@ struct AutopilotPromptContext
 {
     std::string botName;
     std::string race;
+    std::string gender;                 // "male" / "female"
     std::string cls;
     uint32_t    level = 0;
     std::string guild;                  // may be empty
