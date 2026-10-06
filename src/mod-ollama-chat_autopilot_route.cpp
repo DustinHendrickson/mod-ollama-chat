@@ -315,14 +315,17 @@ namespace
         return Step::Progress;
     }
 
-    // One smooth, ground-following query along a corridor corner.
-    bool SmoothLeg(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to)
+    // One smooth, ground-following query along a corridor corner. Slope
+    // checked first; where that stops short (a river bank counts as too steep
+    // a step), the same query without it -- still on the core's bot filter,
+    // which leaves out steep ground.
+    bool SmoothQuery(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to, bool slopeCheck)
     {
         ++r.queries;
         PathGenerator generator(bot);
         generator.SetUseStraightPath(false);
         Filter(bot, generator);
-        generator.SetSlopeCheck(true);   // drop steps too steep to walk
+        generator.SetSlopeCheck(slopeCheck);
 
         if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, to.x, to.y, to.z, false))
             return false;
@@ -342,6 +345,11 @@ namespace
             AddDense(r, { points[i].x, points[i].y, points[i].z });
         r.cursor = reached;
         return true;
+    }
+
+    bool SmoothLeg(Player* bot, AutopilotRoute& r, const AutopilotRoutePoint& to)
+    {
+        return SmoothQuery(bot, r, to, true) || SmoothQuery(bot, r, to, false);
     }
 
     // Pass 2: walk toward the current corner (or the destination once the

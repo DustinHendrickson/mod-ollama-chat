@@ -3501,6 +3501,8 @@ namespace
                                             r.waiting ? " | waiting for tiles to load" : "",
                                             r.why.empty() ? std::string() : " | " + r.why));
             Kv(out, "    next node", next);
+            Kv(out, "    walking", t.issued == SIZE_MAX ? std::string("NO - no usable path to the next node")
+                                                         : SafeFormat("to node {}", t.issued));
             Kv(out, "    road anchors", SafeFormat("{} of {}", std::min(r.anchor, r.anchors.size()),
                                                    r.anchors.size()));
             Kv(out, "    corridor", SafeFormat("corner {} of {} | reach {:.0f} yd | stalls {} | steps off slopes {}",

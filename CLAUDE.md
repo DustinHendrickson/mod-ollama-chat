@@ -221,7 +221,11 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   gives headless (bot) sessions no steep slopes, no lava/slime and water at
   20x cost. Calling `SetExcludeFlags` replaces those exclusions -- once that
   let bots climb mountainsides. Every autopilot path goes through
-  `AutopilotRoute_Filter` and `SetSlopeCheck(true)`.
+  `AutopilotRoute_Filter`. `SetSlopeCheck(true)` is tried first, but its
+  result is dropped when it gets nowhere: the core cuts a slope-checked path
+  at the first step it finds too steep, a river bank included, and a bot
+  handed that stub stood at the bank for good. The retry without it stays on
+  the bot filter.
 - **Autopilot's walk yields to combat.** It runs as an escort spline that a
   caster cannot cast through; any visit (and a per-sweep check for walking
   bots) that finds the bot attacked stops it (`AutopilotMove_Yield`).

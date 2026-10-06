@@ -148,12 +148,35 @@ bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generateP
         // loaded) -- through walls and up cliffs. Find the path here and
         // walk it only if it is a real one; otherwise do not move, and let
         // the trip reroute or report that it is stuck.
-        PathGenerator path(bot);
-        AutopilotRoute_Filter(bot, path);   // the core's bot filter: no steep slopes, water costly
-        path.SetSlopeCheck(true);           // drop steps too steep to walk
-        const bool built = path.CalculatePath(x, y, z, false);
-        if (!built || (path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
-            path.GetPath().size() < 2)
+        // With the slope check the core cuts a path at the first step it finds
+        // too steep -- which includes stepping down a river bank into the
+        // water. A path cut to a stub left the bot standing at the bank for
+        // good. So: the slope-checked path when it gets somewhere, else the
+        // plain path on the core's bot filter, which still leaves out steep
+        // ground (no mountainsides either way).
+        auto usable = [&](PathGenerator& p, bool built)
+        {
+            if (!built || (p.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
+                p.GetPath().size() < 2)
+                return false;
+            const float reach = (p.GetPath().back() - p.GetPath().front()).length();
+            return reach >= std::min(3.0f, length * 0.5f);
+        };
+
+        PathGenerator checked(bot);
+        AutopilotRoute_Filter(bot, checked);   // the core's bot filter: no steep slopes, water costly
+        checked.SetSlopeCheck(true);           // drop steps too steep to walk
+        bool built = checked.CalculatePath(x, y, z, false);
+        PathGenerator plain(bot);
+        PathGenerator* chosen = &checked;
+        if (!usable(checked, built))
+        {
+            AutopilotRoute_Filter(bot, plain);
+            built  = plain.CalculatePath(x, y, z, false) || built;
+            chosen = &plain;
+        }
+        PathGenerator& path = *chosen;
+        if (!usable(path, built))
         {
             // A short step on or off the mesh (a portal, a trigger, an NPC on
             // a ledge, the bot standing on a slope the filter excludes) is
