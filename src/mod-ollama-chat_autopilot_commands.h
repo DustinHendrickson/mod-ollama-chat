@@ -74,6 +74,8 @@ struct AutopilotErrand
     uint32_t            craftMisses = 0;
     bool                craftCasting = false;
     uint64_t            objectGuid = 0;
+    uint32_t            objectTries = 0;    // opening attempts on objectGuid
+    std::vector<uint64_t> objectsGivenUp;   // objects that would not open: skipped by the hunt
 };
 
 void AutopilotCommands_Load();

@@ -145,7 +145,10 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
     the objective, nearest need first:
     - a creature goes into playerbots' `prioritized targets` and is attacked;
     - an object to use is used through the client's use packets;
-    - an object holding a quest item goes into playerbots' loot stack.
+    - an object holding a quest item is opened on the spot through
+      playerbots' `open loot` (it picks the gathering spell, key or opening
+      spell for the lock; a lockless object is used), and everything inside
+      is taken.
     With none in sight it walks to the next spawn point. This lasts until the
     objective is done or `QuestHuntMinutes` pass.
   - **Complete:** go to the nearest creature that takes it in. The chosen

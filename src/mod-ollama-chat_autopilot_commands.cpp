@@ -1197,6 +1197,83 @@ namespace
         return std::find(list.begin(), list.end(), entry) != list.end();
     }
 
+    // Use an object the way the client does: use, then report use.
+    void UseObject(Player* bot, GameObject* go)
+    {
+        WorldPacket use(CMSG_GAMEOBJ_USE, 8);
+        use << go->GetGUID();
+        bot->GetSession()->HandleGameObjectUseOpcode(use);
+        WorldPacket report(CMSG_GAMEOBJ_REPORT_USE, 8);
+        report << go->GetGUID();
+        bot->GetSession()->HandleGameobjectReportUse(report);
+    }
+
+    // With an object's loot window open: take the coin and every item, close it.
+    void TakeOpenLoot(Player* bot)
+    {
+        const ObjectGuid lootGuid = bot->GetLootGUID();
+        GameObject* go = lootGuid.IsGameObject() ? ObjectAccessor::GetGameObject(*bot, lootGuid) : nullptr;
+        WorldSession* session = bot->GetSession();
+        if (go)
+        {
+            if (go->loot.gold)
+            {
+                WorldPacket money(CMSG_LOOT_MONEY, 0);
+                session->HandleLootMoneyOpcode(money);
+            }
+            const uint32 slots = go->loot.GetMaxSlotInLootFor(bot);
+            for (uint32 slot = 0; slot < slots; ++slot)
+            {
+                WorldPacket take(CMSG_AUTOSTORE_LOOT_ITEM, 1);
+                take << uint8(slot);
+                session->HandleAutostoreLootItemOpcode(take);
+            }
+        }
+        WorldPacket release(CMSG_LOOT_RELEASE, 8);
+        release << lootGuid;
+        session->HandleLootReleaseOpcode(release);
+    }
+
+    // Get what is in an object: walk up, open it now (playerbots' "open loot"
+    // picks the herb or ore spell, a key or an opening spell; one with no
+    // lock is used like the client), then take everything once it is open.
+    // True while working on it; false once it has been given up on.
+    bool WorkObject(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, GameObject* go, float dist, uint32_t now)
+    {
+        const uint64_t guid = go->GetGUID().GetRawValue();
+        if (bot->GetLootGUID() == go->GetGUID())
+        {
+            TakeOpenLoot(bot);
+            return true;
+        }
+        if (dist > 3.0f)
+        {
+            if (!AutopilotMove_IsMoving(ai))
+                AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true);
+            return true;
+        }
+        if (now - errand.lastUseAt < 3)
+            return true;   // an opening cast under way
+        errand.lastUseAt = now;
+        if (errand.objectGuid == guid)
+        {
+            if (++errand.objectTries > 3)
+            {
+                errand.objectsGivenUp.push_back(guid);
+                return false;
+            }
+        }
+        else
+        {
+            errand.objectGuid  = guid;
+            errand.objectTries = 1;
+        }
+        AutopilotMove_Stop(ai);
+        if (!AutopilotBot_OpenObject(ai, guid))
+            UseObject(bot, go);
+        return true;
+    }
+
     // A player working a quest: the nearest thing it still needs first -- a
     // creature to kill (or that drops a quest item), an object to use, or one
     // that holds a quest item -- and, with none around, on to where more of
@@ -1271,7 +1348,9 @@ namespace
             for (GameObject* o : nearby)
             {
                 if (!o || !o->isSpawned() || o->GetGoState() != GO_STATE_READY ||
-                    o->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) || !bot->IsWithinLOSInMap(o))
+                    o->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) || !bot->IsWithinLOSInMap(o) ||
+                    std::find(errand.objectsGivenUp.begin(), errand.objectsGivenUp.end(),
+                              o->GetGUID().GetRawValue()) != errand.objectsGivenUp.end())
                     continue;
                 const float d = bot->GetDistance(o);
                 if (!object || d < objectDist)
@@ -1301,12 +1380,8 @@ namespace
             AutopilotBot_ClearQuestTarget(ai);
             if (Contains(needs.lootObjects, object->GetEntry()))
             {
-                // Holds a quest item: playerbots' looting walks to it and
-                // opens it, taking what the bot needs.
-                if (objectDist > 20.0f && !AutopilotMove_IsMoving(ai))
-                    AutopilotMove_To(ai, object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), true);
-                else
-                    AutopilotBot_LootObject(ai, object->GetGUID().GetRawValue());
+                // Holds a quest item: open it and take what is inside.
+                WorkObject(bot, ai, errand, object, objectDist, now);
                 return u;
             }
             // An objective says to use it: step up and use it, as the client
@@ -1409,38 +1484,46 @@ namespace
 
     // At the object: opened through playerbots' looting (which handles the
     // gathering skills and takes what is inside), or used like the client.
-    AutopilotErrandUpdate OpenStep(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+    AutopilotErrandUpdate OpenStep(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand, uint32_t now)
     {
         AutopilotErrandUpdate u;
-        u.finished    = true;
-        errand.active = false;
+        auto finish = [&](std::string note)
+        {
+            errand.active = false;
+            u.finished    = true;
+            u.note        = std::move(note);
+        };
+
         GameObject* go = ObjectAccessor::GetGameObject(*bot, ObjectGuid(errand.objectGuid));
+        if (go && bot->GetLootGUID() == go->GetGUID())
+        {
+            TakeOpenLoot(bot);
+            finish("took what was in " + errand.label);
+            return u;
+        }
         if (!go || !go->isSpawned() || go->GetGoState() != GO_STATE_READY)
         {
-            u.note = errand.label + " was gone or already used";
+            finish(errand.objectTries ? "opened " + errand.label : errand.label + " was gone or already used");
             return u;
         }
         uint32_t required = 0;
         const uint32_t skill = NodeSkill(go, required);
         if (skill && bot->GetSkillValue(skill) < required)
         {
-            u.note = SafeFormat("{} needs {} {}; they have {}", errand.label, SkillName(skill), required,
-                                bot->GetSkillValue(skill));
+            finish(SafeFormat("{} needs {} {}; they have {}", errand.label, SkillName(skill), required,
+                              bot->GetSkillValue(skill)));
             return u;
         }
         if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
         {
-            AutopilotBot_LootObject(ai, go->GetGUID().GetRawValue());
-            u.note = "opening " + errand.label + " (their looting takes what is inside)";
+            const uint64_t guid = errand.objectGuid;
+            if (!WorkObject(bot, ai, errand, go, bot->GetDistance(go), now))
+                finish("could not open " + errand.label);
+            errand.objectGuid = guid;   // WorkObject keeps its own count on the same object
             return u;
         }
-        WorldPacket use(CMSG_GAMEOBJ_USE, 8);
-        use << go->GetGUID();
-        bot->GetSession()->HandleGameObjectUseOpcode(use);
-        WorldPacket report(CMSG_GAMEOBJ_REPORT_USE, 8);
-        report << go->GetGUID();
-        bot->GetSession()->HandleGameobjectReportUse(report);
-        u.note = "used " + errand.label;
+        UseObject(bot, go);
+        finish("used " + errand.label);
         return u;
     }
 }
@@ -1581,6 +1664,8 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
     // Crafting where it stands (no trip, or the trip to the station is over).
     if (errand.kind == AutopilotErrandKind::Craft && !errand.trip.active)
         return CraftStep(bot, ai, errand);
+    if (errand.kind == AutopilotErrandKind::Open && !errand.trip.active)
+        return OpenStep(bot, ai, errand, now);
 
     std::string note;
     const AutopilotTripState state = AutopilotTravel_Update(bot, ai, errand.trip, now, note);
@@ -1633,7 +1718,8 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
             return u;
 
         case AutopilotErrandKind::Open:
-            return OpenStep(bot, ai, errand);
+            errand.active = true;   // stays until it is open and emptied
+            return OpenStep(bot, ai, errand, now);
 
         case AutopilotErrandKind::Mailbox:
             if (GameObject* box = MailboxNear(bot))

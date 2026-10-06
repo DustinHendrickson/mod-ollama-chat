@@ -60,6 +60,12 @@ bool AutopilotBot_EngageQuestTarget(PlayerbotAI* ai);
 // strategy on, its loot actions are run directly. World thread.
 void AutopilotBot_LootObject(PlayerbotAI* ai, uint64_t objectGuid);
 
+// Open an object now with playerbots' own "open loot" (it picks the right way
+// for the lock: the herb or ore gathering spell, a key, an opening spell).
+// False when it has no way to open it. The bot must stand still and within
+// reach. World thread.
+bool AutopilotBot_OpenObject(PlayerbotAI* ai, uint64_t objectGuid);
+
 // --------------------------------------------------------------------------
 // Moving a bot for the autopilot. World thread only.
 //

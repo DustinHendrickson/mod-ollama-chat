@@ -320,8 +320,15 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `AutopilotWorld_Build`, which also indexes spawn points of quest
   gameobjects only). An object to use is used through
   `HandleGameObjectUseOpcode` + `HandleGameobjectReportUse`, like the client.
-  An object holding an item goes into playerbots' `"available loot"` stack,
-  which its loot strategy opens. A `quest` errand with anything needed turns
+  An object holding an item is opened now by `WorkObject`. It points
+  playerbots' `"loot target"` at it and runs `DoSpecificAction("open
+  loot")`, which picks the gathering spell, key or opening spell for the
+  lock. A lockless object is used through the client's packets instead.
+  Once `GetLootGUID()` is the object, `TakeOpenLoot` takes the coin and
+  items and releases. Three failed tries put the object in
+  `objectsGivenUp`. `open <object>` works the same way. Do not just add
+  objects to the loot stack: playerbots' looting runs on its own schedule,
+  and the hunt moved on first. A `quest` errand with anything needed turns
   into a hunt on arrival (`errand.hunting`, `Hunt` in commands.cpp). For
   creatures: The nearest needed creature that is alive,
   attackable, untapped and in sight goes into playerbots'

@@ -241,6 +241,17 @@ void AutopilotBot_LootObject(PlayerbotAI* ai, uint64_t objectGuid)
     }
 }
 
+bool AutopilotBot_OpenObject(PlayerbotAI* ai, uint64_t objectGuid)
+{
+    if (!ai)
+        return false;
+    LootObject target(ai->GetBot(), ObjectGuid(objectGuid));
+    if (target.IsEmpty())
+        return false;
+    ai->GetAiObjectContext()->GetValue<LootObject>("loot target")->Set(target);
+    return ai->DoSpecificAction("open loot", Event(), true);
+}
+
 void AutopilotBot_ClearDeathCount(PlayerbotAI* ai)
 {
     if (!ai)
