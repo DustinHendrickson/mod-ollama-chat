@@ -2161,9 +2161,11 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 # Getting somewhere is autopilot's own:
 #   goto <service>     the nearest friendly repair, vendor, trainer,
 #                      profession trainer, inn, flightmaster, bank or auction
-#                      house on this continent, used on arrival (repair and
-#                      sell junk, learn every spell it can afford, make the
-#                      inn its home)
+#                      house on this continent. On arrival it repairs and
+#                      sells junk, learns every spell it can afford, makes the
+#                      inn its home or learns the flight point. A bank or
+#                      auction house is only walked to (`bank <item>` works
+#                      there; playerbots has no auction command)
 #   goto zone <name>   any zone in the world. The bot walks, takes a flight
 #                      master when that saves real distance, and takes boats,
 #                      zeppelins and portals between continents.
@@ -2437,7 +2439,7 @@ OllamaChat.Autopilot.SystemPrompt = ""
 #          {commands} {goal_kinds} {max_commands} {identity_rule}
 #          {bot_name} {bot_level} {bot_race} {bot_class} {guild} {personality}
 #          {identity} {doing} {doing_minutes} {goal} {strategies}
-#          {rpg_status} {errand} {concerns} {quests} {services} {zones}
+#          {activity} {errand} {concerns} {quests} {services} {zones}
 #          {results} {rewards} {decisions} {progress} {events} {temptations}
 #          {state} {memories}
 #        The reply is a JSON object with any of: identity {style, outlook,

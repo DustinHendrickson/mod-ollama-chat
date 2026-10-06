@@ -65,7 +65,7 @@ namespace
         "Identity: {identity}\n"
         "Doing: {doing} (for {doing_minutes} minutes). Current goal: {goal}\n"
         "Strategies on: {strategies}\n"
-        "Right now: {rpg_status}{errand}\n"
+        "Right now: {activity}{errand}\n"
         "{concerns}"
         "Quest log:\n{quests}\n"
         "Nearest services: {services}\n"
@@ -290,7 +290,7 @@ std::string AutopilotPlanner_BuildPrompt(const AutopilotPromptContext& ctx, cons
     ReplaceAll(text, "doing", ctx.doing.empty() ? "nothing decided yet" : NoBraces(ctx.doing));
     ReplaceAll(text, "goal", ctx.goal.empty() ? "none yet" : NoBraces(ctx.goal));
     ReplaceAll(text, "strategies", ctx.strategiesOn.empty() ? "-" : ctx.strategiesOn);
-    ReplaceAll(text, "rpg_status", ctx.rpgStatus.empty() ? "idle" : NoBraces(ctx.rpgStatus));
+    ReplaceAll(text, "activity", ctx.activity.empty() ? "standing by" : NoBraces(ctx.activity));
     ReplaceAll(text, "errand", ctx.errand.empty() ? "" : " " + NoBraces(ctx.errand));
     ReplaceAll(text, "concerns", ctx.concerns.empty() ? "" : NoBraces(ctx.concerns) + "\n");
     ReplaceAll(text, "quests", ctx.questLog.empty() ? "- empty" : NoBraces(ctx.questLog));

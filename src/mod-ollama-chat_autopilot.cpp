@@ -322,7 +322,8 @@ namespace
     uint64_t g_statRefused  = 0;   // commands denied or that could not run
     uint64_t g_statAlerts   = 0;
     uint64_t g_statReplays  = 0;   // strategies put back after a playerbots reset
-    uint64_t g_statStuck    = 0;   // walks abandoned instead of teleporting
+    uint64_t g_statArrived  = 0;   // trips that got there
+    uint64_t g_statFailed   = 0;   // trips that did not
     uint64_t g_statCorpse   = 0;   // corpse runs held / given up on
 
     constexpr uint32_t kLogoutSnapshotMinGap = 300;
@@ -626,14 +627,6 @@ namespace
         e.type    = type;
         e.detail  = detail;
         PushCapped(it->second.events, std::move(e), kEventRing);
-    }
-
-    std::string JoinList(const std::vector<std::string>& items)
-    {
-        std::string out;
-        for (const std::string& s : items)
-            out += (out.empty() ? "" : ", ") + s;
-        return out;
     }
 
     std::string JoinLines(const std::vector<std::string>& items)
@@ -1260,7 +1253,7 @@ namespace
     // Asking the model. World thread, g_mutex held.
     // ----------------------------------------------------------------------
 
-    // "nc: quest, loot, new rpg | co: dps, flee" -- what is on right now.
+    // "nc: grind, loot, quest | co: dps, flee" -- what is on right now.
     std::string DescribeLiveStrategies(PlayerbotAI* ai)
     {
         auto list = [ai](BotState state)
@@ -1336,7 +1329,7 @@ namespace
 
         ctx.commandReference = AutopilotCommands_Reference();
         ctx.strategiesOn     = DescribeLiveStrategies(ai);
-        ctx.rpgStatus        = DescribeActivity(bot, ob);
+        ctx.activity         = DescribeActivity(bot, ob);
         if (ob.errand.active)
             ctx.errand = SafeFormat("(for {})", Span(now - ob.errand.startedAt));
         ctx.questLog    = DescribeQuestLog(bot);
@@ -1829,6 +1822,7 @@ namespace
             RecordEvent(guid, u.finished ? "errand" : "travel", u.note);
         if (u.finished)
         {
+            ++(u.note.rfind("never reached", 0) == 0 ? g_statFailed : g_statArrived);
             row.lastResults.push_back(u.note);
             if (row.lastResults.size() > AUTOPILOT_MAX_COMMANDS + 2)
                 row.lastResults.erase(row.lastResults.begin());
@@ -2262,9 +2256,9 @@ namespace
             const AutopilotPlannerStats ps = AutopilotPlanner_GetStats();
             handler->SendSysMessage(SafeFormat(
                 "  plans applied {} | unusable replies {} | orders run {}, refused {} | alerts {} | "
-                "strategies put back after resets {} | stuck walks abandoned {} | corpse runs {}",
+                "strategies put back after resets {} | trips arrived {}, failed {} | corpse runs {}",
                 g_statPlans, g_statInvalid, g_statCommands, g_statRefused, g_statAlerts, g_statReplays,
-                g_statStuck, g_statCorpse));
+                g_statArrived, g_statFailed, g_statCorpse));
             handler->SendSysMessage(SafeFormat(
                 "  llm: {} | budget {:.1f}/{:.0f} tokens ({}/h) | in flight {} | submitted {}, refused {}, "
                 "parsed {}, failed {}{}",
@@ -2795,13 +2789,6 @@ bool Autopilot_IsActive()
 {
     return g_Enable && g_cfg.enable && g_EnableChatBotSnapshotTemplate && g_tablesOk &&
            AutopilotStrategy_IsRegistered();
-}
-
-bool Autopilot_IsEnrolled(uint64_t botGuid)
-{
-    std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    auto it = g_rows.find(botGuid);
-    return it != g_rows.end() && it->second.enrolled;
 }
 
 void Autopilot_Update(uint32_t diff)

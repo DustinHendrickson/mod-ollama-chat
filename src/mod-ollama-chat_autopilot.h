@@ -59,9 +59,6 @@ void Autopilot_SaveAll();
 // True when the feature is on and its prerequisites are met.
 bool Autopilot_IsActive();
 
-// Cheap; any thread.
-bool Autopilot_IsEnrolled(uint64_t botGuid);
-
 // `.ollama autopilot ...`
 Acore::ChatCommands::ChatCommandTable const& Autopilot_CommandTable();
 

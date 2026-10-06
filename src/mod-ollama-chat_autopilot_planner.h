@@ -49,7 +49,7 @@ struct AutopilotPromptContext
 
     std::string commandReference;       // static: what commands exist
     std::string strategiesOn;           // "nc: ...; co: ..." live
-    std::string rpgStatus;              // live NewRpg status (+ quest)
+    std::string activity;               // what the bot is doing on its orders right now
     std::string errand;                 // walk in progress, may be empty
     std::string questLog;               // "- [id] title (level, done/not)" lines
     std::string services;               // nearest services with distance
