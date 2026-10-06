@@ -77,7 +77,7 @@ namespace
         bool     altBots           = false;
         uint32_t randomBotPercent  = 0;
         uint32_t minLevel          = 1;
-        uint32_t maxLevel          = 255;
+        uint32_t maxLevel          = 80;
         uint32_t maxEnrolled       = 0;     // 0 = no cap
 
         std::unordered_set<uint32_t>    guilds;
@@ -3123,7 +3123,7 @@ void Autopilot_LoadConfig()
     c.altBots           = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Select.AltBots", false);
     c.randomBotPercent  = std::min<uint32_t>(100, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Select.RandomBotPercent", 0));
     c.minLevel          = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Select.MinLevel", 1);
-    c.maxLevel          = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Select.MaxLevel", 255);
+    c.maxLevel          = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.Select.MaxLevel", 80);
     c.maxEnrolled       = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.MaxEnrolled", 0);
     c.guilds            = ParseIds(sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.Select.Guilds", ""));
     c.accounts          = ParseIds(sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.Select.Accounts", ""));

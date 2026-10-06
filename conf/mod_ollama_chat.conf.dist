@@ -2118,9 +2118,9 @@ OllamaChat.Autopilot.Select.Exclude = ""
 #        Level band for the guild, account, random and alt rules. A bot that
 #        levels out of the band is unenrolled at its next login; its identity
 #        and history are kept for when it comes back.
-#        Default: 1 and 255
+#        Default: 1 and 80
 OllamaChat.Autopilot.Select.MinLevel = 1
-OllamaChat.Autopilot.Select.MaxLevel = 255
+OllamaChat.Autopilot.Select.MaxLevel = 80
 
 #    OllamaChat.Autopilot.AllowMasterEnroll
 #        Let a bot's master enroll it by whispering `nc +autopilot`. Once
