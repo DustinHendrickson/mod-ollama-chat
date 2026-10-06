@@ -574,8 +574,17 @@ namespace
                 {
                     if (index != trip.issued || !AutopilotMove_IsMoving(ai))
                     {
-                        AutopilotMove_To(ai, node.x, node.y, node.z, true);
-                        trip.issued = index;
+                        // No real path to the far node (it would have been a
+                        // straight line through whatever is in the way): try the
+                        // nearest one, else stand and let stuck detection reroute.
+                        bool moved = AutopilotMove_To(ai, node.x, node.y, node.z, true);
+                        if (!moved && index > route.next)
+                        {
+                            const AutopilotRoutePoint& near1 = route.nodes[route.next];
+                            moved = AutopilotMove_To(ai, near1.x, near1.y, near1.z, true);
+                            index = route.next;
+                        }
+                        trip.issued = moved ? index : SIZE_MAX;
                     }
                     return LegResult::Going;
                 }

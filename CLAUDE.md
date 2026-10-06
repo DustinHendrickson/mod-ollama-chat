@@ -217,6 +217,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   recorded in the bot's `"last movement"` value at `MOVEMENT_NORMAL`, so
   playerbots' own out-of-combat movement waits and combat still outranks it.
   Holds on a deck use `MOVEMENT_FORCED`.
+- **Never `MovePoint` with pathfinding for autopilot moves.** When the
+  navmesh has no path it silently moves in a straight line (through walls, up
+  cliffs). `AutopilotMove_To` computes the path itself and walks it with
+  `MoveSplinePath`, or does not move at all. Long routes are anchored on
+  playerbots' `TravelNodeMap::getFullPath` (its road network) when that route
+  is walking only, and corridors never aim at an unloaded tile (the core
+  answers those with a NOT_USING_PATH shortcut).
 - **Long walks follow a navmesh route** (`mod-ollama-chat_autopilot_route.cpp`,
   ported from mod-city-siege's `CitySiegePathing.cpp`), one node (~28 yd) at a
   time. The route is built lazily, a few queries per visit and a

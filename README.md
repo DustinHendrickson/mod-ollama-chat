@@ -680,14 +680,19 @@ drop, a capped profession).
 NewRpg.
 
 - **Walking.** Anything further than 60 yards follows a route built on the
-  server's navmesh, the way mod-city-siege routes its armies. The bot is
+  server's navmesh, the way mod-city-siege routes its armies. Long walks
+  follow playerbots' own road network (its travel nodes) so bots take roads
+  and passes. A bot only ever moves along a real navmesh path, never in a
+  straight line through walls or up cliffs. The bot is
   handed one node (about 28 yards) at a time, and the route is built a few
   hundred yards ahead as it walks. A stuck bot reroutes twice before the
   trip fails. Without mmaps, it walks straight at the destination.
 - **Flights.** On the same continent, a flight is taken when it clearly
   saves distance and the bot can pay for it. Otherwise the bot walks. As for
   a player, only flight points the bot has discovered are used;
-  `goto flightmaster` discovers the one it walks to.
+  `goto flightmaster` discovers the one it walks to. Bots pick up
+  flight points as they pass flight masters, so they fly more as they
+  travel.
 - **Boats and zeppelins.** These are found at startup from the server's
   transports. A dock that belongs to the other faction (its guards and dock
   master) is never used, so an Alliance bot never goes to a Horde zeppelin

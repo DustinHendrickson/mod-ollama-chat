@@ -9,6 +9,7 @@
 #include "Creature.h"
 #include "LastMovementValue.h"
 #include "MotionMaster.h"
+#include "PathGenerator.h"
 #include "PlayerbotAI.h"
 #include "Strategy.h"
 
@@ -117,23 +118,53 @@ namespace
     }
 }
 
-void AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath)
+bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath)
 {
     Player* bot = ai ? ai->GetBot() : nullptr;
     if (!bot || !bot->IsInWorld() || bot->IsInFlight() || bot->IsBeingTeleported())
-        return;
+        return false;
 
     if (bot->IsSitState())
         bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-    bot->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, generatePath, false);
+    float length = bot->GetExactDist(x, y, z);
+    if (!generatePath || length < 3.0f)
+    {
+        // Straight on purpose: onto or off a ship's deck (not on the
+        // navmesh), or a step too short to matter.
+        bot->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false, false);
+    }
+    else
+    {
+        // MovePoint with pathfinding quietly falls back to a straight line
+        // when the navmesh has no path (a point off the mesh, a tile not
+        // loaded) -- through walls and up cliffs. Find the path here and
+        // walk it only if it is a real one; otherwise do not move, and let
+        // the trip reroute or report that it is stuck.
+        PathGenerator path(bot);
+        if (!path.CalculatePath(x, y, z, false) ||
+            (path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH)) ||
+            path.GetPath().size() < 2)
+            return false;
+
+        Movement::PointsArray points = path.GetPath();
+        length = 0.0f;
+        for (size_t i = 1; i < points.size(); ++i)
+            length += (points[i] - points[i - 1]).length();
+        const G3D::Vector3& end = points.back();
+        x = end.x;
+        y = end.y;
+        z = end.z;
+        bot->GetMotionMaster()->MoveSplinePath(&points);
+    }
 
     // Recorded the way playerbots records its own moves, so its out-of-combat
     // movement waits for this one (MOVEMENT_NORMAL); combat still outranks
     // it, so a bot that is attacked on the way fights back.
     const float speed = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
-    const float delay = bot->GetExactDist(x, y, z) / speed * IN_MILLISECONDS + 500.0f;
+    const float delay = length / speed * IN_MILLISECONDS + 500.0f;
     LastMove(ai).Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
+    return true;
 }
 
 void AutopilotMove_Hold(PlayerbotAI* ai, uint32_t ms, bool overCombat)

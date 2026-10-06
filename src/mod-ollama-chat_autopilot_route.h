@@ -59,6 +59,8 @@ struct AutopilotRoute
     uint32_t emptyLegs   = 0;   // corridor queries that got nowhere
     uint32_t stalls      = 0;   // corridors used up without progress, in a row
     float    corridorReach  = 250.0f;  // shortened while the far end's tile is not loaded
+    std::vector<AutopilotRoutePoint> anchors;   // waypoints along playerbots' road network
+    size_t   anchor         = 0;
     bool     corridorToDest = false;   // the current corridor ends at the destination
     AutopilotRoutePoint legStart;   // the walk cursor when the corridor was made
 

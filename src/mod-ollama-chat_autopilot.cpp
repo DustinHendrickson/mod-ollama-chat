@@ -249,6 +249,7 @@ namespace
         // A walk to a service or a zone, from `goto`.
         AutopilotErrand errand;
         AutopilotTrip   corpseTrip;     // a ghost walking back to its body
+        uint32_t        nextTaxiLook = 0;   // when to look for a flight master nearby
 
         // Teleport holds (NoTeleport): when the random-bot teleport was last
         // pushed back, and the corpse run in progress.
@@ -1092,6 +1093,32 @@ namespace
 
         std::string note;
         AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note);
+    }
+
+    // Passing a flight master, a player stops to pick up the flight point;
+    // so does an autopilot bot. Trips fly only between discovered points
+    // (unless playerbots gives the bot its taxi cheat), so this is how its
+    // flight network fills in as it travels -- the natural way.
+    void DiscoverFlightPoint(Player* bot, uint64_t guid, Online& ob, uint32_t now)
+    {
+        if (now < ob.nextTaxiLook || bot->isTaxiCheater())
+            return;
+        ob.nextTaxiLook = now + 10;
+
+        AutopilotPlace fm;
+        if (!AutopilotWorld_NearestService(bot, AutopilotService::FlightMaster, fm) || fm.distance > 30.0f)
+            return;
+        const uint32 node = sObjectMgr->GetNearestTaxiNode(fm.x, fm.y, fm.z, fm.map, bot->GetTeamId(true));
+        if (!node || bot->m_taxi.IsTaximaskNodeKnown(node))
+            return;
+        Creature* npc = bot->FindNearestCreature(fm.entry, 35.0f);
+        if (!npc || !npc->IsAlive())
+            return;
+
+        bot->GetSession()->SendLearnNewTaxiNode(npc);
+        if (bot->m_taxi.IsTaximaskNodeKnown(node))
+            if (TaxiNodesEntry const* n = sTaxiNodesStore.LookupEntry(node))
+                RecordEvent(guid, "flight_point", SafeFormat("learned the flight point at {}", n->name[0]));
     }
     // ----------------------------------------------------------------------
     // Facts: rewards, temptations, goals, boundaries. g_mutex held.
@@ -1951,6 +1978,9 @@ namespace
         // Put back what a playerbots reset wiped; keep out-of-combat
         // strategies the bot's own only while it is.
         Reassert(ai, row, ob, sit);
+
+        if (g_cfg.control && !sit.inCombat)
+            DiscoverFlightPoint(bot, guid, ob, now);
 
         if (g_cfg.control && sit.CanUseNonCombat() && !sit.inCombat)
             StepErrand(bot, ai, guid, row, ob, now);

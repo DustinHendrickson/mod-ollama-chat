@@ -3,6 +3,9 @@
 #include "Config.h"
 #include "Map.h"
 #include "PathGenerator.h"
+
+#include "TravelMgr.h"
+#include "TravelNode.h"
 #include "Player.h"
 
 #include <algorithm>
@@ -105,6 +108,38 @@ namespace
         }
     }
 
+    // A long walk follows playerbots' own road network (TravelNodeMap: hand
+    // placed nodes with stored walking paths between them, the same data its
+    // travel planner uses), so the bot takes the roads and the passes instead
+    // of aiming straight at a destination behind a mountain range. Only a
+    // route that is walking all the way on this continent is used; anything
+    // else (a tram, a flight, a portal) is the travel planner's business, and
+    // the corridors fall back to aiming at the destination.
+    void Anchor(Player* bot, AutopilotRoute& r)
+    {
+        if (D2(r.cursor, r.dest) < 400.0f)
+            return;
+
+        TravelPath path = TravelNodeMap::getFullPath(WorldPosition(bot),
+                                                     WorldPosition(r.map, r.dest.x, r.dest.y, r.dest.z), bot);
+        if (path.empty())
+            return;
+
+        std::vector<AutopilotRoutePoint> points;
+        for (const PathNodePoint& p : path.getPath())
+        {
+            if (p.point.GetMapId() != r.map ||
+                (p.type != NODE_PATH && p.type != NODE_PREPATH && p.type != NODE_NODE))
+                return;   // not a walk: leave it to the corridors
+            const AutopilotRoutePoint q{ p.point.GetPositionX(), p.point.GetPositionY(), p.point.GetPositionZ() };
+            // One anchor every ~120 yards is plenty: the navmesh walks between.
+            if (points.empty() || D2(points.back(), q) >= 120.0f)
+                points.push_back(q);
+        }
+        r.anchors = std::move(points);
+        r.anchor  = 0;
+    }
+
     enum class Step { Progress, Exhausted, Done, Fail };
 
     // Pass 1: one corridor leg from the walk cursor toward the destination.
@@ -123,14 +158,24 @@ namespace
         // not loaded (most of the map, away from players) with a straight-line
         // shortcut marked NOT_USING_PATH -- which used to read as "no mmaps"
         // and sent the bot in a beeline over the mountains.
-        AutopilotRoutePoint target = r.dest;
-        const float toDest = D2(r.cursor, r.dest);
-        r.corridorToDest = toDest <= r.corridorReach;
-        if (!r.corridorToDest)
+        // Head for the next road anchor (skipping ones reached or passed), or
+        // the destination once there are none left.
+        while (r.anchor < r.anchors.size() &&
+               (D2(r.cursor, r.anchors[r.anchor]) < 25.0f ||
+                (r.anchor + 1 < r.anchors.size() &&
+                 D2(r.cursor, r.anchors[r.anchor + 1]) < D2(r.cursor, r.anchors[r.anchor]))))
+            ++r.anchor;
+        const bool viaAnchor = r.anchor < r.anchors.size();
+        const AutopilotRoutePoint goal = viaAnchor ? r.anchors[r.anchor] : r.dest;
+
+        AutopilotRoutePoint target = goal;
+        const float toGoal = D2(r.cursor, goal);
+        r.corridorToDest = !viaAnchor && toGoal <= r.corridorReach;
+        if (toGoal > r.corridorReach)
         {
-            const float t = r.corridorReach / toDest;
-            target = Reseat(bot->GetMap(), { r.cursor.x + (r.dest.x - r.cursor.x) * t,
-                                             r.cursor.y + (r.dest.y - r.cursor.y) * t, r.cursor.z }, r.cursor.z);
+            const float t = r.corridorReach / toGoal;
+            target = Reseat(bot->GetMap(), { r.cursor.x + (goal.x - r.cursor.x) * t,
+                                             r.cursor.y + (goal.y - r.cursor.y) * t, r.cursor.z }, r.cursor.z);
         }
 
         if (!generator.CalculatePath(r.cursor.x, r.cursor.y, r.cursor.z, target.x, target.y, target.z, false))
@@ -291,6 +336,7 @@ void AutopilotRoute_Begin(Player* bot, uint32_t map, float x, float y, float z, 
     route.cursor   = At(bot);
     route.lastKept = route.cursor;
     route.rebuilds = rebuilds;
+    Anchor(bot, route);
 }
 
 void AutopilotRoute_Rebuild(Player* bot, AutopilotRoute& route)

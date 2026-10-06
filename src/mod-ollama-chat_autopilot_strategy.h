@@ -42,9 +42,11 @@ bool AutopilotStrategy_IsRegistered();
 class Creature;
 class PlayerbotAI;
 
-// Walk to a point. generatePath = false for a straight line (onto or off a
-// boat's deck, which is not on the navmesh).
-void AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath);
+// Walk to a point. With generatePath, only along a real navmesh path: false,
+// and no movement, when there is none (never a straight line through walls).
+// generatePath = false walks straight on purpose (onto or off a deck, which
+// is not on the navmesh).
+bool AutopilotMove_To(PlayerbotAI* ai, float x, float y, float z, bool generatePath);
 
 // Keep playerbots' movement off the bot for `ms`: waiting at a dock, riding a
 // boat. overCombat also holds combat movement (only sensible on a deck).

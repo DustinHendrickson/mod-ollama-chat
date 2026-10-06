@@ -2237,8 +2237,11 @@ OllamaChat.Autopilot.QuickReplanSeconds = 60
 #        Let trips use flight masters. A flight is taken when walking to the
 #        flight master and from the landing is clearly shorter than walking
 #        the whole way, and the bot can pay for it; otherwise it walks.
-#        Only flight points the bot has discovered are used, as for a player;
-#        `goto flightmaster` discovers the one it walks to.
+#        Only flight points the bot has discovered are used, as for a player
+#        (or all of them when playerbots gives the bot its taxi cheat). Like a
+#        player, a bot picks up a flight point whenever it passes within 30
+#        yards of a friendly flight master, so its network fills in as it
+#        travels; `goto flightmaster` fetches one on purpose.
 #        Default: 1
 OllamaChat.Autopilot.Travel.Flights = 1
 
