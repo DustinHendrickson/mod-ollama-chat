@@ -289,6 +289,30 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   the model again only when the queue is empty. Running them all at once made
   each replace the last, so only the final order ever happened. A plan with
   any errand replaces the queue.
+- **Enrolled bots earn everything (`NoHandouts`).** Playerbots hands random
+  bots things outside any strategy. The marker strategy's multiplier
+  (`AutopilotHoldMultiplier`) returns 0 for `auto maintenance on levelup`,
+  `random bot update` and `lfg accept`, and, when the bot is alone in the
+  open world, for `auto release`, `release` and `spirit healer` (free repair,
+  sickness-free res). A zero multiplier makes `Engine::DoNextAction` drop the
+  action; it does not stop `DoSpecificAction`, so never call those yourself.
+  The marker is on all three engines (dead too) for this. Also: the taxi
+  cheat is cleared in `Reassert`, "death count" is zeroed each visit (five
+  deaths trigger playerbots' re-roll revive), the bot releases through
+  `HandleRepopRequestOpcode`, falls back to `SendSpiritResurrect` after
+  CorpseRunMinutes, dungeon-finder proposals are accepted by
+  `AutopilotServerScript::OnPacketSent` + `AnswerLfgProposals`, and
+  `maintenance` / `autogear` / `bis` / `cheat` orders are refused. Global
+  `AiPlayerbot.BotCheats` (food) and the standalone level reset module
+  cannot be lifted per bot from here.
+- **Playerbots' re-roll and refresh empty the bags.** `Randomize` and
+  `Refresh` call `ClearInventory()`. Their timers are held from `OnStartup`
+  (`Autopilot_Load`) for every enrolled random bot, not only from the sweep:
+  a bot whose timers lapsed is re-rolled 3-8 s after it logs in. `"add"` is
+  written only for random-bot accounts (`IsAccountType(account, 1)`); on an
+  alt it would make playerbots log the alt in as a random bot.
+- **Every order after a trip in a plan waits for the trip** (`errandQueue`),
+  except `nc`/`co`, so "goto vendor, b vendor" buys at the vendor.
 - **Every order goes through `AutopilotCommands_Normalize` and
   `AutopilotCommands_IsDenied`.** The deny check refuses playerbots' command
   separator and `#` prefixes, which `HandleCommand` would otherwise split or

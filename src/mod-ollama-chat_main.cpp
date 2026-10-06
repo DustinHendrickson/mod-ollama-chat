@@ -39,6 +39,7 @@ void Addmod_ollama_chatScripts()
     // Autopilot: bot roster, progress diary and the `autopilot` strategy.
     new AutopilotPlayerScript();
     new AutopilotGuildScript();
+    new AutopilotServerScript();
 
     // Monitor addon bridge: bot list, debug pages, camera follow.
     new OllamaMonitorScript();

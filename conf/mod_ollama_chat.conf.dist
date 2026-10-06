@@ -2281,17 +2281,19 @@ OllamaChat.Autopilot.Travel.StuckSeconds = 45
 #        on, for enrolled bots:
 #          - the periodic teleport is pushed back, every hour
 #          - a dead bot releases, walks its ghost back to its body along a
-#            navmesh route and reclaims it; after CorpseRunMinutes it is
-#            revived playerbots' way instead
-#        AiPlayerbot.AutoTeleportForLevel (playerbots.conf) still teleports on
-#        level-up; turn it off for full coverage (the log warns at startup).
+#            navmesh route and reclaims it; after CorpseRunMinutes it takes
+#            the spirit healer's resurrection, as a player would
+#        With NoHandouts, playerbots' level-up teleport (AutoTeleportForLevel)
+#        is dropped for enrolled bots too; without it, turn that setting off in
+#        playerbots.conf for full coverage (the log warns at startup).
 #        Has no effect on alts, which playerbots does not teleport.
 #        Default: 1
 OllamaChat.Autopilot.NoTeleport = 1
 
 #    OllamaChat.Autopilot.CorpseRunMinutes
 #        How long a dead autopilot bot may take to run back to its body before
-#        playerbots revives it its own way (which teleports it).
+#        it takes the spirit healer's resurrection instead (resurrection
+#        sickness and durability loss, as for a player).
 #        Default: 10
 OllamaChat.Autopilot.CorpseRunMinutes = 10
 
@@ -2299,10 +2301,42 @@ OllamaChat.Autopilot.CorpseRunMinutes = 10
 #        Hold playerbots' periodic re-roll of autopilot random bots. It
 #        re-gears them and, below level 3 or at the level cap, rolls them a
 #        new level somewhere else -- undoing whatever the LLM was working on.
-#        Gear and talents are then the LLM's call (autogear, talents,
-#        maintenance).
+#        Held from startup, before any bot logs in.
 #        Default: 1
 OllamaChat.Autopilot.NoRandomize = 1
+
+#    OllamaChat.Autopilot.NoHandouts
+#        Enrolled bots earn what they have, like players: what they loot, buy,
+#        are rewarded and train for. Playerbots hands random bots things
+#        outside any strategy; with this on, for enrolled bots only:
+#          - level-up maintenance is dropped (free talents, trainer and quest
+#            spells, skills, consumables, gear upgrade, level-up teleport)
+#          - its background re-roll and refresh path is dropped (bags emptied,
+#            money set, free consumables)
+#          - the dungeon-finder accept that refreshes a bot queued alone is
+#            dropped; autopilot accepts the group itself
+#          - death on its own in the open world: no free full repair on
+#            release and no sickness-free spirit healer; autopilot releases
+#            like the client and runs to the body (see CorpseRunMinutes), and
+#            the five-death re-roll revive never comes
+#          - the taxi cheat is taken away: flights only between flight points
+#            the bot has discovered
+#          - the orders maintenance, autogear and bis (free gear and supplies)
+#            are refused
+#        Global playerbots cheats (AiPlayerbot.BotCheats, e.g. "food" for free
+#        eating and drinking) cannot be lifted per bot; remove them there if
+#        you want that too.
+#        Default: 1
+OllamaChat.Autopilot.NoHandouts = 1
+
+#    OllamaChat.Autopilot.KeepOnline
+#        Keep enrolled random bots logged in. Playerbots logs a random bot out
+#        when its time online lapses and picks which random bots to log in
+#        afresh at every server start; with this on, enrolled ones stay online
+#        and are asked for at startup. Alts are not touched (their login is
+#        their owner's).
+#        Default: 1
+OllamaChat.Autopilot.KeepOnline = 1
 
 #    OllamaChat.Autopilot.Route.QueriesPerVisit
 #        Long walks. A walk further than 60 yards follows a route built on

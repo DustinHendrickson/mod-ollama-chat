@@ -12,7 +12,13 @@
 #include "MotionMaster.h"
 #include "PathGenerator.h"
 #include "PlayerbotAI.h"
+#include "Action.h"
+#include "Map.h"
+#include "Multiplier.h"
 #include "Strategy.h"
+
+#include <atomic>
+#include <vector>
 
 #include "DKAiObjectContext.h"
 #include "DruidAiObjectContext.h"
@@ -27,6 +33,45 @@
 
 namespace
 {
+    // An enrolled bot earns what it has, like a player. Playerbots hands random
+    // bots things through a few actions that no strategy switch reaches; a
+    // zero multiplier drops them for this bot only (Engine::DoNextAction
+    // discards an action whose relevance multiplies to nothing).
+    std::atomic<bool> g_noHandouts{ true };
+
+    class AutopilotHoldMultiplier : public Multiplier
+    {
+    public:
+        explicit AutopilotHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "autopilot hold") { }
+
+        float GetValue(Action* action) override
+        {
+            if (!action || !g_noHandouts.load(std::memory_order_relaxed))
+                return 1.0f;
+            const std::string name = action->getName();
+
+            // Free talents, trainer and quest spells, skills, consumables and
+            // a gear upgrade at every level up; the periodic re-roll and
+            // refresh (bags emptied, money set); and the dungeon-finder accept,
+            // which refreshes a bot queued alone (autopilot accepts instead).
+            if (name == "auto maintenance on levelup" || name == "random bot update" || name == "lfg accept")
+                return 0.0f;
+
+            // Death on its own in the open world is autopilot's corpse run:
+            // playerbots' release repairs everything for free, and its spirit
+            // healer skips the sickness. In a group, a dungeon or a
+            // battleground, playerbots handles it.
+            if (name == "auto release" || name == "release" || name == "spirit healer")
+            {
+                Player* bot = botAI->GetBot();
+                if (bot && !bot->GetGroup() && !bot->InBattleground() && bot->GetMap() &&
+                    !bot->GetMap()->Instanceable())
+                    return 0.0f;
+            }
+            return 1.0f;
+        }
+    };
+
     class AutopilotMarkerStrategy : public Strategy
     {
     public:
@@ -34,6 +79,11 @@ namespace
 
         std::string const getName() override { return AUTOPILOT_STRATEGY_NAME; }
         uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT; }
+
+        void InitMultipliers(std::vector<Multiplier*>& multipliers) override
+        {
+            multipliers.push_back(new AutopilotHoldMultiplier(botAI));
+        }
     };
 
     class AutopilotStrategyContext : public NamedObjectContext<Strategy>
@@ -109,6 +159,25 @@ bool AutopilotStrategy_Register()
 bool AutopilotStrategy_IsRegistered()
 {
     return g_registered;
+}
+
+void AutopilotStrategy_SetNoHandouts(bool on)
+{
+    g_noHandouts.store(on, std::memory_order_relaxed);
+}
+
+bool AutopilotStrategy_NoHandouts()
+{
+    return g_noHandouts.load(std::memory_order_relaxed);
+}
+
+void AutopilotBot_ClearDeathCount(PlayerbotAI* ai)
+{
+    if (!ai)
+        return;
+    auto* deaths = ai->GetAiObjectContext()->GetValue<uint32>("death count");
+    if (deaths && deaths->Get())
+        deaths->Set(0);
 }
 
 namespace

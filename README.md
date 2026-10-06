@@ -724,8 +724,42 @@ drop, a capped profession).
 | Errands | `goto repair / vendor / trainer / inn / flightmaster` goes there and uses it: repairs and sells junk, learns every affordable class spell, sets the inn as home, or learns the flight point. `goto profession <name>` goes to that profession's trainer and learns it, its next rank and its recipes; the prompt shows the free profession slots, and which professions to take is the character's choice. `goto bank / auction` only goes there; at a bank, `bank <item>` stores items. Bots can't trade at the auction house | On its own |
 | Travel | `goto zone <name>`, anywhere in the world: walking, flight masters, boats, zeppelins and portals (the Dark Portal, city portals) as needed | On its own |
 | Hunting | `goto hunt` goes to the nearest group of monsters of the bot's level; `nc +grind` fights what is around it | On its own |
-| Upkeep | `talents spec <name>` (one of the class's talent specs, listed in the prompt with unspent points), `autogear`, `s gray`, `repair`, `maintenance` | On its own |
+| Upkeep and money | `talents spec <name>` (one of the class's talent specs, listed in the prompt with unspent points), `equip upgrade` (best gear in the bags), `e` / `use <item>`, `open items`; at a vendor `s gray` / `s vendor` / `s <item>`, `b vendor` (buys what they can use, with their own gold), `repair`. Orders after a `goto` wait until the bot arrives | On its own |
 | Goals, identity, timing | Measurable aims, who the character is, how long a plan holds | Always |
+
+### Earned, not handed out
+
+With `OllamaChat.Autopilot.NoHandouts` (on by default), an enrolled bot has
+only what it earned: what it loots, buys, is rewarded and trains for, like
+a player. For enrolled bots only, playerbots' handouts are switched off:
+
+- **Level-ups:** no free talents, trainer spells, consumables or gear, and
+  no level-up teleport.
+- **Re-rolls and refreshes:** none. Those empty the bags, set the money and
+  hand out supplies.
+- **Dungeon finder:** playerbots' accept refreshes a bot that queued alone.
+  Autopilot accepts the group itself instead.
+- **Death:** no free repair when releasing and no sickness-free spirit
+  healer. The bot runs back to its body. If it can't make it in time, it
+  takes the spirit healer's resurrection like a player, sickness and
+  durability loss included.
+- **Flights:** no taxi cheat. The bot flies only between flight points it
+  has discovered.
+- **Orders:** `maintenance`, `autogear` and `bis` are refused.
+
+Enrolled random bots also stay logged in across restarts
+(`OllamaChat.Autopilot.KeepOnline`). Some things this module can't change
+per bot:
+
+- **Free eating and drinking:** playerbots' global `AiPlayerbot.BotCheats`
+  `food` cheat. Remove `food` there if you want bots to buy their food.
+- **Reset at max level:** `mod-player-bot-reset` puts a random bot back to
+  level 1 when it reaches 80. Add enrolled bots to its
+  `ResetBotLevel.ExcludeNames` to stop that.
+- **Level brackets:** `mod-player-bot-level-brackets` can re-roll an
+  enrolled bot into another level bracket. It leaves alone bots that are
+  friend-listed, in a guild with a real player, or named in
+  `BotLevelBrackets.ExcludeNames`.
 
 **Autopilot doesn't control:**
 

@@ -14,6 +14,7 @@
 #include "mod-ollama-chat_world.h"
 #include "mod-ollama-chat-utilities.h"
 
+#include "CharacterCache.h"
 #include "Chat.h"
 #include "Config.h"
 #include "DatabaseEnv.h"
@@ -92,6 +93,8 @@ namespace
         uint32_t withRealPlayer          = 1;       // 0 hands off, 1 combat strategies only
         bool     noTeleport              = true;    // hold playerbots' random-bot teleports
         bool     noRandomize             = true;    // hold playerbots' periodic re-rolls
+        bool     noHandouts              = true;    // earn everything: no free gear, spells, repairs, flights
+        bool     keepOnline              = true;    // enrolled random bots stay logged in, across restarts too
         uint32_t corpseRunMinutes        = 10;      // then let playerbots revive it
         bool     llmEnable               = true;
         uint32_t llmCallsPerHour         = 300;
@@ -607,14 +610,16 @@ namespace
 
     void AddMarker(PlayerbotAI* ai)
     {
-        for (BotState state : { BOT_STATE_NON_COMBAT, BOT_STATE_COMBAT })
+        // The dead engine too: its multipliers keep playerbots' free release
+        // and revive off an enrolled bot (see the marker strategy).
+        for (BotState state : { BOT_STATE_NON_COMBAT, BOT_STATE_COMBAT, BOT_STATE_DEAD })
             if (!HasMarker(ai, state))
                 ai->ChangeStrategy(std::string("+") + AUTOPILOT_STRATEGY_NAME, state);
     }
 
     void RemoveMarker(PlayerbotAI* ai)
     {
-        for (BotState state : { BOT_STATE_NON_COMBAT, BOT_STATE_COMBAT })
+        for (BotState state : { BOT_STATE_NON_COMBAT, BOT_STATE_COMBAT, BOT_STATE_DEAD })
             if (HasMarker(ai, state))
                 ai->ChangeStrategy(std::string("-") + AUTOPILOT_STRATEGY_NAME, state);
     }
@@ -842,7 +847,7 @@ namespace
     {
         const bool ncReset = !HasMarker(ai, BOT_STATE_NON_COMBAT);
         const bool coReset = !HasMarker(ai, BOT_STATE_COMBAT);
-        if (ncReset || coReset)
+        if (ncReset || coReset || !HasMarker(ai, BOT_STATE_DEAD))
         {
             AddMarker(ai);
             ob.markerOurs = true;
@@ -863,6 +868,12 @@ namespace
             }
             return;
         }
+
+        // Flights only between flight points it has discovered, as for a
+        // player: playerbots gives random bots the taxi cheat when their AI is
+        // created, and nothing sets it again.
+        if (g_cfg.noHandouts && ai->GetBot()->isTaxiCheater())
+            ai->GetBot()->SetTaxiCheater(false);
 
         // Record the bot as it was before autopilot changes anything, so it
         // can be handed back exactly.
@@ -983,9 +994,12 @@ namespace
                     else
                         result = "done";
                 }
-                else if (AutopilotCommands_IsErrand(command) && errandStarted)
+                else if (errandStarted)
                 {
-                    // Running it now would replace the errand just started.
+                    // After a trip in the same plan, an order waits for the trip:
+                    // another trip would replace it, and "goto vendor, then
+                    // b vendor" means buying at the vendor, not here. Strategy
+                    // changes (above) apply at once, for the way there too.
                     ob.errandQueue.push_back(command);
                     result = SafeFormat("queued ({} in line)", ob.errandQueue.size());
                 }
@@ -1029,6 +1043,10 @@ namespace
                 sRandomPlayerbotMgr.ScheduleTeleport(low, 2 * kHour);
             if (g_cfg.noRandomize)
                 sRandomPlayerbotMgr.SetValue(low, "randomize", 1);
+            // Stay online: the random-bot rotation logs a bot out when its
+            // "add" lapses. SetValue keeps it for MaxRandomBotInWorldTime.
+            if (g_cfg.keepOnline)
+                sRandomPlayerbotMgr.SetValue(low, "add", 1);
             ob.teleportDeferredAt = now;
         }
 
@@ -1050,13 +1068,17 @@ namespace
                 ob.reviveHeld = true;
                 ++g_statCorpse;
             }
-            else if (ob.reviveHeld && now - ob.deadSince >= g_cfg.corpseRunMinutes * 60)
+            else if (ob.reviveHeld && now - ob.deadSince >= g_cfg.corpseRunMinutes * 60 &&
+                     bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) && !sit.withRealPlayer && !sit.follower &&
+                     !sit.inInstance)
             {
-                // Could not make it back: let playerbots revive it its way.
-                sRandomPlayerbotMgr.SetValue(low, "revive", 0);
-                ob.reviveHeld = false;
-                RecordEvent(guid, "corpse_run", SafeFormat("could not reach the body in {} minutes",
-                                                           g_cfg.corpseRunMinutes));
+                // Could not make it back: take the spirit healer's offer, as a
+                // player would -- resurrection sickness and the durability
+                // loss included. Playerbots' own revive would instead re-roll
+                // the bot (bags emptied, free consumables, money topped up).
+                bot->GetSession()->SendSpiritResurrect();
+                RecordEvent(guid, "corpse_run", SafeFormat("could not reach the body in {} minutes; "
+                                                           "resurrected by the spirit healer", g_cfg.corpseRunMinutes));
             }
             return;
         }
@@ -1097,7 +1119,11 @@ namespace
 
         if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
         {
-            ai->DoSpecificAction("auto release", Event(), true);
+            // Release the way the client's button does. Playerbots' own
+            // release also repairs every item for free.
+            WorldPacket repop(CMSG_REPOP_REQUEST, 1);
+            repop << uint8(0);
+            bot->GetSession()->HandleRepopRequestOpcode(repop);
             return;
         }
 
@@ -2123,6 +2149,9 @@ namespace
         // Teleport holds run while dead too: that is when the revive teleport
         // would happen.
         HoldTeleports(bot, guid, ob, sit, now);
+        // Five deaths and playerbots revives the bot through its re-roll.
+        if (g_cfg.control && g_cfg.noHandouts)
+            AutopilotBot_ClearDeathCount(ai);
         if (sit.dead)
         {
             ob.errand.trip.interrupted = true;
@@ -2439,6 +2468,37 @@ namespace
                 flush();
         }
         flush();
+    }
+
+    // Dungeon-finder proposals seen for enrolled bots, answered on the world
+    // tick: bot guid -> proposal id. Filled from OnPacketSent (any thread).
+    std::mutex                             g_lfgMutex;
+    std::unordered_map<uint64_t, uint32_t> g_lfgPending;
+    std::unordered_map<uint64_t, uint32_t> g_lfgAnswered;   // world thread only
+
+    void AnswerLfgProposals()
+    {
+        std::unordered_map<uint64_t, uint32_t> pending;
+        {
+            std::lock_guard<std::mutex> lock(g_lfgMutex);
+            pending.swap(g_lfgPending);
+        }
+        for (auto const& [guid, id] : pending)
+        {
+            if (g_lfgAnswered[guid] == id)
+                continue;   // the proposal is updated as others answer; one reply each
+            Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(guid));
+            if (!bot || !bot->IsInWorld() || !bot->GetSession())
+                continue;
+            g_lfgAnswered[guid] = id;
+            // As playerbots answers: yes, unless fighting or dead.
+            const bool accept = bot->IsAlive() && !bot->IsInCombat();
+            WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT, 5);
+            *packet << id << accept;
+            bot->GetSession()->QueuePacket(packet);
+            RecordEvent(guid, "dungeon", accept ? "accepted a dungeon finder group"
+                                                : "declined a dungeon finder group (in a fight or dead)");
+        }
     }
 
     // Shared shape of every progress hook: find the enrolled row, under lock.
@@ -2915,6 +2975,8 @@ void Autopilot_LoadConfig()
     c.withRealPlayer          = std::min<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.WithRealPlayer", 1));
     c.noTeleport              = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.NoTeleport", true);
     c.noRandomize             = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.NoRandomize", true);
+    c.noHandouts              = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.NoHandouts", true);
+    c.keepOnline              = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.KeepOnline", true);
     c.corpseRunMinutes        = std::max<uint32_t>(1, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.CorpseRunMinutes", 10));
     c.llmEnable               = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Llm.Enable", true);
     c.llmCallsPerHour         = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.LlmCallsPerHour", 300);
@@ -2976,6 +3038,7 @@ void Autopilot_LoadConfig()
 
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     g_cfg = std::move(c);
+    AutopilotStrategy_SetNoHandouts(g_cfg.noHandouts);
 
     // Rules may have changed: re-evaluate every online bot on its next visit.
     for (auto& [guid, ob] : g_online)
@@ -2986,7 +3049,9 @@ void Autopilot_LoadConfig()
                  "[Ollama Chat] OllamaChat.Autopilot.Enable is on, but autopilot needs "
                  "OllamaChat.EnableChatBotSnapshotTemplate = 1. Autopilot stays off.");
 
-    if (g_cfg.enable && g_cfg.noTeleport && sPlayerbotAIConfig.autoTeleportForLevel)
+    // With NoHandouts the whole level-up maintenance, its teleport included,
+    // is dropped for enrolled bots by the marker strategy.
+    if (g_cfg.enable && g_cfg.noTeleport && !g_cfg.noHandouts && sPlayerbotAIConfig.autoTeleportForLevel)
         LOG_WARN("module.ollamachat",
                  "[Ollama Chat] AiPlayerbot.AutoTeleportForLevel is on: playerbots will still teleport "
                  "autopilot bots on level-up. Set it to 0 for OllamaChat.Autopilot.NoTeleport to cover them.");
@@ -3085,6 +3150,38 @@ void Autopilot_Load()
     LOG_INFO("server.loading", "[Ollama Chat] Autopilot: loaded {} rows, {} enrolled.",
              g_rows.size(), g_enrolledCount);
 
+    // Before any bot logs in: playerbots schedules a re-roll and a refresh a
+    // few seconds after a random bot logs in if their timers have lapsed (they
+    // run on real time, so any downtime past eight hours lapses them), and it
+    // picks which random bots to log in afresh at every start. Hold the timers
+    // now, and ask for enrolled random bots to be logged in. Random-bot
+    // accounts only: an "add" row would have playerbots log an alt in as a
+    // random bot.
+    if (g_cfg.enable && g_cfg.control)
+    {
+        uint32_t held = 0;
+        for (auto const& [guid, row] : g_rows)
+        {
+            if (!row.enrolled)
+                continue;
+            const ObjectGuid og(guid);
+            const uint32 account = sCharacterCache->GetCharacterAccountIdByGuid(og);
+            if (!account || !sRandomPlayerbotMgr.IsAccountType(account, 1))
+                continue;
+            const uint32 low = og.GetCounter();
+            if (g_cfg.noRandomize)
+                sRandomPlayerbotMgr.SetValue(low, "randomize", 1);
+            if (g_cfg.noTeleport)
+                sRandomPlayerbotMgr.ScheduleTeleport(low, 2 * kHour);
+            if (g_cfg.keepOnline)
+                sRandomPlayerbotMgr.SetValue(low, "add", 1);
+            ++held;
+        }
+        if (held)
+            LOG_INFO("server.loading", "[Ollama Chat] Autopilot: held playerbots' re-roll and teleport for {} enrolled random bots{}.",
+                     held, g_cfg.keepOnline ? " and asked for them to be logged in" : "");
+    }
+
     // Lands in Autopilot_Update before the first bots log in.
     RefreshRealGuilds();
 }
@@ -3103,6 +3200,7 @@ void Autopilot_Update(uint32_t diff)
     // History loads land here, on the world thread. Not under g_mutex: the
     // callbacks take it themselves.
     g_callbacks.ProcessReadyCallbacks();
+    AnswerLfgProposals();
 
     g_flushTimer += diff;
     if (g_flushTimer >= g_cfg.flushIntervalSeconds * 1000)
@@ -3858,4 +3956,37 @@ bool Autopilot_MonitorPage(Player* bot, const std::string& page, std::vector<std
 
     out.push_back("unknown page: " + page);
     return true;
+}
+
+AutopilotServerScript::AutopilotServerScript()
+    : ServerScript("AutopilotServerScript", { SERVERHOOK_ON_PACKET_SENT })
+{
+}
+
+void AutopilotServerScript::OnPacketSent(WorldSession* session, WorldPacket const& packet)
+{
+    if (packet.GetOpcode() != SMSG_LFG_PROPOSAL_UPDATE || !session || !AutopilotStrategy_NoHandouts())
+        return;
+    Player* bot = session->GetPlayer();
+    if (!bot || !Autopilot_IsActive())
+        return;
+
+    const uint64_t guid = bot->GetGUID().GetRawValue();
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        auto it = g_rows.find(guid);
+        if (it == g_rows.end() || !it->second.enrolled)
+            return;
+    }
+
+    // uint32 dungeon, uint8 state, uint32 proposal id, ...
+    WorldPacket p(packet);
+    p.rpos(0);
+    uint32 dungeonId = 0, id = 0;
+    uint8 state = 0;
+    p >> dungeonId >> state >> id;
+    if (!id)
+        return;
+    std::lock_guard<std::mutex> lock(g_lfgMutex);
+    g_lfgPending[guid] = id;
 }

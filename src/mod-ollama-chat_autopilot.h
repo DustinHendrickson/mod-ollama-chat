@@ -110,4 +110,16 @@ public:
     void OnAddMember(Guild* guild, Player* player, uint8& plRank) override;
 };
 
+// Dungeon-finder proposals for enrolled bots. Playerbots' own accept refreshes a
+// random bot queued alone (bags emptied, free consumables); with NoHandouts it
+// is dropped for enrolled bots and autopilot accepts the proposal itself, the
+// way the client does.
+class AutopilotServerScript : public ServerScript
+{
+public:
+    AutopilotServerScript();
+
+    void OnPacketSent(WorldSession* session, WorldPacket const& packet) override;
+};
+
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_H

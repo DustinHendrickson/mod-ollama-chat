@@ -56,13 +56,17 @@ namespace
         "- talents spec <name> : follow one of their class's talent specs (listed with their facts) and spend "
         "every unspent point along it; give it again after levelling to spend new points. Which spec is the "
         "character's choice. talents autopick lets their AI choose instead\n"
-        "- autogear : equip the best gear they have; s gray : sell junk to a vendor nearby; repair : repair at a "
-        "vendor nearby\n"
+        "- GEAR AND MONEY (they keep what they loot, buy and are given; nothing is handed to them): equip upgrade "
+        "puts on the best gear in their bags; e <item name> wears one item; use <item name> uses one; open "
+        "items opens loot boxes and clams in their bags. At a vendor (goto vendor first): s gray sells junk, s "
+        "vendor sells everything a vendor should have, s <item name> sells one item, b vendor buys what they "
+        "can use (gear upgrades, ammo, food and drink, reagents) with their own money, repair repairs. "
+        "Watch their gold: buying and training cost money\n"
         "- follow / stay : follow the group leader or stay put\n"
-        "Orders that send them somewhere (goto, quest) are carried out one after another, in the order you "
-        "give them, so list them in the order they should happen. Each ends on arrival (goto hunt too: put it "
-        "last, or the next order leads them away from the monsters). New orders of that kind replace any still "
-        "waiting.\n";
+        "ORDER OF ORDERS: orders run in the order you give them. Everything after a goto or quest waits until "
+        "they get there (so goto vendor, then b vendor, buys at the vendor), except nc/co changes, which apply "
+        "at once. Each trip ends on arrival (goto hunt too: put it last, or the next order leads them away from "
+        "the monsters). A new plan with a goto or quest replaces any orders still waiting.\n";
 
     const char* const kDefaultDenied =
         "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,"
@@ -238,6 +242,14 @@ bool AutopilotCommands_IsDenied(const std::string& command)
     const std::string& sep = sPlayerbotAIConfig.commandSeparator;
     if ((!sep.empty() && c.find(sep) != std::string::npos) || (!c.empty() && c[0] == '#'))
         return true;
+
+    // With NoHandouts, the orders playerbots answers with free items: gear
+    // conjured from templates (autogear), or the maintenance package (spells,
+    // consumables, repairs). The character earns, buys and loots instead.
+    if (AutopilotStrategy_NoHandouts())
+        for (const char* freebie : { "maintenance", "autogear", "bis", "cheat" })
+            if (StartsWithWord(c, freebie))
+                return true;
 
     return Denied(c);
 }

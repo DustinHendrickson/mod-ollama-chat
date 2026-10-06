@@ -11,13 +11,16 @@
 // that shared creator map. Adding a context to all ten after playerbots has
 // built them makes the name resolvable for every bot, existing or future.
 //
-// The strategy itself is a marker. It has no triggers and no actions; it is
-// how autopilot enrollment shows up in `nc ?`, and how a master can ask for it
-// with `nc +autopilot`. The autopilot table, not the marker, is the source of
+// The strategy is a marker. It has no triggers and no actions; it is how
+// autopilot enrollment shows up in `nc ?`, and how a master can ask for it
+// with `nc +autopilot`. With NoHandouts it also carries a multiplier that
+// drops playerbots' handout actions for the bot (see the .cpp). The autopilot table, not the marker, is the source of
 // truth, because playerbots resets wipe strategies constantly.
 //
 // This is the only file that includes playerbots engine headers.
 // --------------------------------------------------------------------------
+
+class PlayerbotAI;
 
 inline constexpr char const* AUTOPILOT_STRATEGY_NAME = "autopilot";
 
@@ -27,6 +30,16 @@ inline constexpr char const* AUTOPILOT_STRATEGY_NAME = "autopilot";
 bool AutopilotStrategy_Register();
 
 bool AutopilotStrategy_IsRegistered();
+
+// OllamaChat.Autopilot.NoHandouts: the marker strategy drops playerbots' free
+// level-up maintenance, re-roll, dungeon-finder refresh and free-repair
+// release for enrolled bots, and freebie orders are refused. Any thread.
+void AutopilotStrategy_SetNoHandouts(bool on);
+bool AutopilotStrategy_NoHandouts();
+
+// Playerbots revives a bot through its re-roll (bags emptied) once its
+// "death count" reaches 5; keep it below that. World thread.
+void AutopilotBot_ClearDeathCount(PlayerbotAI* ai);
 
 // --------------------------------------------------------------------------
 // Moving a bot for the autopilot. World thread only.
