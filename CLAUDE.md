@@ -340,6 +340,11 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   group included); the prompt and the order reference discourage it unless
   the bot's goals have parted ways with the group's. A leader on an errand waits up to 25 s for members
   30-150 yd behind (`WaitForGroup`), then walks on for a minute.
+- **Chat knows the plan.** `Autopilot_ChatContext(bot)` is appended to reply,
+  random-chatter and event prompts: `doing`, the goal text, the errand label
+  and queue length, up to five quests, the group. Framed as the bot's own
+  plans, never as orders, so the chat model does not recite commands. It
+  only reads (`find`, under `g_mutex`) and can run on the bot's map thread.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
 - **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it

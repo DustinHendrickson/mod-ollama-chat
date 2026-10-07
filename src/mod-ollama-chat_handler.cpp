@@ -2087,6 +2087,10 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     // their own token budgets, so this cannot grow the prompt without limit.
     prompt += Memory_BuildPromptSection(bot, player);
 
+    // An autopilot bot knows its own plans: "what are you doing?" gets the
+    // planner's answer, not a guess.
+    prompt += Autopilot_ChatContext(bot);
+
     // Race and class as a voice rather than as a stat line.
     prompt += Roleplay_BuildVoicePrompt(bot);
 

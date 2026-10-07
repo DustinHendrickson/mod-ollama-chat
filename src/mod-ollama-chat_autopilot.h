@@ -68,6 +68,13 @@ std::vector<std::string> Autopilot_InactiveReasons();
 // caller checks OllamaChat.Monitor.MinSecurity. False for an unknown `sub`.
 bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name);
 
+// For the chat prompts: what an autopilot bot is up to, in its own terms --
+// what it is doing, its aim, where it is headed, its quests, its group -- so
+// "what are you doing?" gets the same answer the planner has. Empty for a
+// bot not on autopilot. Any thread the bot itself is updated on; takes the
+// autopilot mutex and only reads.
+std::string Autopilot_ChatContext(Player* bot);
+
 // A whisper between two players, either of them perhaps an autopilot bot:
 // kept for the bot's prompt, and a reason to ask the model soon when it is
 // about grouping or answers the bot. Any thread; takes the autopilot mutex.

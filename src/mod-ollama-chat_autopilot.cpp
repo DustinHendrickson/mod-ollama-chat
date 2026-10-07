@@ -3923,6 +3923,71 @@ void Autopilot_NoteWhisper(Player* from, Player* to, const std::string& text)
     ob->quickPlan = true;
 }
 
+std::string Autopilot_ChatContext(Player* bot)
+{
+    if (!bot || !Autopilot_IsActive())
+        return "";
+    const uint64_t guid = bot->GetGUID().GetRawValue();
+    const uint32_t now  = Progress_Now();
+
+    std::string doing, goal, heading, queued;
+    uint32_t    doingMinutes = 0;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        auto row = g_rows.find(guid);
+        if (row == g_rows.end() || !row->second.enrolled)
+            return "";
+        doing = row->second.doing;
+        goal  = row->second.goal.text;
+        if (row->second.doingSince && now > row->second.doingSince)
+            doingMinutes = (now - row->second.doingSince) / 60;
+        if (auto on = g_online.find(guid); on != g_online.end())
+        {
+            const Online& ob = on->second;
+            if (ob.errand.active && !ob.errand.label.empty())
+                heading = ob.errand.label;
+            if (!ob.errandQueue.empty())
+                queued = SafeFormat("{} more thing{} after that", ob.errandQueue.size(),
+                                    ob.errandQueue.size() == 1 ? "" : "s");
+        }
+    }
+
+    std::string out;
+    auto line = [&out](const std::string& text) { out += "- " + text + "\n"; };
+    if (!doing.empty())
+        line(SafeFormat("What you are doing: {}{}", doing,
+                        doingMinutes ? SafeFormat(" (for {} minutes now)", doingMinutes) : std::string()));
+    if (!goal.empty())
+        line("What you are aiming for: " + goal);
+    if (!heading.empty())
+        line("Where you are headed right now: " + heading + (queued.empty() ? "" : ", then " + queued));
+
+    std::string quests;
+    size_t count = 0;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE && count < 5; ++slot)
+        if (uint32_t id = bot->GetQuestSlotQuestId(slot))
+            if (Quest const* q = sObjectMgr->GetQuestTemplate(id))
+            {
+                const bool ready = bot->GetQuestStatus(id) == QUEST_STATUS_COMPLETE;
+                quests += (quests.empty() ? "" : "; ") + q->GetTitle() + (ready ? " (done, to hand in)" : "");
+                ++count;
+            }
+    line(quests.empty() ? std::string("Your quest log: empty") : "Your quests: " + quests);
+
+    if (Group* group = bot->GetGroup())
+    {
+        Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID());
+        line(group->GetLeaderGUID() == bot->GetGUID()
+                 ? SafeFormat("You lead a group of {}", group->GetMembersCount())
+                 : "You are in a group led by " + (leader ? leader->GetName() : std::string("someone")));
+    }
+
+    if (out.empty())
+        return "";
+    return "\nWhat you are up to (your own plans: mention them naturally if it fits the conversation, "
+           "never as a list, never as orders or commands):\n" + out;
+}
+
 bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::string& name)
 {
     if (!gm || !gm->GetSession())

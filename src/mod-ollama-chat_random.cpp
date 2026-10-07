@@ -190,6 +190,7 @@ namespace
         }
 
         prompt += Memory_BuildPromptSection(bot, nullptr);
+        prompt += Autopilot_ChatContext(bot);
         prompt += Roleplay_BuildVoicePrompt(bot);
         prompt += Expression_BuildGesturePrompt();
 
