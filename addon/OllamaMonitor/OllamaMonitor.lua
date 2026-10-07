@@ -521,10 +521,13 @@ end
 
 RefreshList = function()
     local list = Visible()
-    FauxScrollFrame_Update(listScroll, #list, ROWS, ROW_HEIGHT)
+    -- As many rows as fit: the banner, when shown, takes room from the list.
+    local fit = math.floor((listScroll:GetHeight() or 0) / ROW_HEIGHT)
+    if fit < 1 or fit > ROWS then fit = ROWS end
+    FauxScrollFrame_Update(listScroll, #list, fit, ROW_HEIGHT)
     local offset = FauxScrollFrame_GetOffset(listScroll)
     for i = 1, ROWS do
-        local row, b = rows[i], list[offset + i]
+        local row, b = rows[i], i <= fit and list[offset + i] or nil
         if b then
             row.guid = b.guid
             SetClassIcon(row.icon, b.class)
@@ -546,7 +549,7 @@ RefreshList = function()
     if #M.bots == 0 then
         listEmpty:SetText(M.allowed
             and "No bots on autopilot.\n\n|cff909090Target a bot and press Turn on, or let the server's OllamaChat.Autopilot.Select rules pick some.|r"
-            or "|cff909090Waiting for the server...|r")
+            or ("|cff909090" .. (M.denied or "Waiting for the server...") .. "|r"))
         listEmpty:Show()
     elseif #list == 0 then
         listEmpty:SetText("No bot matches.\n\n|cff909090Clear the search or the filter.|r")
@@ -1046,6 +1049,7 @@ local function UpdateServerState()
         SetPill("CONNECTING", "a0a0a0")
         ShowBanner(nil)
     end
+    RefreshList()   -- the banner changes how many rows fit
 end
 
 -- ---------------------------------------------------------------------------
@@ -1105,7 +1109,7 @@ local function OnMessage(msg)
         end
     elseif kind == "W" then
         local state = f[2]
-        M.watchNote = f[6] or ""
+        M.watchNote = f[5] or ""
         if state == "off" then
             M.watching = nil
         else
@@ -1128,13 +1132,19 @@ local function OnMessage(msg)
         local text = f[2] or ""
         local why = string.match(text, "^Autopilot is off: (.*)$")
         if why then
+            -- Shown in the banner; not repeated in chat on every open.
             table.insert(M.offReasons, why)
             UpdateServerState()
-        elseif not M.allowed then
-            -- The server refused us (MinSecurity, or the monitor turned off).
+            return
+        end
+        if not M.allowed or string.find(text, "OllamaChat.Monitor.", 1, true) then
+            -- The server refused us (MinSecurity, or the monitor turned off),
+            -- perhaps after we had been let in: stop polling a dead window.
+            M.allowed = nil
             M.denied = text
             M.noAnswer = false
             UpdateServerState()
+            RefreshList()
         end
         Print(text)
     end

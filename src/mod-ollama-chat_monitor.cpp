@@ -9,6 +9,7 @@
 #include "mod-ollama-chat_random.h"
 #include "mod-ollama-chat_roleplay.h"
 #include "mod-ollama-chat_topics.h"
+#include "mod-ollama-chat_world.h"
 #include "mod-ollama-chat-utilities.h"
 
 #include "CharacterCache.h"
@@ -116,6 +117,8 @@ namespace
                 while (len > 0 && pos + len < line.size() &&
                        (static_cast<unsigned char>(line[pos + len]) & 0xC0) == 0x80)
                     --len;
+                if (len == 0)   // not UTF-8 at all: cut anywhere rather than never advance
+                    len = std::min(kPieceBytes, line.size() - pos);
                 const bool last = pos + len >= line.size();
                 Send(to, std::string("P\t") + (last ? "e" : "c") + "\t" + line.substr(pos, len));
                 pos += len;
@@ -183,8 +186,9 @@ namespace
 
     Player* FindBot(uint64_t guid)
     {
+        // Bots only: the monitor never follows, pages or teleports to people.
         Player* bot = ObjectAccessor::FindConnectedPlayer(ObjectGuid(guid));
-        return bot && bot->IsInWorld() ? bot : nullptr;
+        return bot && bot->IsInWorld() && OllamaIsBotPlayer(bot) ? bot : nullptr;
     }
 
     // ----------------------------------------------------------------------
@@ -468,6 +472,17 @@ namespace
             Send(player, SafeFormat("H\t{}\t{}", kVersion, Autopilot_IsActive() ? "active" : "inactive"));
             for (const std::string& why : Autopilot_InactiveReasons())
                 Send(player, "M\tAutopilot is off: " + Clean(why));
+
+            // After a /reload the client has forgotten a camera the server
+            // still holds: tell it.
+            uint64_t watched = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_watchMutex);
+                if (auto it = g_watches.find(player->GetGUID().GetRawValue()); it != g_watches.end())
+                    watched = it->second.bot;
+            }
+            if (watched)
+                SendWatch(player, "on", watched, "camera on " + NameOf(watched));
             return;
         }
 
