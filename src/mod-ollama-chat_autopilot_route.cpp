@@ -671,12 +671,22 @@ bool AutopilotRoute_ClimbsOnlyWhereWet(Player* bot, const Movement::PointsArray&
         // In the water, or the bank just above it.
         return map->IsInWater(phase, p.x, p.y, p.z, height) || map->IsInWater(phase, p.x, p.y, p.z - 1.5f, height);
     };
+    // Standing on a building or other model, above the bare terrain: stairs,
+    // a doorstep, a bridge. Steep per step, and walked by everyone; the
+    // mountainsides this check is for are terrain.
+    auto onModel = [&](const G3D::Vector3& p)
+    {
+        const float ground = map->GetGridHeight(p.x, p.y);
+        return ground > INVALID_HEIGHT && p.z - ground > 1.0f;
+    };
     for (size_t i = 1; i < points.size(); ++i)
     {
         const G3D::Vector3& a = points[i - 1];
         const G3D::Vector3& b = points[i];
         if (PathGenerator::IsWalkableClimb(a.x, a.y, a.z, b.x, b.y, b.z, height))
             continue;
+        if (onModel(a) || onModel(b))
+            continue;   // stairs
         if (!wet(a) && !wet(b))
             return false;   // a steep step on dry ground: a mountainside
     }

@@ -271,6 +271,11 @@ void AutopilotWorld_Build()
         const uint32_t flags = (t->npcflag | data.npcflag) & kServiceMask;
         if (!flags)
             continue;
+        // Developer and trigger NPCs ("[DND] TAR Pedestal - Paymaster", "[PH]
+        // ..."): flagged as services, but no player ever deals with them.
+        if ((!t->Name.empty() && t->Name[0] == '[') || (t->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER) ||
+            (t->unit_flags & UNIT_FLAG_NOT_SELECTABLE))
+            continue;
 
         Spawn s;
         s.x = data.posX;
