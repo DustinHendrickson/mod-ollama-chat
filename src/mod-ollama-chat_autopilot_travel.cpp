@@ -512,6 +512,7 @@ namespace
             AutopilotLeg approach;
             approach.type  = AutopilotLegType::Approach;
             approach.entry = trip.npcEntry;
+            approach.to    = trip.dest;   // where to look when the NPC is not in sight
             trip.legs.push_back(approach);
         }
         return "";
@@ -672,8 +673,16 @@ namespace
         }
         if (bot->GetDistance(npc) > kTouch)
         {
-            if (!AutopilotMove_IsMoving(ai))
-                AutopilotMove_To(ai, npc->GetPositionX(), npc->GetPositionY(), npc->GetPositionZ(), true);
+            // No way up to them (a tower with no path), or it takes too long:
+            // walk instead of standing at the foot of it for good.
+            if (now - trip.legStartedAt > 90 ||
+                (!AutopilotMove_IsMoving(ai) &&
+                 !AutopilotMove_To(ai, npc->GetPositionX(), npc->GetPositionY(), npc->GetPositionZ(), true)))
+            {
+                note          = "could not get to the flight master; walking";
+                trip.noFlight = true;
+                return LegResult::Replan;
+            }
             return LegResult::Going;
         }
 
@@ -919,8 +928,13 @@ namespace
         }
         if (bot->GetDistance(go) > kTouch)
         {
-            if (!AutopilotMove_IsMoving(ai))
-                AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true);
+            if (now - trip.legStartedAt > 90 ||
+                (!AutopilotMove_IsMoving(ai) &&
+                 !AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true)))
+            {
+                note = "could not get to " + leg.label;
+                return LegResult::Fail;
+            }
             return LegResult::Going;
         }
         if (trip.tookOff)
@@ -1198,6 +1212,19 @@ AutopilotTripState AutopilotTravel_Update(Player* bot, PlayerbotAI* ai, Autopilo
             case LegResult::Going:
                 return AutopilotTripState::Going;
             case LegResult::Fail:
+                // Failed on the way to a flight: walk the whole way instead.
+                if (!trip.noFlight && !trip.flown && !bot->IsInFlight() &&
+                    std::any_of(trip.legs.begin() + std::min(trip.leg, trip.legs.size()), trip.legs.end(),
+                                [](const AutopilotLeg& l) { return l.type == AutopilotLegType::Fly; }))
+                {
+                    trip.noFlight = true;
+                    if (std::string why = Plan(bot, trip, now); why.empty())
+                    {
+                        note = (legNote.empty() ? std::string("could not get to the flight") : legNote) +
+                               "; walking instead";
+                        break;
+                    }
+                }
                 // A boat, portal or trigger that did not work, while the bot is
                 // still on this side of it: try another way, as a player would.
                 if (trip.crossing < g_crossings.size() &&

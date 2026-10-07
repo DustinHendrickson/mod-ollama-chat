@@ -191,7 +191,9 @@ namespace
             {
                 if (s == e)
                     continue;
-                TravelNodeRoute found = nodeMap.getRoute(s, e, bot);
+                // No bot: with one, getRoute allocates a hearthstone portal
+                // node on every call (and routes through it, which is no road).
+                TravelNodeRoute found = nodeMap.getRoute(s, e, nullptr);
                 if (!found.isEmpty())
                 {
                     nodes = found.getNodes();
@@ -441,7 +443,10 @@ namespace
         }
 
         const bool toDest = r.corner >= r.corridor.size();
-        const AutopilotRoutePoint aim = Reseat(bot->GetMap(), toDest ? r.dest : r.corridor[r.corner], r.cursor.z);
+        // The destination keeps its own floor: seated from the walker's height,
+        // an NPC upstairs became the floor beneath them.
+        const AutopilotRoutePoint aim = toDest ? Reseat(bot->GetMap(), r.dest, r.dest.z)
+                                               : Reseat(bot->GetMap(), r.corridor[r.corner], r.cursor.z);
         const float remaining = D2(r.cursor, aim);
 
         if (remaining <= ARRIVAL)

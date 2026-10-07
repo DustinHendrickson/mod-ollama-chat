@@ -54,6 +54,9 @@ namespace
     // An online player by name, as the client's name box takes it.
     Player* FindByName(std::string name)
     {
+        // "whisper Bob, hi" / "group invite Bob.": the punctuation is not his.
+        while (!name.empty() && std::string(",.:;!?").find(name.back()) != std::string::npos)
+            name.pop_back();
         if (!normalizePlayerName(name))
             return nullptr;
         return ObjectAccessor::FindPlayerByName(name, true);

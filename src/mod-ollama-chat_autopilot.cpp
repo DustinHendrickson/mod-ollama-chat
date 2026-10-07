@@ -2613,6 +2613,7 @@ namespace
         if (threatened)
         {
             ob.lastCombatAt = now;
+            AutopilotCommands_HuntUnderAttack(bot, ai, ob.errand);
             AutopilotMove_Yield(ai);
             ob.errand.trip.interrupted = true;
         }
@@ -2623,8 +2624,12 @@ namespace
             // target, a trip walks on).
             if (now - ob.lastCombatAt >= 1 && LootBodies(bot, ai, ob))
                 ob.lastBusyAt = now;
-            else if (sit.leads && ob.errand.active && WaitForGroup(bot, ai, ob, now))
+            else if (sit.leads && ob.errand.active && !AutopilotTravel_IsTimeCritical(ob.errand.trip) &&
+                     WaitForGroup(bot, ai, ob, now))
+            {
                 ob.lastBusyAt = now;
+                ob.errand.trip.interrupted = true;   // waiting is not being stuck
+            }
             else if (now - ob.lastCombatAt >= 4)
                 StepErrand(bot, ai, guid, row, ob, now);
         }

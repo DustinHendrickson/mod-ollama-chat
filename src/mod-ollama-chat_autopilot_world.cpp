@@ -66,6 +66,10 @@ namespace
     std::unordered_map<uint32_t, std::string>          g_focusName;   // "Forge", "Anvil"...
     std::vector<SpawnAt>                               g_mailboxes;
 
+    // Kill-credit entry -> the creatures that give that credit when killed
+    // (creature_template.KillCredit1/2).
+    std::unordered_map<uint32_t, std::vector<uint32_t>> g_creditedBy;
+
     // quest id -> creature entries that take it in.
     std::unordered_map<uint32_t, std::vector<uint32_t>> g_questEnders;
 
@@ -241,6 +245,12 @@ void AutopilotWorld_Build()
             g_focusName.emplace(t->spellFocus.focusId, t->name);
         }
     }
+
+    g_creditedBy.clear();
+    for (auto const& [entry, t] : *sObjectMgr->GetCreatureTemplates())
+        for (uint32_t credit : t.KillCredit)
+            if (credit && credit != entry)
+                g_creditedBy[credit].push_back(entry);
 
     size_t count = 0;
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
@@ -982,4 +992,10 @@ std::string AutopilotWorld_QuestsOnOffer(Player* bot, float range)
                           g.count > 3 ? SafeFormat(" and {} more", g.count - 3) : std::string());
     }
     return out;
+}
+
+const std::vector<uint32_t>& AutopilotWorld_CreditedBy(uint32_t entry)
+{
+    auto it = g_creditedBy.find(entry);
+    return it == g_creditedBy.end() ? kNone : it->second;
 }

@@ -126,4 +126,8 @@ std::string AutopilotWorld_ZonesForLevel(Player* bot);
 // none. Walks the quest-starter table: for prompts, not per tick.
 std::string AutopilotWorld_QuestsOnOffer(Player* bot, float range);
 
+// The creatures whose kill gives credit for `entry` (creature_template
+// KillCredit1/2), for quests that count a credit entry with no spawns.
+const std::vector<uint32_t>& AutopilotWorld_CreditedBy(uint32_t entry);
+
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_WORLD_H

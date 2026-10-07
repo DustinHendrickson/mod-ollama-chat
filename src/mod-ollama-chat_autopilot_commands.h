@@ -83,6 +83,7 @@ struct AutopilotErrand
     uint8_t             exploreLeft  = 0;
     float               exploreAngle = 0.0f;
     std::vector<uint64_t> objectsGivenUp;   // objects that would not open: skipped by the hunt
+    std::vector<uint64_t> unreachable;      // creatures with no path to them: skipped by the hunt
 };
 
 void AutopilotCommands_Load();
@@ -129,6 +130,12 @@ std::string AutopilotCommands_DescribeCraftable(Player* bot);
 std::string AutopilotCommands_DescribeSurroundings(Player* bot);
 
 // End an errand early (unenrolled, joined a group): stop the bot.
+// A quest hunt while the bot is under attack: drop the quest mark when
+// something the quest does not need is attacking, so the bot fights back
+// instead of pulling the marked mob too. Control calls it in combat, where
+// the hunt itself does not run.
+void AutopilotCommands_HuntUnderAttack(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand);
+
 void AutopilotCommands_StopErrand(PlayerbotAI* ai, AutopilotErrand& errand);
 
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_COMMANDS_H

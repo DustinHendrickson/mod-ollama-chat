@@ -223,8 +223,11 @@ namespace
         {
             if (!trainer->CanTeachSpell(bot, &spell) || bot->GetMoney() < spell.MoneyCost)
                 continue;
+            // Some trainer spells are a learn spell that is cast (profession
+            // ranks): the money spent says it went through, not HasSpell.
+            const uint32_t before = bot->GetMoney();
             trainer->TeachSpell(npc, bot, spell.SpellId);
-            if (bot->HasSpell(spell.SpellId))
+            if (bot->HasSpell(spell.SpellId) || bot->GetMoney() < before)
                 ++learned;
         }
         return learned;
@@ -613,7 +616,14 @@ namespace
             const int32 entry = quest->RequiredNpcOrGo[i];
             if (entry && quest->RequiredNpcOrGoCount[i] &&
                 bot->GetQuestSlotCounter(slot, i) < quest->RequiredNpcOrGoCount[i])
+            {
                 add(entry > 0 ? n.kill : n.use, uint32_t(entry > 0 ? entry : -entry));
+                // Many quests count a kill-credit entry that has no spawns of
+                // its own: the creatures that give that credit are the targets.
+                if (entry > 0)
+                    for (uint32_t creditor : AutopilotWorld_CreditedBy(uint32_t(entry)))
+                        add(n.kill, creditor);
+            }
         }
         for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
         {
@@ -714,16 +724,24 @@ bool AutopilotCommands_IsDenied(const std::string& command)
     // would slip a denied command past a leading-words check ("stay\reset").
     // One order is one command.
     const std::string& sep = sPlayerbotAIConfig.commandSeparator;
-    if ((!sep.empty() && c.find(sep) != std::string::npos) || (!c.empty() && c[0] == '#'))
+    // "@tank reset", "@20 logout": playerbots' chat filters are stripped
+    // before the command runs, so they too would slip past the check.
+    if ((!sep.empty() && c.find(sep) != std::string::npos) || (!c.empty() && (c[0] == '#' || c[0] == '@')))
         return true;
 
     // With NoHandouts, the orders playerbots answers with free items: gear
     // conjured from templates (autogear), or the maintenance package (spells,
     // consumables, repairs). The character earns, buys and loots instead.
     if (AutopilotStrategy_NoHandouts())
+    {
         for (const char* freebie : { "maintenance", "autogear", "bis", "cheat" })
             if (StartsWithWord(c, freebie))
                 return true;
+        // A second talent spec costs a player 1000 gold at a trainer;
+        // playerbots' talents switch casts it for free.
+        if (StartsWithWord(c, "talents") && c.find("switch") != std::string::npos)
+            return true;
+    }
 
     return Denied(c);
 }
@@ -845,6 +863,7 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 
         // buy
         const std::vector<AuctionEntry*> offers = Offers(bot, auctioneer, rest);
+        std::string refused;
         for (AuctionEntry* a : offers)
         {
             const uint64_t each = a->buyout / a->itemCount;
@@ -859,10 +878,17 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
             WorldPacket p(CMSG_AUCTION_PLACE_BID, 16);
             p << auctioneer->GetGUID() << a->Id << cost;
             bot->GetSession()->HandleAuctionPlaceBid(p);
+            // Refused (an offer from a character on the bot's own account,
+            // say): the next offer may still do.
             if (bot->GetMoney() >= before)
-                return "could not buy " + name + " (the auction house refused the bid)";
+            {
+                refused = name;
+                continue;
+            }
             return SafeFormat("bought {} x{} for {}; it comes by mail (goto mailbox)", name, count, MoneyText(cost));
         }
+        if (!refused.empty())
+            return "could not buy " + refused + " (the auction house refused every bid they could afford)";
         return offers.empty() ? std::string("nobody is selling that here")
                               : price ? "nothing for that at " + MoneyText(price) + " each or less that they can afford"
                                       : std::string("they cannot afford any of the offers");
@@ -1092,6 +1118,10 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
         }
         if (!best)
             return "nothing called that within 50 yards";
+        // Using a pool hands out its loot with no pole and no skill: fish are
+        // caught, not opened.
+        if (best->GetGoType() == GAMEOBJECT_TYPE_FISHINGHOLE)
+            return "a fishing pool is fished, not opened: nc +master fishing beside it (needs Fishing and a pole)";
 
         AutopilotPlace place;
         place.map   = best->GetMapId();
@@ -1321,8 +1351,10 @@ namespace
         }
         if (dist > 3.0f)
         {
-            if (!AutopilotMove_IsMoving(ai))
-                AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true);
+            if (!AutopilotMove_IsMoving(ai) &&
+                !AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true) &&
+                errand.objectsGivenUp.size() < 32)
+                errand.objectsGivenUp.push_back(go->GetGUID().GetRawValue());
             return true;
         }
         if (now - errand.lastUseAt < 3)
@@ -1417,7 +1449,9 @@ namespace
             for (Creature* c : nearby)
             {
                 if (!c || !c->IsAlive() || !bot->IsValidAttackTarget(c) ||
-                    (c->hasLootRecipient() && !c->isTappedBy(bot)) || !bot->IsWithinLOSInMap(c))
+                    (c->hasLootRecipient() && !c->isTappedBy(bot)) || !bot->IsWithinLOSInMap(c) ||
+                    std::find(errand.unreachable.begin(), errand.unreachable.end(),
+                              c->GetGUID().GetRawValue()) != errand.unreachable.end())
                     continue;
                 const float d = bot->GetDistance(c);
                 if (!creature || d < creatureDist)
@@ -1459,9 +1493,13 @@ namespace
             AutopilotBot_SetQuestTarget(ai, creature->GetGUID().GetRawValue());
             if (creatureDist > 25.0f)
             {
-                if (!AutopilotMove_IsMoving(ai))
-                    AutopilotMove_To(ai, creature->GetPositionX(), creature->GetPositionY(),
-                                     creature->GetPositionZ(), true);
+                // No path to it (a ledge, deep water): leave it, or the hunt
+                // picks the same one every visit until it times out.
+                if (!AutopilotMove_IsMoving(ai) &&
+                    !AutopilotMove_To(ai, creature->GetPositionX(), creature->GetPositionY(),
+                                      creature->GetPositionZ(), true) &&
+                    errand.unreachable.size() < 32)
+                    errand.unreachable.push_back(creature->GetGUID().GetRawValue());
             }
             else
                 AutopilotBot_EngageQuestTarget(ai);
@@ -1481,8 +1519,10 @@ namespace
             // does (use, then report use).
             if (objectDist > INTERACTION_DISTANCE - 1.0f)
             {
-                if (!AutopilotMove_IsMoving(ai))
-                    AutopilotMove_To(ai, object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), true);
+                if (!AutopilotMove_IsMoving(ai) &&
+                    !AutopilotMove_To(ai, object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), true) &&
+                    errand.objectsGivenUp.size() < 32)
+                    errand.objectsGivenUp.push_back(object->GetGUID().GetRawValue());
                 return u;
             }
             if (now - errand.lastUseAt >= 3)
@@ -2000,4 +2040,23 @@ void AutopilotCommands_StopErrand(PlayerbotAI* ai, AutopilotErrand& errand)
         AutopilotBot_ClearQuestTarget(ai);
     errand.hunting = false;
     errand.active = false;
+}
+
+void AutopilotCommands_HuntUnderAttack(Player* bot, PlayerbotAI* ai, AutopilotErrand& errand)
+{
+    if (!bot || !ai || !errand.active || !errand.hunting)
+        return;
+    Quest const* quest = sObjectMgr->GetQuestTemplate(errand.questId);
+    if (!quest)
+        return;
+    const std::vector<uint32_t> creatures = NeedsOf(bot, quest).Creatures();
+    for (Unit* attacker : bot->getAttackers())
+    {
+        Creature* c = attacker ? attacker->ToCreature() : nullptr;
+        if (!c || !Contains(creatures, c->GetEntry()))
+        {
+            AutopilotBot_ClearQuestTarget(ai);
+            return;
+        }
+    }
 }
