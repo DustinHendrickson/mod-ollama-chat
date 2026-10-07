@@ -539,7 +539,10 @@ void Memory_RunCondensation(uint64_t botGuid, const std::string& prompt)
 
     {
         std::lock_guard<std::mutex> lock(g_mutex);
-        OllamaMemoryState& state = g_state[botGuid];
+        auto found = g_state.find(botGuid);
+        if (found == g_state.end())
+            return;   // logged out meanwhile: do not re-create its entry
+        OllamaMemoryState& state = found->second;
         state.condensing = false;
 
         if (!fresh.empty())
@@ -609,7 +612,10 @@ void Memory_RunRelationshipUpdate(uint64_t botGuid, uint64_t otherGuid,
     }
 
     std::lock_guard<std::mutex> lock(g_mutex);
-    OllamaMemoryState& state = g_state[botGuid];
+    auto found = g_state.find(botGuid);
+    if (found == g_state.end())
+        return;   // logged out meanwhile: do not re-create its entry
+    OllamaMemoryState& state = found->second;
     state.relationshipPending[otherGuid] = false;
 
     if (description.empty())

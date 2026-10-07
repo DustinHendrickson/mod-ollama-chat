@@ -22,12 +22,18 @@
 class OllamaBotEventChatter
 {
 public:
-    void DispatchGameEvent(Player* source, std::string type, std::string detail);
+    // Hooks call this on map threads. A guild-type event reaches guildmates
+    // on every map, so it is queued and run again from Events_Update on the
+    // world thread (`onWorldThread`); everything else stays on the source's map.
+    void DispatchGameEvent(Player* source, std::string type, std::string detail, bool onWorldThread = false);
 
     // World thread only -- reads live world state.
     std::string BuildPrompt(Player* bot, std::string promptTemplate, std::string eventType,
                             std::string eventDetail, std::string actorName);
 };
+
+// World thread: runs the guild events the hooks queued.
+void Events_Update();
 
 class ChatOnKill : public PlayerScript
 {

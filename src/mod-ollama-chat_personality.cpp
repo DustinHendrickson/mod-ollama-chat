@@ -57,7 +57,7 @@ std::string GetBotPersonality(Player* bot)
             LOG_INFO("module.ollamachat", "[Ollama Chat] Please source the required database table first");
     }
     if (tableState.load() == 1)
-        CharacterDatabase.Execute("INSERT INTO mod_ollama_chat_personality (guid, personality) VALUES ({}, '{}')", botGuid, chosenPersonality);
+        CharacterDatabase.Execute("REPLACE INTO mod_ollama_chat_personality (guid, personality) VALUES ({}, '{}')", botGuid, chosenPersonality);
 
     if (g_DebugEnabled)
         LOG_INFO("module.ollamachat", "[Ollama Chat] Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());

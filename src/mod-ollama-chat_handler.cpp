@@ -283,12 +283,16 @@ Channel* GetValidChannel(uint32_t teamId, const std::string& channelName, Player
     return channel;
 }
 
+thread_local bool g_OllamaDeliveringReply = false;
+
 bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg)
 {
-    if (!g_Enable)
+    if (!g_Enable || g_OllamaDeliveringReply)
         return true;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
+    if (sourceLocal == SRC_UNDEFINED_LOCAL)
+        return true;   // emotes and the like: nothing answers them here
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
     return true;
 }
@@ -1731,7 +1735,9 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         if (!bot)
             continue;
 
-        // Everything below runs on the world thread: prompt building reads
+        // Everything below runs on the speaker's thread: the world thread for
+        // a client's line, its map thread for a bot's say or yell (candidates
+        // are then on that same map instance only). Prompt building reads
         // live world state, and the governor decides before we spend an LLM
         // call rather than after.
         // A line aimed at this bot is owed an answer, so it skips the pacing
@@ -1872,7 +1878,9 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
             threshold = g_SayDistance;
             if (threshold > 0.0f)
             {
-                if (!bot->IsInWorld() || !player->IsInWorld())
+                // Same map *instance*: a bot at the same spot in another
+                // copy of a dungeon is on another map thread.
+                if (!bot->IsInWorld() || !player->IsInWorld() || bot->GetMap() != player->GetMap())
                     return false;
                     
                 float distance = bot->GetDistance(player);
@@ -1882,7 +1890,7 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatCh
             
         case SRC_YELL_LOCAL:   
             threshold = g_YellDistance;
-            return (threshold > 0.0f && player->GetDistance(bot) <= threshold);
+            return (threshold > 0.0f && bot->GetMap() == player->GetMap() && player->GetDistance(bot) <= threshold);
             
         case SRC_GUILD_LOCAL:
         case SRC_OFFICER_LOCAL:

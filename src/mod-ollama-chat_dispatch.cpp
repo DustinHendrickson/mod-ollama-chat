@@ -3,6 +3,7 @@
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat_governor.h"
+#include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_memory.h"
 #include "mod-ollama-chat_response.h"
 #include "mod-ollama-chat_roleplay.h"
@@ -436,7 +437,10 @@ namespace
         }
 
         Channel* channel = nullptr;
-        if (!RouteMessage(bot, botAI, c, world, channel))
+        g_OllamaDeliveringReply = true;
+        const bool routed = RouteMessage(bot, botAI, c, world, channel);
+        g_OllamaDeliveringReply = false;
+        if (!routed)
         {
             TraceLine(c.request, c.text, "dropped: nowhere to send it");
             if (g_DebugEnabled)

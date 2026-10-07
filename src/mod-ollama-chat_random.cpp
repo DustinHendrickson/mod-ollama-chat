@@ -4,6 +4,7 @@
 #include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_dispatch.h"
+#include "mod-ollama-chat_events.h"
 #include "mod-ollama-chat_governor.h"
 #include "mod-ollama-chat_handler.h"
 #include "mod-ollama-chat_personality.h"
@@ -215,6 +216,8 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
 
     if (!g_Enable)
         return;
+
+    Events_Update();   // guild events queued by map-thread hooks
 
     // The module's world tick. These run before any feature toggle can return
     // early, because pending replies still have to be delivered even when

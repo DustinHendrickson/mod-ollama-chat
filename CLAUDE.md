@@ -28,6 +28,17 @@ How to add a new kind of bot utterance:
 Do **not** call `QueryOllama()` directly from anywhere that could be the world
 thread — it blocks for a full LLM round trip.
 
+**Chat hooks are not all on the world thread.** A client's chat line is
+(`CMSG_MESSAGECHAT` is thread-unsafe, so world thread), but a bot's say,
+yell or whisper fires the same hooks from its map thread, and kill, loot and
+level hooks run on map threads too, several at once. So: any shared map
+they touch needs a mutex (`g_BotPersonalityMutex`); say/yell candidates
+must be on the *same map instance* (`GetMap()` equal, not `GetMapId()`);
+guild-type events, which reach guildmates on every map, are queued and run
+from `Events_Update` on the world tick; and a reply the dispatcher says or
+yells sets `g_OllamaDeliveringReply`, so the hook does not run it again at
+chain depth 0 (the dispatcher passes it on itself, depth advanced).
+
 `EventProcessor::AddEvent` (`bot->m_Events`) is **not** a way around this. It
 mutates a container that `Player::Update` walks, so calling it off-thread is the
 same race it looks like it avoids.

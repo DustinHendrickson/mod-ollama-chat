@@ -736,7 +736,7 @@ void ChatOnEmote::OnPlayerTextEmote(Player* player, uint32 textEmote,
     if (g_DisableRepliesInCombat && bot->IsInCombat())
         return;
 
-    if (player->GetMapId() != bot->GetMapId())
+    if (player->GetMap() != bot->GetMap())   // same instance: another copy is another thread
         return;
     if (g_SayDistance > 0.0f && bot->GetDistance(player) > g_SayDistance)
         return;

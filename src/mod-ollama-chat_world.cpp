@@ -93,7 +93,7 @@ bool OllamaWorldSnapshot::RealPlayerWithin(Player* who, float distance) const
     {
         if (player == who)
             continue;
-        if (player->GetMapId() != who->GetMapId())
+        if (player->GetMap() != who->GetMap())   // the same instance, not just the same map id
             continue;
         if (who->GetDistance(player) <= distance)
             return true;

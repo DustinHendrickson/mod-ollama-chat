@@ -48,6 +48,11 @@ std::string BuildEmoteReactionPrompt(Player* bot, Player* player, uint32_t textE
 // the topic engine.
 std::string GenerateBotGameStateSnapshot(Player* bot);
 
+// Set while a reply is being said or yelled by the dispatcher. That line
+// fires the chat hook again; the dispatcher passes it on to other bots itself
+// with the chain depth advanced, so the hook must not also run it at depth 0.
+extern thread_local bool g_OllamaDeliveringReply;
+
 class PlayerBotChatHandler : public PlayerScript
 {
 public:

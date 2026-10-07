@@ -11,6 +11,8 @@
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat_topics.h"
 #include "mod-ollama-chat-utilities.h"
+#include <mutex>
+#include <vector>
 
 #include "AchievementMgr.h"
 #include "Containers.h"
@@ -131,7 +133,31 @@ namespace
 
 // --------------------------------------------------------------------------
 
-void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, std::string detail)
+namespace
+{
+    struct QueuedEvent
+    {
+        uint64_t    source = 0;
+        std::string type;
+        std::string detail;
+    };
+    std::mutex               g_eventQueueMutex;
+    std::vector<QueuedEvent> g_eventQueue;
+}
+
+void Events_Update()
+{
+    std::vector<QueuedEvent> queued;
+    {
+        std::lock_guard<std::mutex> lock(g_eventQueueMutex);
+        queued.swap(g_eventQueue);
+    }
+    for (QueuedEvent& e : queued)
+        if (Player* source = ObjectAccessor::FindConnectedPlayer(ObjectGuid(e.source)))
+            eventChatter.DispatchGameEvent(source, std::move(e.type), std::move(e.detail), true);
+}
+
+void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, std::string detail, bool onWorldThread)
 {
     if (!g_Enable || !g_EnableEventChatter || !source || type.empty())
         return;
@@ -143,8 +169,21 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
 
     // Seed the witnessed-event memory before any chance roll: bots should
     // remember what they saw even when they choose not to comment on it.
-    if (const std::string memory = MemoryLineFor(source->GetName(), type, detail); !memory.empty())
-        Topics_BroadcastEventToNearby(source, memory, g_EventChatterRealPlayerDistance);
+    // (Once: a queued guild event already did, on its map thread.)
+    if (!onWorldThread)
+        if (const std::string memory = MemoryLineFor(source->GetName(), type, detail); !memory.empty())
+            Topics_BroadcastEventToNearby(source, memory, g_EventChatterRealPlayerDistance);
+
+    // A guild event reads and prompts guildmates on every map. From a map
+    // thread that touches players other threads are updating: queue it for
+    // the world tick (Events_Update), where every map is at rest.
+    if (!onWorldThread && source->GetGuild() && g_EnableGuildEventChatter && IsGuildEventType(type))
+    {
+        std::lock_guard<std::mutex> lock(g_eventQueueMutex);
+        if (g_eventQueue.size() < 256)
+            g_eventQueue.push_back({ source->GetGUID().GetRawValue(), std::move(type), std::move(detail) });
+        return;
+    }
 
     const bool isGuildEvent = source->GetGuild() && g_EnableGuildEventChatter &&
                               IsGuildEventType(type) &&
@@ -260,8 +299,9 @@ void OllamaBotEventChatter::DispatchGameEvent(Player* source, std::string type, 
         if (!Governor_CanSend(bot->GetGUID(), scopeKey))
             continue;
 
-        // Built here, on the world thread. The old code built the whole prompt
-        // inside the worker, reading area, zone, spec and guild off-thread.
+        // Built here, never in the worker: on the world thread for a guild
+        // event (queued), on the source's map thread otherwise, where every
+        // candidate is on that same map.
         std::string prompt = BuildPrompt(bot, g_EventChatterPromptTemplate, type, detail,
                                          source->GetName());
         if (prompt.empty())

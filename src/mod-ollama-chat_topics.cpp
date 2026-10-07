@@ -771,12 +771,13 @@ void Topics_BroadcastEventToNearby(Player* actor, const std::string& text, float
     if (!actor || text.empty() || g_TopicEventMemorySize == 0)
         return;
 
-    for (auto const& pair : ObjectAccessor::GetPlayers())
+    // The actor's own map only: this runs on its map thread, on every kill,
+    // and every player online was a scan per kill.
+    Map::PlayerList const& players = actor->GetMap()->GetPlayers();
+    for (auto itr = players.begin(); itr != players.end(); ++itr)
     {
-        Player* witness = pair.second;
+        Player* witness = itr->GetSource();
         if (!witness || witness == actor || !witness->IsInWorld())
-            continue;
-        if (witness->GetMap() != actor->GetMap())
             continue;
         if (!actor->IsWithinDistInMap(witness, radius))
             continue;
