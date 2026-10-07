@@ -245,6 +245,74 @@ namespace
             bot->RewardQuest(quest, index, npc, true);
     }
 
+    // With no choice from the model: the best reward the bot can use (by
+    // item level), else the first. Playerbots would whisper its master to
+    // choose, and an autopilot bot's master is the LLM.
+    uint32_t BestUsableReward(Player* bot, Quest const* quest)
+    {
+        uint32_t choice = 0, bestLevel = 0;
+        for (uint32_t i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
+        {
+            ItemTemplate const* item = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[i]);
+            if (!item || bot->CanUseItem(item) != EQUIP_ERR_OK)
+                continue;
+            if (item->ItemLevel > bestLevel)
+            {
+                bestLevel = item->ItemLevel;
+                choice    = i;
+            }
+        }
+        return choice;
+    }
+
+    // Hand in every finished quest this NPC takes, as a player does when they
+    // talk to someone. Returns the titles handed in.
+    std::string TurnInFinishedQuests(Player* bot, Creature* npc)
+    {
+        std::string done;
+        auto bounds = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(npc->GetEntry());
+        for (auto it = bounds.first; it != bounds.second; ++it)
+        {
+            Quest const* quest = sObjectMgr->GetQuestTemplate(it->second);
+            if (!quest || bot->GetQuestStatus(quest->GetQuestId()) != QUEST_STATUS_COMPLETE ||
+                bot->GetQuestRewardStatus(quest->GetQuestId()) || !bot->CanRewardQuest(quest, false))
+                continue;
+            const uint32_t choice = BestUsableReward(bot, quest);
+            if (!bot->CanRewardQuest(quest, choice, false))
+                continue;
+            ChooseReward(bot, npc, quest, choice);
+            if (bot->GetQuestRewardStatus(quest->GetQuestId()))
+                done += SafeFormat("{}[{}] {}", done.empty() ? "" : ", ", quest->GetQuestId(), quest->GetTitle());
+        }
+        return done;
+    }
+
+    // Take the quests an NPC offers, as a player clicks Accept on each:
+    // through the client's accept handler, for every quest the core says the
+    // bot can take (level, class, race, chain, room in the log and bags).
+    // Playerbots' quest-giver talk only lists them to a master, and an
+    // autopilot bot has none to accept them. Returns the titles taken.
+    std::string TakeOfferedQuests(Player* bot, Creature* npc)
+    {
+        std::string taken;
+        auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(npc->GetEntry());
+        for (auto it = bounds.first; it != bounds.second; ++it)
+        {
+            Quest const* quest = sObjectMgr->GetQuestTemplate(it->second);
+            if (!quest || !bot->CanTakeQuest(quest, false) || !bot->SatisfyQuestLog(false) ||
+                !bot->CanAddQuest(quest, false))
+                continue;
+            WorldPacket packet(CMSG_QUESTGIVER_ACCEPT_QUEST, 16);
+            packet << npc->GetGUID() << quest->GetQuestId() << uint32(0);
+            bot->GetSession()->HandleQuestgiverAcceptQuestOpcode(packet);
+            const QuestStatus status = bot->GetQuestStatus(quest->GetQuestId());
+            if (status != QUEST_STATUS_NONE && status != QUEST_STATUS_REWARDED)
+                taken += SafeFormat("{}[{}] {}", taken.empty() ? "" : ", ", quest->GetQuestId(), quest->GetTitle());
+        }
+        bot->PlayerTalkClass->SendCloseGossip();
+        return taken;
+    }
+
     uint16 QuestSlot(Player* bot, uint32_t questId)
     {
         for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
@@ -1981,10 +2049,22 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 u.note = "arrived, but " + errand.label + " was not there";
                 return u;
             }
-            // As a player talks to someone: playerbots' quest-giver handling
-            // takes the quests they offer and hands in finished ones.
-            AutopilotQuest_TalkTo(ai, npc);
-            u.note = "talked to " + npc->GetName();
+            // As a player talks to someone: finished quests are handed in
+            // (playerbots' quest-giver talk), and the quests they offer taken.
+            if (bot->GetDistance(npc) > INTERACTION_DISTANCE - 0.5f)
+            {
+                u.note = SafeFormat("could not get close enough to talk to {} ({:.0f} yd away)", npc->GetName(),
+                                    bot->GetDistance(npc));
+                return u;
+            }
+            {
+                const std::string handedIn = TurnInFinishedQuests(bot, npc);
+                const std::string taken    = TakeOfferedQuests(bot, npc);
+                u.note = "talked to " + npc->GetName();
+                if (!handedIn.empty())
+                    u.note += ", handed in " + handedIn;
+                u.note += taken.empty() ? "; no new quests they could take from them" : ", took " + taken;
+            }
             return u;
 
         case AutopilotErrandKind::Mailbox:
@@ -2019,33 +2099,28 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 }
             }
 
-            // Talking to the quest giver also takes any follow-up quest it offers.
-            AutopilotQuest_TalkTo(ai, npc);
+            // Anything else finished for this NPC goes in too.
+            const std::string alsoHandedIn = TurnInFinishedQuests(bot, npc);
 
             // No choice from the model: playerbots picks for random bots; an
             // alt asks its master, and an autopilot bot's master is the LLM,
             // which cannot answer a whisper. Take the best usable choice.
             if (quest && !bot->GetQuestRewardStatus(errand.questId) && bot->CanRewardQuest(quest, false))
             {
-                uint32_t choice = 0, bestLevel = 0;
-                for (uint32_t i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
-                {
-                    ItemTemplate const* item = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[i]);
-                    if (!item || bot->CanUseItem(item) != EQUIP_ERR_OK)
-                        continue;
-                    if (item->ItemLevel > bestLevel)
-                    {
-                        bestLevel = item->ItemLevel;
-                        choice    = i;
-                    }
-                }
+                const uint32_t choice = BestUsableReward(bot, quest);
                 if (bot->CanRewardQuest(quest, choice, false))
                     ChooseReward(bot, npc, quest, choice);
             }
 
+            // Follow-up quests (and anything else they offer now) are taken.
+            const std::string taken = TakeOfferedQuests(bot, npc);
             u.note = bot->GetQuestRewardStatus(errand.questId)
                 ? "turned in the quest with " + npc->GetName() + chose
                 : "talked to " + npc->GetName() + " but the quest was not turned in (it may need choosing a reward)";
+            if (!alsoHandedIn.empty())
+                u.note += ", also handed in " + alsoHandedIn;
+            if (!taken.empty())
+                u.note += ", and took " + taken;
             return u;
         }
 
