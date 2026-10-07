@@ -32,8 +32,10 @@ thread — it blocks for a full LLM round trip.
 (`CMSG_MESSAGECHAT` is thread-unsafe, so world thread), but a bot's say,
 yell or whisper fires the same hooks from its map thread, and kill, loot and
 level hooks run on map threads too, several at once. So: any shared map
-they touch needs a mutex (`g_BotPersonalityMutex`); say/yell candidates
-must be on the *same map instance* (`GetMap()` equal, not `GetMapId()`);
+they touch needs a mutex (`g_BotPersonalityMutex`); a bot's own say and yell
+lines are queued by the hook and answered from `OllamaChat_UpdateBotLines`
+on the world tick; say/yell candidates must be on the *same map instance*
+(`GetMap()` equal, not `GetMapId()`);
 guild-type events, which reach guildmates on every map, are queued and run
 from `Events_Update` on the world tick; and a reply the dispatcher says or
 yells sets `g_OllamaDeliveringReply`, so the hook does not run it again at

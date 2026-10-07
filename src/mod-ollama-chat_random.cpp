@@ -217,7 +217,8 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
     if (!g_Enable)
         return;
 
-    Events_Update();   // guild events queued by map-thread hooks
+    Events_Update();               // guild events queued by map-thread hooks
+    OllamaChat_UpdateBotLines();   // bots' say and yell lines, likewise
 
     // The module's world tick. These run before any feature toggle can return
     // early, because pending replies still have to be delivered even when

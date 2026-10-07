@@ -53,6 +53,10 @@ std::string GenerateBotGameStateSnapshot(Player* bot);
 // with the chain depth advanced, so the hook must not also run it at depth 0.
 extern thread_local bool g_OllamaDeliveringReply;
 
+// World thread: runs the bots' own say and yell lines that the chat hook
+// queued from their map threads.
+void OllamaChat_UpdateBotLines();
+
 class PlayerBotChatHandler : public PlayerScript
 {
 public:

@@ -15,6 +15,7 @@
 #include "ChannelMgr.h"
 #include <sstream>
 #include <vector>
+#include <mutex>
 #include <list>
 #include "Containers.h"
 #include <fmt/core.h>
@@ -285,6 +286,36 @@ Channel* GetValidChannel(uint32_t teamId, const std::string& channelName, Player
 
 thread_local bool g_OllamaDeliveringReply = false;
 
+namespace
+{
+    // A bot's say or yell, heard on its map thread, run on the world tick.
+    struct QueuedLine
+    {
+        uint64_t               speaker = 0;
+        uint32_t               type    = 0;
+        uint32_t               lang    = 0;
+        std::string            text;
+        ChatChannelSourceLocal source  = SRC_UNDEFINED_LOCAL;
+    };
+    std::mutex              g_botLinesMutex;
+    std::vector<QueuedLine> g_botLines;
+}
+
+void OllamaChat_UpdateBotLines()
+{
+    std::vector<QueuedLine> lines;
+    {
+        std::lock_guard<std::mutex> lock(g_botLinesMutex);
+        lines.swap(g_botLines);
+    }
+    for (QueuedLine& l : lines)
+    {
+        Player* speaker = ObjectAccessor::FindConnectedPlayer(ObjectGuid(l.speaker));
+        if (speaker && speaker->IsInWorld())
+            PlayerBotChatHandler::ProcessChat(speaker, l.type, l.lang, l.text, l.source, nullptr, nullptr);
+    }
+}
+
 bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg)
 {
     if (!g_Enable || g_OllamaDeliveringReply)
@@ -293,6 +324,22 @@ bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uin
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     if (sourceLocal == SRC_UNDEFINED_LOCAL)
         return true;   // emotes and the like: nothing answers them here
+
+    // A bot speaks from its own map thread. Finding who answers scans
+    // players and builds prompts from live world state: do that on the world
+    // tick instead, a moment later, where every map is at rest. A client's
+    // line already arrives on the world thread.
+    if (player && OllamaIsBotPlayer(player) &&
+        (sourceLocal == SRC_SAY_LOCAL || sourceLocal == SRC_YELL_LOCAL))
+    {
+        if (msg.empty() || lang == LANG_ADDON)
+            return true;
+        std::lock_guard<std::mutex> lock(g_botLinesMutex);
+        if (g_botLines.size() < 512)   // a flood of bot lines is dropped, not hoarded
+            g_botLines.push_back({ player->GetGUID().GetRawValue(), type, lang, msg, sourceLocal });
+        return true;
+    }
+
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
     return true;
 }
@@ -1735,9 +1782,9 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         if (!bot)
             continue;
 
-        // Everything below runs on the speaker's thread: the world thread for
-        // a client's line, its map thread for a bot's say or yell (candidates
-        // are then on that same map instance only). Prompt building reads
+        // Everything below runs on the world thread: a client's line arrives
+        // there, and a bot's say or yell is queued to it from its map thread
+        // (OllamaChat_UpdateBotLines). Prompt building reads
         // live world state, and the governor decides before we spend an LLM
         // call rather than after.
         // A line aimed at this bot is owed an answer, so it skips the pacing
