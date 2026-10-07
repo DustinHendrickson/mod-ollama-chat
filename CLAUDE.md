@@ -309,8 +309,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   an NPC that is further than 8 yd away reports "could not get to X: stopped
   N yd away" instead of acting from the yard. The old approach made one path
   attempt and called a timeout "close enough". `goto <name>` (errand kind
-  `Npc`, names indexed from creature spawns) talks to the NPC on arrival
-  through `AutopilotQuest_TalkTo`.
+  `Npc`, names indexed from creature spawns) talks to the NPC on arrival:
+  finished quests it takes are handed in (`TurnInFinishedQuests`, through
+  the reward handler) and every quest it offers that the core lets the bot
+  take is accepted (`TakeOfferedQuests`, `HandleQuestgiverAcceptQuestOpcode`).
+  Playerbots' `talk to quest giver` only lists offers to a master, so with
+  no master nothing was ever accepted; it is no longer used.
 - **Finding nothing is not the end of looking.** `goto hunt` with no known
   hunting ground, and a quest hunt with no known spawn left, explore:
   `ExploreNext` walks ~120 yd to walkable ground (`AutopilotRoute_WalkableNear`
