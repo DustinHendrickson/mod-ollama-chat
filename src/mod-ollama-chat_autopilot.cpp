@@ -2515,6 +2515,11 @@ namespace
     // tried once (full bags would leave it unlooted for good). True while busy.
     bool LootBodies(Player* bot, PlayerbotAI* ai, Online& ob)
     {
+        // A chest's loot window is open: opening a body now would close it
+        // with the contents still inside. The errand empties it first.
+        if (bot->GetLootGUID().IsGameObject())
+            return false;
+
         std::list<Creature*> bodies;
         LootableBodyCheck check{ bot, 25.0f };
         Acore::CreatureListSearcher<LootableBodyCheck> searcher(bot, bodies, check);

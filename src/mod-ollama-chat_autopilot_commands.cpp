@@ -1465,6 +1465,12 @@ namespace
         }
         if (dist > 3.0f)
         {
+            // Chosen from here on: the hunt keeps it until it is open or given up.
+            if (errand.objectGuid != guid)
+            {
+                errand.objectGuid  = guid;
+                errand.objectTries = 0;
+            }
             if (!AutopilotMove_IsMoving(ai) &&
                 !AutopilotMove_To(ai, go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), true) &&
                 errand.objectsGivenUp.size() < 32)
@@ -1559,6 +1565,15 @@ namespace
         if (bot->IsNonMeleeSpellCast(false))
             return u;   // opening something
 
+        // A loot window open on an object: empty it before anything else. An
+        // opened chest is no longer "ready", so the search below would not
+        // pick it again, and the bot walked off with the loot left inside.
+        if (bot->GetLootGUID().IsGameObject())
+        {
+            TakeOpenLoot(bot);
+            return u;
+        }
+
         Creature* creature = nullptr;
         float creatureDist = 0.0f;
         {
@@ -1594,6 +1609,15 @@ namespace
                               o->GetGUID().GetRawValue()) != errand.objectsGivenUp.end())
                     continue;
                 const float d = bot->GetDistance(o);
+                // The object already being worked on stays the choice: picking
+                // the nearest each visit turned the bot toward another crate
+                // halfway there, and it never reached either.
+                if (o->GetGUID().GetRawValue() == errand.objectGuid)
+                {
+                    object     = o;
+                    objectDist = d;
+                    break;
+                }
                 if (!object || d < objectDist)
                 {
                     object     = o;
