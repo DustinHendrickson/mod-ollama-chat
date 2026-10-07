@@ -918,3 +918,68 @@ bool AutopilotWorld_PreyNear(Player* bot, float range, AutopilotPlace& out)
     out.distance = bestDist;
     return true;
 }
+
+std::string AutopilotWorld_QuestsOnOffer(Player* bot, float range)
+{
+    struct Giver
+    {
+        float       distance = 0.0f;
+        uint32_t    entry    = 0;
+        std::string quests;
+        uint32_t    count    = 0;
+    };
+    std::vector<Giver> givers;
+    FactionTemplateEntry const* mine = OwnFaction(bot);
+    QuestRelations const* relations = sObjectMgr->GetCreatureQuestRelationMap();
+    if (!mine || !relations)
+        return "";
+
+    for (auto it = relations->begin(); it != relations->end();)
+    {
+        const uint32_t entry = it->first;
+        const auto     end   = relations->upper_bound(entry);
+
+        // The nearest spawn of this quest giver on the bot's map.
+        float nearest = range + 1.0f;
+        if (auto spawns = g_byEntry.find(entry); spawns != g_byEntry.end())
+            for (const SpawnAt& s : spawns->second)
+                if (s.map == bot->GetMapId())
+                    nearest = std::min(nearest, bot->GetDistance(s.x, s.y, s.z));
+
+        CreatureTemplate const* t = nearest <= range ? sObjectMgr->GetCreatureTemplate(entry) : nullptr;
+        FactionTemplateEntry const* theirs = t ? sFactionTemplateStore.LookupEntry(t->faction) : nullptr;
+        if (theirs && !mine->IsHostileTo(*theirs) && !theirs->IsHostileTo(*mine))
+        {
+            Giver giver{ nearest, entry, {}, 0 };
+            for (auto q = it; q != end; ++q)
+            {
+                // The core's own test: level, class, race, earlier quests in
+                // the chain, not already taken or done.
+                Quest const* quest = sObjectMgr->GetQuestTemplate(q->second);
+                if (!quest || !bot->CanTakeQuest(quest, false))
+                    continue;
+                const int32 level = quest->GetQuestLevel() > 0 ? quest->GetQuestLevel() : int32(bot->GetLevel());
+                if (level + 5 < int32(bot->GetLevel()))
+                    continue;   // grey: next to nothing to gain
+                if (++giver.count <= 3)
+                    giver.quests += SafeFormat("{}[{}] {} (level {})", giver.quests.empty() ? "" : ", ",
+                                               quest->GetQuestId(), quest->GetTitle(), level);
+            }
+            if (giver.count)
+                givers.push_back(std::move(giver));
+        }
+        it = end;
+    }
+
+    std::sort(givers.begin(), givers.end(), [](const Giver& a, const Giver& b) { return a.distance < b.distance; });
+    std::string out;
+    for (size_t i = 0; i < givers.size() && i < 5; ++i)
+    {
+        const Giver& g = givers[i];
+        CreatureTemplate const* t = sObjectMgr->GetCreatureTemplate(g.entry);
+        out += SafeFormat("{}{} ({} yd): {}{}", out.empty() ? "" : "; ", t ? t->Name : std::string("?"),
+                          uint32_t(g.distance), g.quests,
+                          g.count > 3 ? SafeFormat(" and {} more", g.count - 3) : std::string());
+    }
+    return out;
+}

@@ -2608,6 +2608,11 @@ OllamaChat.Autopilot.Alert.CooldownMinutes = 30
 #        Default: 5
 OllamaChat.Autopilot.Alert.IdleMinutes = 5
 
+#    Two more alerts have no setting of their own. An invite waiting for the
+#    bot asks the model (again every 3 minutes while it waits; see Groups).
+#    An empty quest log while quests are on offer nearby asks it too (on
+#    CooldownMinutes; looked for at most every 5 minutes).
+
 # ----------------------------------------------
 # Diary and performance
 # ----------------------------------------------

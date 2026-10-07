@@ -1476,6 +1476,23 @@ namespace
             kind   = "idle";
         }
 
+        // An empty quest log with quests to take nearby: a player would go
+        // and get them. Looked up at most every five minutes (it walks the
+        // quest-starter table).
+        if (!kind && ready("quests"))
+        {
+            bool empty = true;
+            for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE && empty; ++slot)
+                empty = bot->GetQuestSlotQuestId(slot) == 0;
+            if (empty && !AutopilotWorld_QuestsOnOffer(bot, 1200.0f).empty())
+            {
+                reason = "their quest log is empty, and there are quests on offer nearby";
+                kind   = "quests";
+            }
+            else
+                ob.alertCooldown["quests"] = now + 300;
+        }
+
         if (!kind)
             return;
 
@@ -1874,6 +1891,13 @@ namespace
             ctx.state += " They could craft now, from their own bags (craft <name> [count|all]): " + craft + ".";
         if (const std::string around = AutopilotCommands_DescribeSurroundings(bot); !around.empty())
             ctx.state += "\nAround them: " + around + ".";
+        // What a player sees as "!" over heads: the quests they could take.
+        if (const std::string offers = AutopilotWorld_QuestsOnOffer(bot, 1200.0f); !offers.empty())
+            ctx.state += "\nQuests on offer nearby that they could take now (goto <name> walks up and takes "
+                         "them): " + offers + ".";
+        else
+            ctx.state += "\nNo quests on offer nearby for their level: the zones for their level (listed) "
+                         "have quest givers with more.";
         if (g_cfg.groups)
         {
             ctx.state += "\nTheir group: " + DescribeGroup(bot, ai);

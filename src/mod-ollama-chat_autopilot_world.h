@@ -120,4 +120,10 @@ std::string AutopilotWorld_DescribeServices(Player* bot);
 // near the bot's, e.g. "Westfall (10), Redridge Mountains (15)".
 std::string AutopilotWorld_ZonesForLevel(Player* bot);
 
+// For the prompt: quests the bot could take now from friendly quest givers on
+// its map within `range` yards, nearest giver first, grey quests left out:
+// "Marshal McBride (34 yd): [783] A Threat Within (level 1); ...". Empty for
+// none. Walks the quest-starter table: for prompts, not per tick.
+std::string AutopilotWorld_QuestsOnOffer(Player* bot, float range);
+
 #endif // MOD_OLLAMA_CHAT_AUTOPILOT_WORLD_H
