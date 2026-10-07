@@ -391,7 +391,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   in combat. Kill-credit objectives also hunt the creatures whose
   `KillCredit` gives the required entry (`AutopilotWorld_CreditedBy`). A
   target with no path to it goes into `unreachable` (creatures) or
-  `objectsGivenUp` (objects) for the rest of the hunt. It ends when the
+  `objectsGivenUp` (objects) for the rest of the hunt. A needed creature
+  that is friendly is a "speak to" objective: the bot opens its gossip
+  (`HandleGossipHelloOpcode`) and picks its plain options one a visit
+  (`HandleGossipSelectOptionOpcode`; type 1 or a script action id of
+  `GOSSIP_OPTION_MAX` and up, never coded, never with a money box, never a
+  service), at most four (`talkTries`). It ends when the
   objective is done or after `QuestHuntMinutes`, and the target is cleared.
   Grind on its own takes the *nearest* mob; quest need only counts for its
   out-of-range picks while rpg is active, which autopilot turns off.
@@ -438,7 +443,8 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `spellFocus.dist`) run before every cast. A craft counts only when the
   item count in the bags rises (`craftCasting`/`craftHad`).
 - **A player's choices are the model's.** Quest rewards (`quest <id> reward
-  <n>`, taken with `RewardQuest` before playerbots' turn-in, which would pick
+  <n>`, taken through `HandleQuestgiverChooseRewardOpcode` so quest scripts
+  run, `RewardQuest` only if the handler refuses, before playerbots' turn-in, which would pick
   by stat weights), professions (`goto profession <name>`; a trainer's skill
   is read from what it teaches, and a bare `goto profession` asks which),
   talent specs (`talents spec <name>`; a bare `talents` only prints help).
@@ -500,6 +506,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   rotation. Snapshots are staggered by guid hash, and DB writes are batched
   per flush. The service index (`AutopilotWorld_Build`) is built once at
   startup from `GetAllCreatureData`; never walk spawns per order.
+- **Plans carry a sequence number** (`Online::planSeq`, `AutopilotDecision::seq`).
+  A reply that arrives after its plan timed out, with a newer plan sent
+  since, is dropped; it must not clear the newer plan's `planPending`.
 - **The planner's prompt template is filled by literal `{name}`
   replacement, not fmt**, so JSON braces in it need no escaping. Free text
   from the model has its braces neutralised before it is fed back in.
