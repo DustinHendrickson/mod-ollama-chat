@@ -1391,6 +1391,40 @@ namespace
         bot->GetSession()->HandleGameobjectReportUse(report);
     }
 
+    // Open a chest-like object the way the client does: by casting an opening
+    // spell at it. The "use" packet does nothing for a chest (GameObject::Use
+    // has no case for it); a player's click casts the Opening spell matching
+    // the lock. Spells the bot knows come first, then the generic Opening
+    // spells every character has. The core's own checks (CanOpenLock: lock
+    // type, skill, key) decide; the first cast it accepts is the one. True
+    // once a cast is under way (it ends with the loot window open).
+    bool CastOpening(Player* bot, GameObject* go)
+    {
+        auto opens = [](SpellInfo const* info)
+        {
+            if (!info)
+                return false;
+            for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                if (info->Effects[i].Effect == SPELL_EFFECT_OPEN_LOCK)
+                    return true;
+            return false;
+        };
+        std::vector<uint32_t> candidates;
+        for (auto const& [spellId, spell] : bot->GetSpellMap())
+            if (spell && spell->State != PLAYERSPELL_REMOVED && spell->Active &&
+                opens(sSpellMgr->GetSpellInfo(spellId)))
+                candidates.push_back(spellId);
+        for (uint32_t generic : { 3365u, 6477u, 6478u, 21651u, 22810u })   // "Opening"
+            if (std::find(candidates.begin(), candidates.end(), generic) == candidates.end() &&
+                opens(sSpellMgr->GetSpellInfo(generic)))
+                candidates.push_back(generic);
+
+        for (uint32_t spellId : candidates)
+            if (bot->CastSpell(go, spellId, false) == SPELL_CAST_OK)
+                return true;
+        return false;
+    }
+
     // With an object's loot window open: take the coin and every item, close it.
     void TakeOpenLoot(Player* bot)
     {
@@ -1454,6 +1488,10 @@ namespace
             errand.objectTries = 1;
         }
         AutopilotMove_Stop(ai);
+        // A chest opens by a spell cast at it, as the client does; anything
+        // else is used. Playerbots' "open loot" is the last resort.
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST && CastOpening(bot, go))
+            return true;
         if (!AutopilotBot_OpenObject(ai, guid))
             UseObject(bot, go);
         return true;

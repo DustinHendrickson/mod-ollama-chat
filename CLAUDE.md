@@ -392,10 +392,15 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   `AutopilotWorld_Build`, which also indexes spawn points of quest
   gameobjects only). An object to use is used through
   `HandleGameObjectUseOpcode` + `HandleGameobjectReportUse`, like the client.
-  An object holding an item is opened now by `WorkObject`. It points
-  playerbots' `"loot target"` at it and runs `DoSpecificAction("open
-  loot")`, which picks the gathering spell, key or opening spell for the
-  lock. A lockless object is used through the client's packets instead.
+  An object holding an item is opened now by `WorkObject`. A chest is
+  opened the way the client does it, by casting an opening spell at it
+  (`CastOpening`: spells the bot knows with `SPELL_EFFECT_OPEN_LOCK`, then
+  the generic "Opening" spells; the core's `CanOpenLock` picks). The use
+  packet does nothing for a chest: `GameObject::Use` has no case for that
+  type, which is why quest crates such as Milly's Harvest were walked to and
+  never opened. Otherwise it points playerbots' `"loot target"` at it and
+  runs `DoSpecificAction("open loot")`, and a lockless non-chest is used
+  through the client's packets.
   Once `GetLootGUID()` is the object, `TakeOpenLoot` takes the coin and
   items and releases. Three failed tries put the object in
   `objectsGivenUp`. `open <object>` works the same way. Do not just add
