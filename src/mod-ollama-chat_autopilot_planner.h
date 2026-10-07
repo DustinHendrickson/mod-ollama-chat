@@ -70,6 +70,7 @@ struct AutopilotPromptContext
 struct AutopilotDecision
 {
     uint64_t    botGuid = 0;
+    uint32_t    seq     = 0;   // which submitted plan this answers
     bool        ok      = false;
     std::string error;
 
@@ -111,7 +112,9 @@ bool AutopilotPlanner_CanSubmit(bool foreground);
 
 // Spends a token and queues the job. False when the dispatcher refused it
 // (queue past half depth); the token is refunded in that case.
-bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt);
+// `seq` comes back on the decision, so a reply that arrives after its plan
+// timed out can be told from the answer to the plan sent since.
+bool AutopilotPlanner_Submit(uint64_t botGuid, uint32_t seq, std::string prompt);
 
 std::vector<AutopilotDecision> AutopilotPlanner_Drain();
 

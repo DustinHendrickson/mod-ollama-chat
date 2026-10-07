@@ -250,6 +250,7 @@ namespace
 
         // Planning.
         bool     planPending     = false;
+        uint32_t planSeq         = 0;       // the plan in flight; older replies are stale
         uint32_t planSubmittedAt = 0;
         bool     urgentPlan      = false;
         bool     quickPlan       = false;   // an errand ended: the bot is waiting for orders
@@ -285,6 +286,7 @@ namespace
         std::deque<uint32_t>     deathTimes;
         std::unordered_map<std::string, uint32_t> alertCooldown;   // kind -> may fire again at
         std::string              lastAlert;
+        std::string              lastAlertKind;     // "bags", "invite"...: to tell when it is over
         uint32_t                 lastBusyAt  = 0;   // last seen on a trip, fighting or moving
         uint32_t                 lastAlertAt = 0;
 
@@ -1229,7 +1231,17 @@ namespace
         }
 
         std::string note;
-        if (AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note) == AutopilotTripState::Failed)
+        const AutopilotTripState state = AutopilotTravel_Update(bot, ai, ob.corpseTrip, now, note);
+        if (state != AutopilotTripState::Going && state != AutopilotTripState::Failed)
+        {
+            // "Arrived" over or under the body (a canyon, deep water) but not
+            // within reach: walking there again would arrive again at once.
+            // Wait for the spirit healer fallback instead of churning.
+            ob.corpseTrip    = AutopilotTrip();
+            ob.corpseRetryAt = now + 60;
+            return;
+        }
+        if (state == AutopilotTripState::Failed)
         {
             // Stuck on the way: try again from wherever the ghost stands, in a
             // little while rather than every sweep.
@@ -1425,6 +1437,28 @@ namespace
         ob.prevInFlight   = sit.inFlight;
     }
 
+    // Whether what an alert said is still so: bags sold, gear repaired, an
+    // invite answered -- the prompt stops worrying about it then.
+    bool AlertStillTrue(Player* bot, const Online& ob, const std::string& kind)
+    {
+        if (kind == "invite")
+            return AutopilotGroup_Inviter(bot) != nullptr;
+        if (kind == "bags")
+            return bot->GetFreeInventorySpace() < std::max<uint32_t>(g_cfg.alertFreeBagSlots, 1);
+        if (kind == "durability")
+            return Progress_DurabilityPct(bot) < std::max<uint32_t>(g_cfg.alertDurabilityPct, 1);
+        if (kind == "idle")
+            return !ob.errand.active;
+        if (kind == "quests")
+        {
+            for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                if (bot->GetQuestSlotQuestId(slot))
+                    return false;
+            return true;
+        }
+        return true;   // deaths: a fact of the last while
+    }
+
     // Self-preservation facts the model should hear about now rather than at
     // its next scheduled look: dying again and again, gear falling apart,
     // full bags. Code never acts on them; it asks the model early and tells
@@ -1508,8 +1542,9 @@ namespace
         const std::string_view k(kind);
         ob.alertCooldown[kind] = now + (k == "invite" ? 3 : k == "idle" ? g_cfg.alertIdleMinutes
                                                                        : g_cfg.alertCooldownMinutes) * 60;
-        ob.lastAlert   = reason;
-        ob.lastAlertAt = now;
+        ob.lastAlert     = reason;
+        ob.lastAlertKind = kind;
+        ob.lastAlertAt   = now;
         ob.urgentPlan  = true;
         ++g_statAlerts;
         RecordEvent(guid, "alert", reason);
@@ -1845,7 +1880,7 @@ namespace
 
         const Situation sit = Classify(bot);
         ctx.concerns = sit.Limits();
-        if (!ob.lastAlert.empty() && now - ob.lastAlertAt < kHour)
+        if (!ob.lastAlert.empty() && now - ob.lastAlertAt < kHour && AlertStillTrue(bot, ob, ob.lastAlertKind))
             ctx.concerns += SafeFormat("{}Worry ({}): {}.", ctx.concerns.empty() ? "" : "\n",
                                        Ago(ob.lastAlertAt, now), ob.lastAlert);
         if (ob.reviveHeld)
@@ -1958,10 +1993,11 @@ namespace
 
         std::string prompt = AutopilotPlanner_BuildPrompt(BuildPromptContext(bot, ai, row, ob, ob.tier, now),
                                                           g_cfg.promptTemplate);
-        if (!AutopilotPlanner_Submit(guid, std::move(prompt)))
+        if (!AutopilotPlanner_Submit(guid, ob.planSeq + 1, std::move(prompt)))
             return false;
 
         ob.planPending     = true;
+        ++ob.planSeq;
         ob.planSubmittedAt = now;
         ob.urgentPlan      = false;
         ob.quickPlan       = false;
@@ -1988,6 +2024,10 @@ namespace
         Online* ob = onIt == g_online.end() ? nullptr : &onIt->second;
         if (ob)
         {
+            // A reply to a plan that timed out, after another was sent: the
+            // newer one is still pending, and this one is out of date.
+            if (d.seq && d.seq != ob->planSeq)
+                return;
             ob->planPending = false;
         }
         if (rowIt == g_rows.end() || !rowIt->second.enrolled)
@@ -2081,6 +2121,16 @@ namespace
         // allowed to give them; otherwise they are recorded as not carried out
         // so the next prompt says so.
         std::vector<std::string> results;
+
+        // "Carry on" ([]): the results shown are an earlier plan's; say so,
+        // or they read as what the latest orders did.
+        static const std::string kEarlier = "(the last plan gave no new orders; these are from an earlier one)";
+        if (d.commands.empty() && !row.lastResults.empty() && row.lastResults.front() != kEarlier)
+        {
+            row.lastResults.insert(row.lastResults.begin(), kEarlier);
+            row.dirty = true;
+        }
+
         if (ob && bot && ai && g_cfg.control)
         {
             const Situation sit = Classify(bot);

@@ -84,6 +84,7 @@ struct AutopilotErrand
     float               exploreAngle = 0.0f;
     std::vector<uint64_t> objectsGivenUp;   // objects that would not open: skipped by the hunt
     std::vector<uint64_t> unreachable;      // creatures with no path to them: skipped by the hunt
+    uint8_t               talkTries = 0;    // gossip options tried on a "speak to" objective
 };
 
 void AutopilotCommands_Load();

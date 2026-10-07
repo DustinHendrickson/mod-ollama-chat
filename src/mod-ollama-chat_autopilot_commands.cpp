@@ -233,6 +233,18 @@ namespace
         return learned;
     }
 
+    // Turning in with a reward the way the client's reward button does, so
+    // the quest's scripts run (on-reward events, follow-up offers). Straight
+    // to RewardQuest only if the handler would not (a step out of reach).
+    void ChooseReward(Player* bot, Creature* npc, Quest const* quest, uint32_t index)
+    {
+        WorldPacket packet(CMSG_QUESTGIVER_CHOOSE_REWARD, 16);
+        packet << npc->GetGUID() << quest->GetQuestId() << index;
+        bot->GetSession()->HandleQuestgiverChooseRewardOpcode(packet);
+        if (!bot->GetQuestRewardStatus(quest->GetQuestId()) && bot->CanRewardQuest(quest, index, false))
+            bot->RewardQuest(quest, index, npc, true);
+    }
+
     uint16 QuestSlot(Player* bot, uint32_t questId)
     {
         for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
@@ -1539,6 +1551,71 @@ namespace
             return u;
         }
 
+        // "Speak to" objectives: a friendly creature the quest counts. Talk as
+        // a player does: open its gossip and pick its plain options, one a
+        // visit, a few tries at most. Never one that costs money or a code.
+        if (!needs.kill.empty())
+        {
+            Creature* friendly = nullptr;
+            std::list<Creature*> nearby;
+            bot->GetCreatureListWithEntryInGrid(nearby, needs.kill, 50.0f);
+            for (Creature* c : nearby)
+                if (c && c->IsAlive() && !bot->IsValidAttackTarget(c) && bot->IsWithinLOSInMap(c) &&
+                    std::find(errand.unreachable.begin(), errand.unreachable.end(), c->GetGUID().GetRawValue()) ==
+                        errand.unreachable.end() &&
+                    (!friendly || bot->GetDistance(c) < bot->GetDistance(friendly)))
+                    friendly = c;
+            if (friendly)
+            {
+                AutopilotBot_ClearQuestTarget(ai);
+                const uint64_t guid = friendly->GetGUID().GetRawValue();
+                if (bot->GetDistance(friendly) > 4.0f)
+                {
+                    if (!AutopilotMove_IsMoving(ai) &&
+                        !AutopilotMove_To(ai, friendly->GetPositionX(), friendly->GetPositionY(),
+                                          friendly->GetPositionZ(), true) &&
+                        errand.unreachable.size() < 32)
+                        errand.unreachable.push_back(guid);
+                    return u;
+                }
+                if (now - errand.lastUseAt < 3)
+                    return u;
+                errand.lastUseAt = now;
+                if (errand.talkTries >= 4)
+                {
+                    if (errand.unreachable.size() < 32)
+                        errand.unreachable.push_back(guid);   // talked it out; nothing counted
+                    errand.talkTries = 0;
+                    return u;
+                }
+                AutopilotMove_Stop(ai);
+                WorldPacket hello(CMSG_GOSSIP_HELLO, 8);
+                hello << friendly->GetGUID();
+                bot->GetSession()->HandleGossipHelloOpcode(hello);
+
+                GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
+                uint8_t seen = 0;
+                for (auto const& [index, item] : menu.GetMenuItems())
+                {
+                    // Database options are type 1; scripted ones carry their
+                    // action id (1000 and up). Services (vendor, trainer, dual
+                    // spec...) sit between, and are not talking.
+                    const bool talk = item.OptionType == GOSSIP_OPTION_GOSSIP || item.OptionType >= GOSSIP_OPTION_MAX;
+                    if (!talk || item.IsCoded || item.BoxMoney)
+                        continue;
+                    if (seen++ != errand.talkTries)
+                        continue;
+                    WorldPacket select(CMSG_GOSSIP_SELECT_OPTION, 16);
+                    select << friendly->GetGUID() << menu.GetMenuId() << index;
+                    bot->GetSession()->HandleGossipSelectOptionOpcode(select);
+                    break;
+                }
+                bot->PlayerTalkClass->SendCloseGossip();
+                ++errand.talkTries;
+                return u;
+            }
+        }
+
         // Nothing in sight: on to the next place they are.
         AutopilotBot_ClearQuestTarget(ai);
         AutopilotPlace place;
@@ -1936,7 +2013,7 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                 const uint32_t index = errand.rewardChoice - 1u;
                 if (bot->CanRewardQuest(quest, index, false))
                 {
-                    bot->RewardQuest(quest, index, npc, true);
+                    ChooseReward(bot, npc, quest, index);
                     if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[index]))
                         chose = ", taking " + item->Name1;
                 }
@@ -1963,7 +2040,7 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
                     }
                 }
                 if (bot->CanRewardQuest(quest, choice, false))
-                    bot->RewardQuest(quest, choice, npc, true);
+                    ChooseReward(bot, npc, quest, choice);
             }
 
             u.note = bot->GetQuestRewardStatus(errand.questId)

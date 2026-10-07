@@ -532,6 +532,14 @@ namespace
         if (d <= leg.radius)
             return LegResult::Done;
 
+        // However it seems to go, no single walk takes this long: a route
+        // that keeps "progressing" round in circles has to end some time.
+        if (trip.legStartedAt && now - trip.legStartedAt > 30 * 60)
+        {
+            note = "walked for half an hour without getting there";
+            return LegResult::Fail;
+        }
+
         // Stuck: no real progress for a while. Reroute twice, then give up.
         // On a route, progress is reaching its points: a road around a mountain
         // range carries the bot away from the destination for minutes, and

@@ -257,7 +257,7 @@ namespace
         return out;
     }
 
-    void RunPlan(uint64_t botGuid, const std::string& prompt)
+    void RunPlan(uint64_t botGuid, uint32_t seq, const std::string& prompt)
     {
         OllamaApiResult api = QueryOllama(prompt, OllamaRequestKind::Autopilot);
 
@@ -272,6 +272,7 @@ namespace
             decision = AutopilotPlanner_Parse(botGuid, api.text);
         }
         decision.latencyMs = api.latencyMs;
+        decision.seq = seq;
         RecordReply(botGuid, api.text, decision.ok ? std::string() : decision.error, api.latencyMs);
 
         if (decision.ok)
@@ -381,7 +382,7 @@ bool AutopilotPlanner_CanSubmit(bool foreground)
     return g_tokens >= 1.0f + reserve;
 }
 
-bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
+bool AutopilotPlanner_Submit(uint64_t botGuid, uint32_t seq, std::string prompt)
 {
     {
         std::lock_guard<std::mutex> lock(g_budgetMutex);
@@ -394,7 +395,7 @@ bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
     RecordPrompt(botGuid, prompt);
     ++g_inFlight;
     const bool queued = OllamaDispatch_SubmitJob(
-        [botGuid, prompt = std::move(prompt)]()
+        [botGuid, seq, prompt = std::move(prompt)]()
         {
             // Release the slot however this ends. Without it, an exception
             // (the dispatcher's worker catches and logs it) would leak a slot,
@@ -402,12 +403,13 @@ bool AutopilotPlanner_Submit(uint64_t botGuid, std::string prompt)
             struct Release { ~Release() { --g_inFlight; } } release;
             try
             {
-                RunPlan(botGuid, prompt);
+                RunPlan(botGuid, seq, prompt);
             }
             catch (const std::exception& e)
             {
                 AutopilotDecision failed;
                 failed.botGuid = botGuid;
+                failed.seq     = seq;
                 failed.error   = std::string("exception: ") + e.what();
                 RecordReply(botGuid, std::string(), failed.error, 0);
                 ++g_failed;
