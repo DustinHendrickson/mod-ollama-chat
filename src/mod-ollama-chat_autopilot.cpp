@@ -35,6 +35,7 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "QuestDef.h"
+#include "Trainer.h"
 #include "WorldSession.h"
 #include "Corpse.h"
 #include "Opcodes.h"
@@ -1912,6 +1913,40 @@ namespace
         if (!cur.professions.empty())
             ctx.state += " Professions: " + Progress_DescribeProfessions(cur.professions) + ".";
         ctx.state += SafeFormat(" Free primary profession slots: {}.", bot->GetFreePrimaryProfessionPoints());
+
+        // New spells and ranks waiting at their class trainer: nothing hands
+        // them out (no free spells at level up), so the model has to know.
+        {
+            auto money = [](uint64_t c)
+            {
+                std::string out;
+                if (c >= 10000) out += SafeFormat("{}g ", c / 10000);
+                if (c % 10000 >= 100) out += SafeFormat("{}s ", (c % 10000) / 100);
+                if (c % 100 || out.empty()) out += SafeFormat("{}c ", c % 100);
+                out.pop_back();
+                return out;
+            };
+            AutopilotPlace trainerPlace;
+            if (AutopilotWorld_NearestService(bot, AutopilotService::Trainer, trainerPlace))
+                if (Trainer::Trainer* trainer = sObjectMgr->GetTrainer(trainerPlace.entry))
+                {
+                    uint32_t count = 0;
+                    uint64_t cost  = 0;
+                    for (const Trainer::Spell& spell : trainer->GetSpells())
+                        if (trainer->CanTeachSpell(bot, &spell))
+                        {
+                            ++count;
+                            cost += spell.MoneyCost;
+                        }
+                    if (count)
+                        ctx.state += SafeFormat(" Their class trainer ({}) has {} new spell{} or rank{} for them, "
+                                                "{} in all (goto trainer learns what they can afford; they "
+                                                "have {}).",
+                                                trainerPlace.name, count, count == 1 ? "" : "s",
+                                                count == 1 ? "" : "s", money(cost),
+                                                money(bot->GetMoney()));
+                }
+        }
         if (bot->GetLevel() >= 10)
         {
             std::string specs;
