@@ -70,7 +70,8 @@ namespace
         "is the character's choice: Alchemy, Blacksmithing, Enchanting, Engineering, Herbalism, Inscription, "
         "Jewelcrafting, Leatherworking, Mining, Skinning, Tailoring; Cooking, First Aid, Fishing\n"
         "- goto <name of a person> : walk up to that NPC (\"goto Deputy Willem\") and talk to them, taking the "
-        "quests they offer and handing in finished ones\n"
+        "quests they offer and handing in finished ones; or to a player by name (\"goto Bob\": where they "
+        "stand now), when someone asks them to come\n"
         "- goto zone <zone name> : travel to a zone anywhere in the world; they walk, take boats, zeppelins and "
         "portals, and fly between flight points they have learned\n"
         "- goto hunt : go to the nearest group of monsters of their level (grind only fights what is right "
@@ -1074,6 +1075,31 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
                     AutopilotCommands_StopErrand(ai, errand);
                 return StartErrand(bot, errand, AutopilotErrandKind::Npc, 0, npc.entry, 0, npc, 5.0f, npc.name, now);
             }
+
+            // "goto Bob": a player, when no zone or NPC has that name (someone
+            // asked them to come). Where they stand now; the walk does not
+            // chase them if they move on. A hidden game master is nobody.
+            std::string playerName = name;
+            if (!StartsWithWord(what, "zone") && name.find(' ') == std::string::npos &&
+                normalizePlayerName(playerName))
+                if (Player* p = ObjectAccessor::FindPlayerByName(playerName, true);
+                    p && p != bot && p->IsInWorld() && !(p->IsGameMaster() && !p->isGMVisible()))
+                {
+                    if (p->GetTeamId() != bot->GetTeamId())
+                        return p->GetName() + " is of the other faction";
+                    if (p->GetMap()->Instanceable() && p->GetMap() != bot->GetMap())
+                        return p->GetName() + " is inside a dungeon or battleground";
+                    AutopilotPlace place;
+                    place.map  = p->GetMapId();
+                    place.x    = p->GetPositionX();
+                    place.y    = p->GetPositionY();
+                    place.z    = p->GetPositionZ();
+                    place.name = p->GetName();
+                    if (errand.active)
+                        AutopilotCommands_StopErrand(ai, errand);
+                    return StartErrand(bot, errand, AutopilotErrandKind::Place, 0, 0, 0, place, 5.0f,
+                                       "where " + p->GetName() + " is", now);
+                }
             return "unknown zone, place or person";
         }
         if (zoneId == bot->GetZoneId())
@@ -1910,7 +1936,7 @@ std::string AutopilotCommands_DescribeCraftable(Player* bot)
     return out;
 }
 
-std::string AutopilotCommands_DescribeSurroundings(Player* bot)
+std::string AutopilotCommands_DescribeSurroundings(Player* bot, bool forChat)
 {
     std::vector<std::string> parts;
 
@@ -1930,9 +1956,10 @@ std::string AutopilotCommands_DescribeSurroundings(Player* bot)
                 ++skin;
         }
         if (loot)
-            parts.push_back(SafeFormat("{} bod{} to loot (the loot strategy takes it)", loot, loot == 1 ? "y" : "ies"));
+            parts.push_back(SafeFormat(forChat ? "{} bod{} to loot" : "{} bod{} to loot (the loot strategy takes it)",
+                                       loot, loot == 1 ? "y" : "ies"));
         if (skin)
-            parts.push_back(SafeFormat("{} bod{} to skin (loot strategy, with a skinning knife)", skin,
+            parts.push_back(SafeFormat(forChat ? "{} bod{} to skin" : "{} bod{} to skin (loot strategy, with a skinning knife)", skin,
                                        skin == 1 ? "y" : "ies"));
     }
 
@@ -1990,7 +2017,10 @@ std::string AutopilotCommands_DescribeSurroundings(Player* bot)
     }
     std::vector<std::pair<float, std::string>> objects;
     for (auto const& [name, s] : seen)
-        objects.emplace_back(s.nearest, SafeFormat("{}{} ({:.0f} yd, {})", name, s.count > 1 ? SafeFormat(" x{}", s.count)
+        // For chat, plain words: no strategy names or order syntax to recite.
+        objects.emplace_back(s.nearest, forChat
+            ? SafeFormat("{}{} ({:.0f} yd)", name, s.count > 1 ? SafeFormat(" x{}", s.count) : std::string(), s.nearest)
+            : SafeFormat("{}{} ({:.0f} yd, {})", name, s.count > 1 ? SafeFormat(" x{}", s.count)
                                                                                          : std::string(),
                                                    s.nearest, s.note));
     std::sort(objects.begin(), objects.end());

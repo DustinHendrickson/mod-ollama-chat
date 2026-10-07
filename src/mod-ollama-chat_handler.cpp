@@ -1804,6 +1804,22 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         if (prompt.empty())
             continue;
 
+        // A real player talking to an autopilot bot may be asking it to do
+        // something. The chat model tags that; autopilot's planner decides
+        // what the bot does about it (or must do it, in obey mode).
+        const int requestMode = (directAddress && !senderIsBot) ? Autopilot_RequestMode(bot, player) : 0;
+        if (requestMode)
+            prompt += SafeFormat(
+                "\nIf {0} is asking you to do something out in the world (gather or mine something, open or use "
+                "something, go somewhere or come to them, hunt or fight something, take or hand in a quest, group "
+                "up), put one tag at the very end of your reply: [request: what they want, in a few plain words]. "
+                "The tag is not spoken aloud. Ordinary talk gets no tag. {1}\n",
+                player->GetName(),
+                requestMode == 2 ? "You answer to " + player->GetName() +
+                                       ": agree to what they ask, if it is something you can do out in the world."
+                                 : std::string("Agree or decline as your character would; what you actually do "
+                                               "is decided separately."));
+
         OllamaChatRequest request;
         request.botGuid     = bot->GetGUID().GetRawValue();
         request.targetGuid  = senderGuid;
@@ -1820,6 +1836,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                            ? OllamaRequestKind::RoleplayReply
                            : OllamaRequestKind::ChatReply;
         request.triggerBotReplies = (sourceLocal != SRC_WHISPER_LOCAL);
+        request.autopilotRequests = requestMode != 0;
         request.recordHistory     = !senderIsBot;
         request.updateSentiment   = !senderIsBot && g_EnableSentimentTracking;
 

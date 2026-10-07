@@ -75,6 +75,18 @@ bool Autopilot_MonitorCommand(Player* gm, const std::string& sub, const std::str
 // autopilot mutex and only reads.
 std::string Autopilot_ChatContext(Player* bot);
 
+// How a real player's request through chat is taken by this bot: 0 not at
+// all (not on autopilot, feature off, a bot asking), 1 the character decides,
+// 2 the character obeys (PlayerRequests = 2 and the player's account level
+// is at least PlayerRequests.ObeySecurity). World thread.
+int Autopilot_RequestMode(Player* bot, Player* player);
+
+// The chat model read a request in a player's line ("go pick that
+// Silverleaf"): keep it for the planner and ask it soon. World thread
+// (dispatcher delivery).
+void Autopilot_NotePlayerRequest(uint64_t botGuid, uint64_t playerGuid, const std::string& what,
+                                 const std::string& words);
+
 // A whisper between two players, either of them perhaps an autopilot bot:
 // kept for the bot's prompt, and a reason to ask the model soon when it is
 // about grouping or answers the bot. Any thread; takes the autopilot mutex.

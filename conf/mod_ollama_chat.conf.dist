@@ -2231,6 +2231,37 @@ OllamaChat.Autopilot.Control = 1
 #        Default: 1
 OllamaChat.Autopilot.Groups = 1
 
+#    OllamaChat.Autopilot.PlayerRequests
+#        Real players can ask an autopilot bot to do things by talking to it
+#        (whisper, or speak to it by name or in its small group): "go pick
+#        that Silverleaf", "mine that copper", "open the crate", "come here",
+#        "help me kill the wolves", "group up". The chat model answers as
+#        usual and also marks what was asked; the request is shown to the
+#        autopilot planner, which is asked again within seconds and turns it
+#        into orders (open <node>, goto <you>, quest <id>, group invite...).
+#        Every order still goes through DeniedCommands and NoHandouts.
+#          0  off: chat never affects what the bot does
+#          1  the character decides: it may agree or decline, in character,
+#             weighing it against its own plans (default)
+#          2  obey: requests from accounts at or above ObeySecurity are
+#             carried out ahead of the bot's own plans; anyone below is
+#             treated as in 1
+#        Needs OllamaChat.Enable (the chat side) and Llm.Enable.
+#        Default: 1
+OllamaChat.Autopilot.PlayerRequests = 1
+
+#    OllamaChat.Autopilot.PlayerRequests.ObeySecurity
+#        With PlayerRequests = 2: the lowest account security level whose
+#        requests are obeyed: 0 every player, 1 moderators, 2 game masters,
+#        3 administrators.
+#        At 0, any player can command any autopilot bot, someone's alt
+#        included, within what its orders allow: selling its things,
+#        abandoning quests, leaving a group, travelling across the world.
+#        Denied orders stay denied. On a public realm, use 2 or 3; 0 suits
+#        a private server or a selfbot setup.
+#        Default: 0
+OllamaChat.Autopilot.PlayerRequests.ObeySecurity = 0
+
 #    OllamaChat.Autopilot.WithRealPlayer
 #        In a group with a real player:
 #          0 = hands off entirely

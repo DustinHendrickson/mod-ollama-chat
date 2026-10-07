@@ -87,6 +87,11 @@ struct OllamaChatRequest
     bool triggerBotReplies = true;   // let other bots hear this line
     bool recordHistory     = false;  // append to conversation history
     bool updateSentiment   = false;  // run sentiment analysis on originMessage
+
+    // The prompt asked the model to tag a request ("[request: ...]") when the
+    // player asks an autopilot bot to do something. The tag is taken out of
+    // the line in the worker and handed to autopilot on delivery.
+    bool autopilotRequests = false;
 };
 
 // Submit a request. Returns false when the queue is at MaxQueueDepth, in which

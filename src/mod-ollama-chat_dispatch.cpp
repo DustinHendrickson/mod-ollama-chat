@@ -1,5 +1,6 @@
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_autopilot.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_expression.h"
 #include "mod-ollama-chat_governor.h"
@@ -26,6 +27,7 @@
 #include "PlayerbotMgr.h"
 
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -64,11 +66,51 @@ namespace
         std::function<void()> job;
     };
 
+    // Takes every request tag out of a reply -- "[request: ...]", and the
+    // variants models drift into: "(request: ...)", "[Request - ...]" -- and
+    // returns what the last one says, trimmed and short; "" when there is
+    // none. Every one is removed, so none is ever spoken.
+    std::string TakeRequestTags(std::string& text)
+    {
+        std::string found;
+        for (size_t from = 0;;)
+        {
+            std::string lower = text;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            const size_t word = lower.find("request", from);
+            if (word == std::string::npos)
+                break;
+            // An opening bracket right before the word (spaces allowed).
+            size_t open = word;
+            while (open > 0 && lower[open - 1] == ' ')
+                --open;
+            if (open == 0 || (lower[open - 1] != '[' && lower[open - 1] != '('))
+            {
+                from = word + 7;
+                continue;
+            }
+            --open;
+            const char closer = lower[open] == '[' ? ']' : ')';
+            const size_t close = text.find(closer, word);
+            std::string inside = text.substr(word + 7, close == std::string::npos ? std::string::npos
+                                                                                  : close - word - 7);
+            inside.erase(0, inside.find_first_not_of(" \t\r\n:-="));
+            inside.erase(inside.find_last_not_of(" \t\r\n") + 1);
+            if (!inside.empty())
+                found = inside;
+            text.erase(open, close == std::string::npos ? std::string::npos : close - open + 1);
+            from = open;
+        }
+        return Utf8Truncate(found, 160);
+    }
+
     struct Completion
     {
         OllamaChatRequest request;
         std::string       text;
         uint32_t          emoteId = 0;
+        std::string       requestWhat;   // a player's request the model read, for autopilot
         Clock::time_point deliverAt;
     };
 
@@ -168,8 +210,24 @@ namespace
             return;
         }
 
+        // "[request: pick the Silverleaf by the road]": strings only, here in
+        // the worker; autopilot gets it on delivery, on the world thread.
+        // A reasoning block can quote the instruction ("end with [request:"):
+        // only what comes after it counts.
+        std::string raw = task.request.autopilotRequests ? StripThinkTags(api.text) : api.text;
+        std::string requestWhat;
+        if (task.request.autopilotRequests)
+            requestWhat = TakeRequestTags(raw);
+
         uint32_t emoteId = 0;
-        std::string text = ProcessLlmResponse(api.text, task.request.botName, &emoteId);
+        std::string text = ProcessLlmResponse(raw, task.request.botName, &emoteId);
+        if (task.request.autopilotRequests)
+        {
+            // Anything cleanup turned back into a tag shape is never spoken either.
+            const std::string late = TakeRequestTags(text);
+            if (requestWhat.empty())
+                requestWhat = late;
+        }
 
         // Roleplay mode rejects lines carrying out-of-world vocabulary rather
         // than mangling the sentence around the offending word.
@@ -185,7 +243,8 @@ namespace
             text = std::move(filtered);
         }
 
-        if (text.empty())
+        // Nothing to say but a request was made: autopilot still hears it.
+        if (text.empty() && requestWhat.empty())
         {
             ++g_droppedEmpty;
             TraceLine(task.request, std::string(), "nothing usable after cleanup (see the raw reply)");
@@ -200,6 +259,7 @@ namespace
         completion.request = task.request;
         completion.text    = std::move(text);
         completion.emoteId = emoteId;
+        completion.requestWhat = std::move(requestWhat);
 
         uint32_t delayMs = 0;
         if (g_EnableTypingSimulation)
@@ -392,6 +452,14 @@ namespace
 
     void Deliver(const Completion& c, const OllamaWorldSnapshot& world)
     {
+        // A request read in the player's line goes to autopilot whether or not
+        // the spoken reply makes it out (cooldowns, nobody in range).
+        if (!c.requestWhat.empty())
+            Autopilot_NotePlayerRequest(c.request.botGuid, c.request.targetGuid, c.requestWhat,
+                                        c.request.originMessage);
+        if (c.text.empty())
+            return;   // the request was all there was
+
         Player* bot = ObjectAccessor::FindConnectedPlayer(ObjectGuid(c.request.botGuid));
         if (!bot || !bot->IsInWorld())
             return;

@@ -123,6 +123,8 @@ namespace
         uint32_t realGuildRefreshMinutes = 10;
         uint32_t planTimeoutSeconds      = 300;
         bool     groups                  = true;    // the model decides who the bot groups with
+        uint32_t playerRequests          = 1;       // 0 off, 1 the character decides, 2 obey
+        uint32_t obeySecurity            = 0;       // obey: lowest account level obeyed
         std::string promptTemplate;
 
         // Alerts: conditions that ask the model early. The model decides
@@ -302,6 +304,22 @@ namespace
         };
         std::deque<Whisper>      whispers;
         uint32_t                 whisperPlanAt = 0;   // a whisper may ask the model again from then
+
+        // What real players asked the character to do, through chat (the chat
+        // model tags a request; the planner turns it into orders, or not).
+        struct Request
+        {
+            std::string who;
+            std::string words;     // what they said
+            std::string what;      // the chat model's reading of it
+            uint32_t    at   = 0;
+            bool        obey = false;
+            uint32_t    id   = 0;
+        };
+        std::deque<Request>      requests;
+        bool                     requestPending = false;
+        uint32_t                 requestIds     = 0;   // last id given
+        uint32_t                 requestsAsked  = 0;   // highest id in the plan in flight
 
         // Recent history, for prompts without a DB round trip.
         bool                          historyRequested = false;
@@ -1887,6 +1905,14 @@ namespace
         if (ob.reviveHeld)
             ctx.concerns += SafeFormat("{}They are dead, running back to their body as a ghost.",
                                        ctx.concerns.empty() ? "" : "\n");
+        for (const Online::Request& r : ob.requests)
+            ctx.concerns += SafeFormat(
+                "{}{} asked them in chat {} ago: \"{}\" (meaning: {}). {}",
+                ctx.concerns.empty() ? "" : "\n", r.who, Span(now - r.at), r.words, r.what,
+                r.obey ? "They answer to this person: carry it out with your orders now, ahead of their own "
+                         "plans, if any order can do it; if none can, say why in reason."
+                       : "Whether to do it is the character's choice: if it suits them, do it with your "
+                         "orders now; if not, carry on.");
 
         ctx.decisions.assign(ob.decisions.begin(), ob.decisions.end());
         for (const ProgressEvent& e : ob.events)
@@ -2001,7 +2027,9 @@ namespace
         ob.tier = ComputeTier(bot);
         // A waiting invite needs an answer whoever is around.
         const bool invited = g_cfg.groups && bot->GetGroupInvite();
-        if (ob.tier == Tier::Dormant && !force && !invited)
+        // Someone asked the character for something: they are waiting.
+        const bool asked_ = ob.requestPending;
+        if (ob.tier == Tier::Dormant && !force && !invited && !asked_)
             return false;
 
         // The tier's interval is a minimum gap between plans for one bot; the
@@ -2015,7 +2043,8 @@ namespace
         // further away the tier's interval is the floor, to spare the budget.
         const bool asked = ob.tier == Tier::Foreground && row.planUntil && now >= row.planUntil &&
                            sinceLast >= kUrgentGapSeconds;
-        const bool allowed = force || sinceLast >= gap || asked || ((ob.urgentPlan || invited) && sinceLast >= kUrgentGapSeconds) ||
+        const bool allowed = force || sinceLast >= gap || asked || (asked_ && sinceLast >= 10) ||
+                             ((ob.urgentPlan || invited) && sinceLast >= kUrgentGapSeconds) ||
                              (ob.quickPlan && sinceLast >= g_cfg.quickReplanSeconds);
         if (!allowed)
             return false;
@@ -2032,6 +2061,7 @@ namespace
             return false;
 
         ob.planPending     = true;
+        ob.requestsAsked   = ob.requests.empty() ? ob.requestsAsked : ob.requests.back().id;
         ++ob.planSeq;
         ob.planSubmittedAt = now;
         ob.urgentPlan      = false;
@@ -2077,6 +2107,15 @@ namespace
         // unusable, so a model that keeps failing is not hammered.
         row.lastPlanAt = now;
         row.dirty      = true;
+
+        // A usable plan answers the requests its prompt showed; later ones
+        // wait. An unusable one leaves them for the next try.
+        if (ob && d.ok)
+        {
+            while (!ob->requests.empty() && ob->requests.front().id <= ob->requestsAsked)
+                ob->requests.pop_front();
+            ob->requestPending = !ob->requests.empty();
+        }
 
         if (!d.ok)
         {
@@ -2737,7 +2776,8 @@ namespace
         // In a group or a dungeon it is still asked -- only its combat orders
         // are carried out there. When it cannot be asked (no budget, nobody
         // around), the bot keeps doing what it was last told.
-        const bool due = !row.HasIdentity() || ob.urgentPlan || ob.quickPlan || now >= row.planUntil;
+        const bool due = !row.HasIdentity() || ob.urgentPlan || ob.quickPlan || ob.requestPending ||
+                         now >= row.planUntil;
         if (due)
             TrySubmitPlan(bot, ai, guid, row, ob, now, false);
     }
@@ -3518,6 +3558,8 @@ void Autopilot_LoadConfig()
     c.foregroundRange         = sConfigMgr->GetOption<float>("OllamaChat.Autopilot.ForegroundRange", 100.0f);
     c.planTimeoutSeconds      = std::max<uint32_t>(30, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlanTimeoutSeconds", 300));
     c.groups                  = sConfigMgr->GetOption<bool>("OllamaChat.Autopilot.Groups", true);
+    c.playerRequests          = std::min<uint32_t>(2, sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlayerRequests", 1));
+    c.obeySecurity            = sConfigMgr->GetOption<uint32_t>("OllamaChat.Autopilot.PlayerRequests.ObeySecurity", 0);
     c.promptTemplate          = sConfigMgr->GetOption<std::string>("OllamaChat.Autopilot.PromptTemplate", "");
 
     auto parseScope = [](const std::string& key, const char* fallback, Scope def)
@@ -3963,6 +4005,54 @@ void Autopilot_NoteWhisper(Player* from, Player* to, const std::string& text)
     ob->quickPlan = true;
 }
 
+int Autopilot_RequestMode(Player* bot, Player* player)
+{
+    if (!bot || !player || !Autopilot_IsActive() || !g_cfg.control || !g_cfg.llmEnable || g_cfg.playerRequests == 0)
+        return 0;
+    if (OllamaIsBotPlayer(player))
+        return 0;   // real players only: bots ask through their own planners
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        auto row = g_rows.find(bot->GetGUID().GetRawValue());
+        if (row == g_rows.end() || !row->second.enrolled)
+            return 0;
+    }
+    if (g_cfg.playerRequests >= 2 && player->GetSession() &&
+        uint32_t(player->GetSession()->GetSecurity()) >= g_cfg.obeySecurity)
+        return 2;
+    return 1;
+}
+
+void Autopilot_NotePlayerRequest(uint64_t botGuid, uint64_t playerGuid, const std::string& what,
+                                 const std::string& words)
+{
+    Player* player = ObjectAccessor::FindConnectedPlayer(ObjectGuid(playerGuid));
+    Player* bot    = ObjectAccessor::FindConnectedPlayer(ObjectGuid(botGuid));
+    if (!player || !bot || what.empty())
+        return;
+    const int mode = Autopilot_RequestMode(bot, player);
+    if (mode == 0)
+        return;
+
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    auto on = g_online.find(botGuid);
+    if (on == g_online.end())
+        return;
+    Online& ob = on->second;
+    Online::Request r;
+    r.who   = player->GetName();
+    r.words = Utf8Truncate(words, 200);
+    r.what  = Utf8Truncate(what, 160);
+    r.id    = ++ob.requestIds;
+    r.at    = Progress_Now();
+    r.obey  = mode == 2;
+    ob.requests.push_back(std::move(r));
+    while (ob.requests.size() > 3)
+        ob.requests.pop_front();
+    ob.requestPending = true;
+    RecordEvent(botGuid, "request", SafeFormat("{} asked them: {}", player->GetName(), Utf8Truncate(what, 160)));
+}
+
 std::string Autopilot_ChatContext(Player* bot)
 {
     if (!bot || !Autopilot_IsActive())
@@ -4013,6 +4103,9 @@ std::string Autopilot_ChatContext(Player* bot)
                 ++count;
             }
     line(quests.empty() ? std::string("Your quest log: empty") : "Your quests: " + quests);
+    // What is lying around, so "go pick that" and "what is that?" make sense.
+    if (const std::string around = AutopilotCommands_DescribeSurroundings(bot, true); !around.empty())
+        line("Around you: " + around);
 
     if (Group* group = bot->GetGroup())
     {

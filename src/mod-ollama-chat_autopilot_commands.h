@@ -128,7 +128,7 @@ AutopilotErrandUpdate AutopilotCommands_UpdateErrand(Player* bot, PlayerbotAI* a
 // bodies to loot or skin, gathering nodes and chests, fishing pools, crafting
 // stations. World thread.
 std::string AutopilotCommands_DescribeCraftable(Player* bot);
-std::string AutopilotCommands_DescribeSurroundings(Player* bot);
+std::string AutopilotCommands_DescribeSurroundings(Player* bot, bool forChat = false);
 
 // End an errand early (unenrolled, joined a group): stop the bot.
 // A quest hunt while the bot is under attack: drop the quest mark when

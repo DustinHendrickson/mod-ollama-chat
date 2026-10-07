@@ -352,6 +352,27 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   and queue length, up to five quests, the group. Framed as the bot's own
   plans, never as orders, so the chat model does not recite commands. It
   only reads (`find`, under `g_mutex`) and can run on the bot's map thread.
+- **Players can ask, the model decides** (`PlayerRequests`). For a direct
+  line from a real player to an enrolled bot (`Autopilot_RequestMode`), the
+  reply prompt asks the chat model to end with `[request: ...]` when the
+  player asks for something in the world. The worker takes the tag out
+  before `ProcessLlmResponse` (`TakeRequestTag`, strings only), and
+  delivery hands it to `Autopilot_NotePlayerRequest` on the world thread,
+  even if the spoken line is dropped. The request (who, their words, the
+  model's reading, obey or not) goes into the planner's concerns, and
+  `requestPending` lets a plan go out 10 s after the last, whatever the
+  tier (`requestPending` also makes a plan due). Requests carry ids; the
+  submit records the highest id its prompt showed (`requestsAsked`), and
+  only a usable plan pops up to it, so a request that lands mid-plan, or a
+  failed reply, loses nothing. Second-resolution timestamps lost requests.
+  The worker strips think blocks before reading the tag, removes every
+  request tag and its bracket variants (`TakeRequestTags`, again after
+  `ProcessLlmResponse`), and keeps a reply whose only content was the tag
+  as a completion with no text. The chat context's surroundings use the
+  plain variant (`DescribeSurroundings(bot, true)`): no strategy names. Code never turns a request into orders
+  itself: the planner does, and every order still goes through the deny
+  list. Obey (2) only changes the wording: carry it out ahead of their own
+  plans. `goto <player>` walks to where that player stands now.
 - **Bots at a dock or aboard are stepped every sweep** (`g_aboard`), outside
   the rotation: a ship docks for well under a minute.
 - **`g_mutex` in `autopilot.cpp` is recursive on purpose.** The sweep holds it

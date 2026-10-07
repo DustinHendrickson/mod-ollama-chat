@@ -139,6 +139,13 @@ Built in `BuildPromptContext` (`mod-ollama-chat_autopilot.cpp`):
   or more), nearest spawn on this continent first. The bot walks up to them
   and talks to them (playerbots' `talk to quest giver`: quests taken,
   finished ones handed in). Zone names win over people's.
+- **Requests from players.** A real player talks to the bot; the chat model
+  answers and tags what was asked (`[request: ...]`, never spoken). The
+  planner sees who asked, their words and the reading, is asked again within
+  seconds, and turns it into orders, or declines in character
+  (`PlayerRequests = 1`). With `PlayerRequests = 2`, accounts at or above
+  `ObeySecurity` are obeyed: the planner is told to carry it out first.
+  `goto <player>` exists for "come here".
 - **Groups.** `whisper <name> <text>`, `group invite <name>`, `group accept`,
   `group decline`, `group leave`, `group share <quest id>`. The prompt shows
   people nearby, the group with each member's quests (shared and missing),
