@@ -240,7 +240,10 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   bank included, and a bot handed that stub stood at the bank for good. So
   when it gets nowhere, a retry without the slope check is taken **only if**
   `AutopilotRoute_ClimbsOnlyWhereWet` passes: every step that fails the
-  core's own `PathGenerator::IsWalkableClimb` must touch water. An
+  core's own `PathGenerator::IsWalkableClimb` must touch water, or stand on
+  a model (more than 1 yd above `Map::GetGridHeight`, the bare terrain:
+  stairs, doorsteps, bridges; without that, bots could not climb the steps
+  into Northshire Abbey). An
   unchecked retry put bots back on mountainsides; the navmesh's
   `NAV_GROUND_STEEP` only marks the very steepest polygons.
 - **The walk waits for casts.** Playerbots never starts a spell with a cast
