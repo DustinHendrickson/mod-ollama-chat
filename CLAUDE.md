@@ -287,7 +287,12 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   shortened steps are snapped onto walkable ground first (`SnapToMesh`,
   Detour's `findNearestPoly` on the map's own query object, world thread),
   and `TileLoaded` tells the two failures apart. Without that, a bot inside
-  the Exodar never got a route out.
+  the Exodar never got a route out. Corridor corners keep the height
+  the navmesh gave them and are reached in 3D (`D3`): re-seated from the
+  walker's height, a corner on a spiral staircase dropped to the floor the
+  bot stood on (the climb to Brother Neals never happened), and in the open
+  one could land on a tree or arch above the road ("no walkable way"). A
+  walk up to someone (tight radius) arrives in 3D too.
 - **Travel** (`mod-ollama-chat_autopilot_travel.cpp`) plans legs and replans
   after every flight or crossing. Flights call `ActivateTaxiPathTo` directly
   with a path from TravelMgr's flight-master cache and `FindTaxiPath`. The

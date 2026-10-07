@@ -52,6 +52,12 @@ namespace
         return std::hypot(a.x - b.x, a.y - b.y);
     }
 
+    // With height: on a spiral staircase the next point is right above.
+    float D3(const AutopilotRoutePoint& a, const AutopilotRoutePoint& b)
+    {
+        return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+    }
+
     AutopilotRoutePoint At(Player* bot)
     {
         return { bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() };
@@ -443,11 +449,14 @@ namespace
         }
 
         const bool toDest = r.corner >= r.corridor.size();
-        // The destination keeps its own floor: seated from the walker's height,
-        // an NPC upstairs became the floor beneath them.
-        const AutopilotRoutePoint aim = toDest ? Reseat(bot->GetMap(), r.dest, r.dest.z)
-                                               : Reseat(bot->GetMap(), r.corridor[r.corner], r.cursor.z);
-        const float remaining = D2(r.cursor, aim);
+        // Every aim keeps its own height. Corridor corners come off the
+        // navmesh already on the ground; seated from the walker's height, a
+        // corner on a spiral staircase moved to the floor the bot was on (and
+        // the climb never happened), and in the open one could land on a tree
+        // or an arch above the road, where no walk reaches.
+        const AutopilotRoutePoint aim = toDest ? Reseat(bot->GetMap(), r.dest, r.dest.z) : r.corridor[r.corner];
+        // Reached in three dimensions: right below a corner is not at it.
+        const float remaining = D3(r.cursor, aim);
 
         if (remaining <= ARRIVAL)
         {
@@ -465,9 +474,9 @@ namespace
         if (r.reach < remaining)
         {
             const float t = r.reach / remaining;
+            const float z = r.cursor.z + (aim.z - r.cursor.z) * t;
             step = Reseat(bot->GetMap(), { r.cursor.x + (aim.x - r.cursor.x) * t,
-                                           r.cursor.y + (aim.y - r.cursor.y) * t,
-                                           r.cursor.z + (aim.z - r.cursor.z) * t }, r.cursor.z);
+                                           r.cursor.y + (aim.y - r.cursor.y) * t, z }, z);
             SnapToMesh(bot->GetMap(), step, 8.0f, 15.0f);   // a shortened step can land in a wall too
         }
 
@@ -569,7 +578,11 @@ void AutopilotRoute_Extend(Player* bot, AutopilotRoute& r)
                 // Smooth queries often get round what the straight query could not.
                 if (step == Step::Exhausted)
                 {
-                    r.corridor.push_back(r.goal);
+                    // A road anchor need not be on the mesh: put it there, as
+                    // corners are no longer re-seated from the walker's height.
+                    AutopilotRoutePoint goal = r.goal;
+                    SnapToMesh(bot->GetMap(), goal, 8.0f, 15.0f);
+                    r.corridor.push_back(goal);
                     r.corridorToDest = r.goalIsEnd;
                     step = Step::Progress;
                 }

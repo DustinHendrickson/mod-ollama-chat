@@ -528,7 +528,11 @@ namespace
         if (bot->GetMapId() != leg.to.map)
             return LegResult::Replan;
 
-        const float d = bot->GetExactDist2d(leg.to.x, leg.to.y);
+        // A walk up to someone (a tight radius) is done in three dimensions:
+        // at the foot of a tower, an NPC at the top is "right there" on the
+        // map and 28 yards up. Wide arrivals (a place, a zone) stay flat.
+        const float d = leg.radius <= kTouch + 2.0f ? bot->GetExactDist(leg.to.x, leg.to.y, leg.to.z)
+                                                    : bot->GetExactDist2d(leg.to.x, leg.to.y);
         if (d <= leg.radius)
             return LegResult::Done;
 
