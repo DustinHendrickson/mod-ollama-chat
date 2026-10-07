@@ -22,7 +22,8 @@
 --
 -- The worldserver also checks these tables at startup and repairs them to
 -- this layout (mod-ollama-chat_autopilot_schema.cpp: missing tables created,
--- missing columns added, columns from earlier drafts dropped), because the
+-- missing columns added, short VARCHARs widened; an unknown column is
+-- dropped only when NOT NULL with no default), because the
 -- updater never re-runs a CREATE TABLE IF NOT EXISTS against an existing
 -- table. Keep the two in step.
 

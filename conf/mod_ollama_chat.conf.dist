@@ -2165,7 +2165,7 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 #                      sells junk, learns every spell it can afford, makes the
 #                      inn its home or learns the flight point. A bank or
 #                      auction house is only walked to (`bank <item>` works
-#                      there; playerbots has no auction command)
+#                      at a bank; `ah look|sell|buy` at an auction house)
 #   goto zone <name>   any zone in the world. The bot walks, takes a flight
 #                      master when that saves real distance, and takes boats,
 #                      zeppelins and portals between continents.
@@ -2193,8 +2193,9 @@ OllamaChat.Autopilot.MaxEnrolled = 0
 #        Orders the LLM may never give, by leading words: "nc" denies every
 #        out-of-combat strategy change, "nc +pvp" only that one. The default
 #        blocks logging out, resets, destroying items, teleports, summons,
-#        mail, cheats, debug, raw actions (do / d), leaving the group,
-#        releasing the spirit, guild management and playerbots' own rpg
+#        mail, cheats, debug, raw actions (do / d), playerbots' own "leave"
+#        (autopilot's `group leave` is separate and allowed), releasing the
+#        spirit, guild management and playerbots' own rpg
 #        commands.
 #        Default: "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg"
 OllamaChat.Autopilot.DeniedCommands = "logout,reset,destroy,teleport,summon,cheat,debug,cdebug,wipe,sendmail,mail,hire,give leader,guild remove,guild demote,guild promote,guild leave,log,d,do,release,leave,rpg"
@@ -2202,7 +2203,7 @@ OllamaChat.Autopilot.DeniedCommands = "logout,reset,destroy,teleport,summon,chea
 #    OllamaChat.Autopilot.CommandReference
 #        What the LLM is told it can order. Empty = the built-in reference
 #        (the useful strategies, the autopilot orders above, and talents,
-#        autogear, s gray, repair, follow, stay). Use \n for new lines.
+#        s gray, repair, follow, stay; autogear is refused under NoHandouts). Use \n for new lines.
 #        Anything you list here must still pass DeniedCommands.
 #        Default: ""
 OllamaChat.Autopilot.CommandReference = ""
@@ -2428,13 +2429,18 @@ OllamaChat.Autopilot.Route.WaterCost = 20
 #   background  a real player is within BackgroundScope: at most every
 #               BackgroundIntervalMinutes
 #   dormant     otherwise: not asked; it keeps its last orders until someone
-#               comes near (a new bot keeps its playerbots defaults until then)
+#               comes near. A new bot with no orders yet keeps playerbots'
+#               defaults except its overhead controllers (rpg, new rpg,
+#               travel), which are off for every enrolled bot: it grinds and
+#               loots where it stands until it is first asked.
 # Every plan spends one token from a shared hourly budget, and planning is
 # refused while the shared request queue is more than half full, so chat
 # replies always come first. `.ollama autopilot preview` estimates demand.
 
 #    OllamaChat.Autopilot.Llm.Enable
-#        Ask the LLM at all. 0 = bots keep whatever they last had.
+#        Ask the LLM at all. 0 = bots keep whatever they last had (a bot that
+#        never had orders only grinds and loots where it stands), and
+#        playerbots handles group invites again.
 #        Default: 1
 OllamaChat.Autopilot.Llm.Enable = 1
 

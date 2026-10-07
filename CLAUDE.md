@@ -249,8 +249,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   Long routes (150 yd and up) are anchored on playerbots' road network: the
   three nearest travel nodes within 600 yd of each end (nodes are sparse in
   open country; 200 yd found none, so walks went straight over the hills),
-  `TravelNodeMap::getRoute(node, node)` under our own `try_to_lock` on
-  `m_nMapMtx`, followed up to the first link that isn't a walk.
+  `TravelNodeMap::getRoute(node, node, nullptr)` under our own `try_to_lock`
+  on `m_nMapMtx`, followed up to the first link that isn't a walk. Never
+  pass the bot: with one, every call allocates a hearthstone portal node.
   `AutopilotRoute::anchorNote` says why a route has no anchors, and the
   monitor's Travel page shows it. **Never call `getFullPath`**: it returns
   with the shared lock still held when it finds no route, and allocates a
@@ -319,7 +320,8 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   answer to the bot, asks the model again (at most every 2 minutes, so two
   bots cannot spin each other). `Classify`: a group the bot leads is its
   own (`leads`), real players in it or not; `withRealPlayer` means a human
-  leads; `follower` means another bot leads, and then the out-of-combat
+  leads (checked on the leader, not on any member); `follower` means
+  another bot leads, and then the out-of-combat
   engine is not restored to the solo baseline (it would drop follow) and
   `follow` is kept on. `group leave` is never blocked (a real player's
   group included); the prompt and the order reference discourage it unless
@@ -334,7 +336,9 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   hung the server. Hooks must keep to updating existing entries, never
   inserting or erasing, so the sweep's references stay valid.
 - **Orders run in the order the model gave them.** `RunCommands` starts the
-  first `goto`/`quest` and queues every later order except `nc`/`co` in
+  first errand (`goto`, `quest`, `craft`, `open`: `AutopilotCommands_IsErrand`)
+  and queues every later order except `nc`/`co` and the group and whisper
+  orders (those run at once) in
   `Online::errandQueue` (so "goto vendor, b vendor" buys at the vendor);
   `StepErrand` runs the next when a trip ends, and asks the model again only
   when the queue is empty. Running them all at once made each trip replace
@@ -381,7 +385,13 @@ Design: `docs/autopilot-plan.md`. Facts that are easy to get wrong:
   off and past the travelling hold. With none in sight, it walks to the next
   spawn of a needed creature at least 35 yd away. While anything else is
   attacking the bot, the mark is cleared so it fights back first: the mark
-  counts as an attacker, so it could otherwise pull the marked mob too. It ends when the
+  counts as an attacker, so it could otherwise pull the marked mob too.
+  That runs from `Control`'s combat branch
+  (`AutopilotCommands_HuntUnderAttack`), because `Hunt` itself never runs
+  in combat. Kill-credit objectives also hunt the creatures whose
+  `KillCredit` gives the required entry (`AutopilotWorld_CreditedBy`). A
+  target with no path to it goes into `unreachable` (creatures) or
+  `objectsGivenUp` (objects) for the rest of the hunt. It ends when the
   objective is done or after `QuestHuntMinutes`, and the target is cleared.
   Grind on its own takes the *nearest* mob; quest need only counts for its
   out-of-range picks while rpg is active, which autopilot turns off.
