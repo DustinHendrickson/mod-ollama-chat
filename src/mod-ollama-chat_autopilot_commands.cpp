@@ -745,7 +745,9 @@ bool AutopilotCommands_IsStrategyChange(const std::string& command)
 bool AutopilotCommands_IsErrand(const std::string& command)
 {
     const std::string c = Lower(Trim(command));
-    return StartsWithWord(c, "goto") || StartsWithWord(c, "quest");
+    // Everything that starts an errand: one replaces another, so they queue.
+    return StartsWithWord(c, "goto") || StartsWithWord(c, "quest") || StartsWithWord(c, "craft") ||
+           (StartsWithWord(c, "open") && c != "open items");
 }
 
 std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::string& raw,
@@ -762,7 +764,7 @@ std::string AutopilotCommands_Run(Player* bot, PlayerbotAI* ai, const std::strin
 
     // A new trip from the deck of a ship at sea, or from the sky, would start
     // walking from there. Finish the crossing first.
-    if ((StartsWithWord(lower, "goto") || StartsWithWord(lower, "quest")) &&
+    if (AutopilotCommands_IsErrand(lower) &&
         (bot->IsInFlight() || bot->GetTransport() ||
          (errand.active && AutopilotTravel_IsTimeCritical(errand.trip))))
         return "not now: " + (errand.active ? AutopilotTravel_Describe(bot, errand.trip)

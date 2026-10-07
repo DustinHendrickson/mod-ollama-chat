@@ -298,6 +298,7 @@ namespace
             bool        fromThem = false;
         };
         std::deque<Whisper>      whispers;
+        uint32_t                 whisperPlanAt = 0;   // a whisper may ask the model again from then
 
         // Recent history, for prompts without a DB round trip.
         bool                          historyRequested = false;
@@ -759,12 +760,13 @@ namespace
             // A group the bot leads stays its own, real players in it or not:
             // they joined it. Only someone else's lead takes it out of the
             // model's hands.
-            s.withRealPlayer = !leads && OllamaGroupHasRealPlayer(bot);
-            s.follower       = !leads && !s.withRealPlayer;
+            Player* leader   = leads ? bot : ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID());
+            const bool humanLeads = !leads && leader && !OllamaIsBotPlayer(leader);
+            s.withRealPlayer = humanLeads;
+            s.follower       = !leads && !humanLeads;
             s.leads          = leads && group->GetMembersCount() > 1;
-            if (!leads)
-                if (Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID()))
-                    s.leaderName = leader->GetName();
+            if (!leads && leader)
+                s.leaderName = leader->GetName();
         }
         return s;
     }
@@ -1003,7 +1005,8 @@ namespace
             if (AutopilotCommands_IsDenied(command))
                 result = "denied by the server";
             else if (!sit.CanUseCombat())
-                result = "not carried out (hands off in a player's group)";
+                result = sit.dead ? "not carried out (they are dead; give it again once they are alive)"
+                                  : "not carried out (hands off in a player's group)";
             else if (AutopilotGroup_IsOrder(command))
             {
                 // At once, never queued behind a trip: asking someone to group
@@ -1479,7 +1482,10 @@ namespace
         // An empty quest log with quests to take nearby: a player would go
         // and get them. Looked up at most every five minutes (it walks the
         // quest-starter table).
-        if (!kind && ready("quests"))
+        Group* group = bot->GetGroup();
+        const bool ownMover = !(bot->GetMap() && bot->GetMap()->Instanceable()) &&
+                              (!group || group->GetLeaderGUID() == bot->GetGUID());
+        if (!kind && ownMover && ready("quests"))
         {
             bool empty = true;
             for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE && empty; ++slot)
@@ -1923,7 +1929,9 @@ namespace
             return false;
 
         ob.tier = ComputeTier(bot);
-        if (ob.tier == Tier::Dormant && !force)
+        // A waiting invite needs an answer whoever is around.
+        const bool invited = g_cfg.groups && bot->GetGroupInvite();
+        if (ob.tier == Tier::Dormant && !force && !invited)
             return false;
 
         // The tier's interval is a minimum gap between plans for one bot; the
@@ -1933,7 +1941,11 @@ namespace
         const uint32_t sinceLast = row.lastPlanAt ? now - row.lastPlanAt : UINT32_MAX;
         const uint32_t gap = (ob.tier == Tier::Foreground ? g_cfg.decisionIntervalMinutes
                                                           : g_cfg.backgroundMinutes) * 60;
-        const bool allowed = force || sinceLast >= gap || (ob.urgentPlan && sinceLast >= kUrgentGapSeconds) ||
+        // Near a player (foreground), the model's own `minutes` is honoured;
+        // further away the tier's interval is the floor, to spare the budget.
+        const bool asked = ob.tier == Tier::Foreground && row.planUntil && now >= row.planUntil &&
+                           sinceLast >= kUrgentGapSeconds;
+        const bool allowed = force || sinceLast >= gap || asked || ((ob.urgentPlan || invited) && sinceLast >= kUrgentGapSeconds) ||
                              (ob.quickPlan && sinceLast >= g_cfg.quickReplanSeconds);
         if (!allowed)
             return false;
@@ -2027,6 +2039,7 @@ namespace
         }
 
         // Goal: resolved against the live bot so progress can be measured.
+        std::string goalRefused;
         if (bot && !d.goalKind.empty())
         {
             AutopilotGoal goal;
@@ -2035,6 +2048,8 @@ namespace
             {
                 if (g_cfg.debug)
                     LOG_INFO("module.ollamachat", "[Ollama Chat] Autopilot: goal for {} not taken: {}", name, why);
+                goalRefused = "goal " + d.goalKind + (d.goalTarget.empty() ? "" : " " + d.goalTarget) +
+                              " -> not taken: " + why;
             }
             else if (goal.kind == row.goal.kind && Lower(goal.target) == Lower(row.goal.target) &&
                      (goal.kind == GoalKind::EarnGold || goal.value == row.goal.value))
@@ -2068,17 +2083,21 @@ namespace
         std::vector<std::string> results;
         if (ob && bot && ai && g_cfg.control)
         {
-            results = RunCommands(bot, ai, row, *ob, d.commands, Classify(bot), now);
+            const Situation sit = Classify(bot);
+            results = RunCommands(bot, ai, row, *ob, d.commands, sit, now);
 
             // An order failed and the bot has no trip: it would stand there
             // until the plan's minutes run out. Let the model try something
-            // else soon (it sees what failed in the results).
-            if (!ob->errand.active &&
+            // else soon (it sees what failed in the results). Not for orders
+            // the situation refused (a follower, a dungeon, dead): asking
+            // again would only be refused again, once a minute.
+            if (!ob->errand.active && sit.CanUseNonCombat() &&
                 std::any_of(results.begin(), results.end(), [](const std::string& r)
                 {
                     const size_t arrow = r.find(" -> ");
                     const std::string what = arrow == std::string::npos ? r : r.substr(arrow + 4);
-                    return what.rfind("done", 0) != 0 && what != "sent" && what.rfind("on the way", 0) != 0;
+                    return what.rfind("done", 0) != 0 && what != "sent" && what.rfind("on the way", 0) != 0 &&
+                           what.rfind("queued", 0) != 0 && what.rfind("not carried out", 0) != 0;
                 }))
                 ob->quickPlan = true;
         }
@@ -2087,6 +2106,13 @@ namespace
             for (const std::string& c : d.commands)
                 results.push_back(c + " -> not carried out (" + (g_cfg.control ? "offline" : "control is off") + ")");
             row.lastResults = results;
+        }
+        // A goal it gave that was not taken: say so, or it repeats it.
+        if (!goalRefused.empty())
+        {
+            results.push_back(goalRefused);
+            row.lastResults = results;
+            row.dirty       = true;
         }
 
         std::string orders;
@@ -2908,6 +2934,7 @@ namespace
             WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT, 5);
             *packet << id << accept;
             bot->GetSession()->QueuePacket(packet);
+            std::lock_guard<std::recursive_mutex> lock(g_mutex);   // RecordEvent's rule
             RecordEvent(guid, "dungeon", accept ? "accepted a dungeon finder group"
                                                 : "declined a dungeon finder group (in a fight or dead)");
         }
@@ -3833,10 +3860,11 @@ void Autopilot_NoteWhisper(Player* from, Player* to, const std::string& text)
             asked = true;
     if (!about && !asked)
         return;
-    uint32_t& next = ob->alertCooldown["whisper"];
-    if (now < next)
+    // A plain field, not an alertCooldown key: this can run on a map thread,
+    // which must never insert into module maps.
+    if (now < ob->whisperPlanAt)
         return;
-    next = now + 120;
+    ob->whisperPlanAt = now + 120;
     ob->quickPlan = true;
 }
 

@@ -131,6 +131,9 @@ extern std::string g_ChatExtraInfoTemplate;
 // Personality and Prompt Data
 // --------------------------------------------
 extern std::unordered_map<uint64_t, std::string> g_BotPersonalityList;
+// Guards g_BotPersonalityList: GetBotPersonality runs on map threads (kill,
+// loot and level events), several at once.
+extern std::mutex g_BotPersonalityMutex;
 extern std::unordered_map<std::string, std::string> g_PersonalityPrompts;
 extern std::vector<std::string> g_PersonalityKeys;
 extern std::vector<std::string> g_PersonalityKeysRandomOnly; // Personalities that can be randomly assigned

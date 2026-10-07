@@ -293,6 +293,7 @@ std::string g_ChatExtraInfoTemplate;
 // Personality and Prompt Data
 // --------------------------------------------
 std::unordered_map<uint64_t, std::string> g_BotPersonalityList;
+std::mutex g_BotPersonalityMutex;
 std::unordered_map<std::string, std::string> g_PersonalityPrompts;
 std::vector<std::string> g_PersonalityKeys;
 std::vector<std::string> g_PersonalityKeysRandomOnly;
@@ -512,6 +513,7 @@ void LoadBotPersonalityList()
     {
         uint64_t personalityBotGUID = result->Fetch()[0].Get<uint64_t>();
         std::string personalityKey = result->Fetch()[1].Get<std::string>();
+        std::lock_guard<std::mutex> lock(g_BotPersonalityMutex);
         g_BotPersonalityList[personalityBotGUID] = personalityKey;
     } while (result->NextRow());
 }

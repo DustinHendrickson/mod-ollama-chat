@@ -201,8 +201,12 @@ namespace
         const uint32_t now  = Progress_Now();
 
         Head(out, "Chat");
-        auto pers = g_BotPersonalityList.find(guid);   // read only: GetBotPersonality would assign one
-        const std::string personality = pers == g_BotPersonalityList.end() ? std::string() : pers->second;
+        std::string personality;   // read only: GetBotPersonality would assign one
+        {
+            std::lock_guard<std::mutex> lock(g_BotPersonalityMutex);
+            if (auto pers = g_BotPersonalityList.find(guid); pers != g_BotPersonalityList.end())
+                personality = pers->second;
+        }
         Kv(out, "personality", personality.empty() ? std::string("none assigned yet") : personality);
         if (!personality.empty())
             if (auto p = g_PersonalityPrompts.find(personality); p != g_PersonalityPrompts.end())
@@ -731,7 +735,14 @@ void OllamaMonitorScript::OnPlayerLogout(Player* player)
     for (uint64_t watcherGuid : watchers)
     {
         Player* watcher = ObjectAccessor::FindConnectedPlayer(ObjectGuid(watcherGuid));
-        if (watcher && watcher->IsInWorld() && watcher->GetGuidValue(PLAYER_FARSIGHT) == player->GetGUID())
+        if (!watcher || !watcher->IsInWorld() || watcher->GetGuidValue(PLAYER_FARSIGHT) != player->GetGUID())
+            continue;
+        // A bot can log out from its own map thread (playerbots' logout):
+        // only a watcher on that map may be touched from here; one elsewhere
+        // is released on the world thread.
+        if (watcher->GetMap() == player->GetMap())
             watcher->SetViewpoint(player, false);
+        else
+            ReleaseView(watcher, false);
     }
 }

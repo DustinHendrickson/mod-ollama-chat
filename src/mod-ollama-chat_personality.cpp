@@ -6,77 +6,61 @@
 #include "DatabaseEnv.h"
 #include <random>
 #include <vector>
+#include <atomic>
+#include <mutex>
 
-// Internal personality map
+// Internal personality map. Runs on map threads (kill, loot and level events)
+// as well as the world thread, so the shared map is only touched under
+// g_BotPersonalityMutex.
 std::string GetBotPersonality(Player* bot)
 {
-    uint64_t botGuid = bot->GetGUID().GetRawValue();
-
-    // If personality already assigned, return it (but only if RP personalities are enabled)
-    auto it = g_BotPersonalityList.find(botGuid);
-    if (it != g_BotPersonalityList.end())
+    const uint64_t botGuid = bot->GetGUID().GetRawValue();
+    std::string chosenPersonality;
     {
-        // If RP personalities are disabled, reset to default
-        if (!g_EnableRPPersonalities)
+        std::lock_guard<std::mutex> lock(g_BotPersonalityMutex);
+
+        auto it = g_BotPersonalityList.find(botGuid);
+        if (!g_EnableRPPersonalities || g_PersonalityKeysRandomOnly.empty())
         {
-            g_BotPersonalityList[botGuid] = "default";
+            // RP personalities disabled or config not loaded
+            if (it == g_BotPersonalityList.end())
+                g_BotPersonalityList.emplace(botGuid, "default");
+            else
+                it->second = "default";
             return "default";
         }
-        if(g_DebugEnabled)
+        if (it != g_BotPersonalityList.end())
         {
-            LOG_INFO("module.ollamachat", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second, bot->GetName());
-        }
-        return it->second;
-    }
-
-    // RP personalities disabled or config not loaded
-    if (!g_EnableRPPersonalities || g_PersonalityKeysRandomOnly.empty())
-    {
-        g_BotPersonalityList[botGuid] = "default";
-        return "default";
-    }
-
-    // Try to load from database if you have persistence
-    if (g_BotPersonalityList.find(botGuid) != g_BotPersonalityList.end())
-    {
-        // DB stores string keys now
-        std::string dbPersonality = g_BotPersonalityList[botGuid];
-
-        if (dbPersonality.empty())
-        {
-            dbPersonality = "default";
+            if (it->second.empty())
+                it->second = "default";
+            if (g_DebugEnabled)
+                LOG_INFO("module.ollamachat", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second,
+                         bot->GetName());
+            return it->second;
         }
 
-        g_BotPersonalityList[botGuid] = dbPersonality;
-
-        if(g_DebugEnabled)
-        {
-            LOG_INFO("module.ollamachat", "[Ollama Chat] Using database personality '{}' for bot {}", dbPersonality, bot->GetName());
-        }
-        return dbPersonality;
+        // Otherwise, assign randomly from config (only from non-manual personalities)
+        const uint32 newIdx = urand(0, g_PersonalityKeysRandomOnly.size() - 1);
+        chosenPersonality   = g_PersonalityKeysRandomOnly[newIdx];
+        g_BotPersonalityList.emplace(botGuid, chosenPersonality);
     }
 
-    // Otherwise, assign randomly from config (only from non-manual personalities)
-    uint32 newIdx = urand(0, g_PersonalityKeysRandomOnly.size() - 1);
-    std::string chosenPersonality = g_PersonalityKeysRandomOnly[newIdx];
-    g_BotPersonalityList[botGuid] = chosenPersonality;
-
-    // Save to database if schema supports string (recommend TEXT or VARCHAR column for personality)
-    QueryResult tableExists = CharacterDatabase.Query(
-        "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
-    if (!tableExists)
+    // Saved if the table exists. Checked once: the lookup is a synchronous
+    // query, and this can run on a map thread.
+    static std::atomic<int> tableState{ 0 };   // 0 unknown, 1 present, 2 missing
+    if (tableState.load() == 0)
     {
-        LOG_INFO("module.ollamachat", "[Ollama Chat] Please source the required database table first");
+        QueryResult tableExists = CharacterDatabase.Query(
+            "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
+        tableState.store(tableExists ? 1 : 2);
+        if (!tableExists)
+            LOG_INFO("module.ollamachat", "[Ollama Chat] Please source the required database table first");
     }
-    else
-    {
+    if (tableState.load() == 1)
         CharacterDatabase.Execute("INSERT INTO mod_ollama_chat_personality (guid, personality) VALUES ({}, '{}')", botGuid, chosenPersonality);
-    }
 
-    if(g_DebugEnabled)
-    {
+    if (g_DebugEnabled)
         LOG_INFO("module.ollamachat", "[Ollama Chat] Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());
-    }
     return chosenPersonality;
 }
 

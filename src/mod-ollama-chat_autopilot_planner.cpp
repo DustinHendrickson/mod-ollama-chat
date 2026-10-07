@@ -56,7 +56,8 @@ namespace
         "with grind on. Orders that go somewhere run one after another, each to the end, then you are asked "
         "again. Strategies stay as they are unless you change them, so make sure what is on fits what they "
         "should be doing. Send [] to carry on as they are.\n"
-        "- minutes: how long before you look again (5 to 180). Short while running an errand or when things "
+        "- minutes: how long before you look again (5 to 180; with nobody near them it can be longer). Short "
+        "while running an errand or when things "
         "are changing; long when they are settled into something.\n"
         "- goal: keep the current goal unless it is done, stalled or no longer fits them; omit to keep it. "
         "text is the aim in one sentence, phrased the way this character thinks.\n"
@@ -193,12 +194,9 @@ namespace
 
     // The first balanced {...}, honouring strings and escapes -- unlike plain
     // brace counting, a "}" inside a reason does not end the object early.
-    std::string ExtractObject(const std::string& text)
+    // The balanced {...} that starts at `start`, or "" when it never closes.
+    std::string ExtractObject(const std::string& text, size_t start)
     {
-        const size_t start = text.find('{');
-        if (start == std::string::npos)
-            return "";
-
         int  depth    = 0;
         bool inString = false;
         bool escaped  = false;
@@ -476,17 +474,28 @@ AutopilotDecision AutopilotPlanner_Parse(uint64_t botGuid, const std::string& re
     AutopilotDecision d;
     d.botGuid = botGuid;
 
-    const std::string object = ExtractObject(reply);
-    if (object.empty())
+    // The first {...} that parses: models put a brace in a preamble or in
+    // their reasoning before the answer now and then.
+    nlohmann::json json;
+    bool sawObject = false, parsed = false;
+    size_t tries = 0;
+    for (size_t from = reply.find('{'); from != std::string::npos && tries < 16;
+         from = reply.find('{', from + 1), ++tries)
     {
-        d.error = "no JSON object in reply";
-        return d;
+        const std::string object = ExtractObject(reply, from);
+        if (object.empty())
+            continue;
+        sawObject = true;
+        json = nlohmann::json::parse(object, nullptr, /*allow_exceptions*/ false);
+        if (!json.is_discarded() && json.is_object())
+        {
+            parsed = true;
+            break;
+        }
     }
-
-    nlohmann::json json = nlohmann::json::parse(object, nullptr, /*allow_exceptions*/ false);
-    if (json.is_discarded() || !json.is_object())
+    if (!parsed)
     {
-        d.error = "reply is not valid JSON";
+        d.error = sawObject ? "reply is not valid JSON" : "no JSON object in reply";
         return d;
     }
 
