@@ -673,6 +673,10 @@ off for the session if the provider rejects it.
 
 ## Autopilot (LLM-driven bots)
 
+<p align="center">
+  <img src="./autopilot.png" alt="Ollama Autopilot" title="Ollama Autopilot" width="400">
+</p>
+
 > [!WARNING]
 > Experimental and off by default. Try it on a few bots first.
 
