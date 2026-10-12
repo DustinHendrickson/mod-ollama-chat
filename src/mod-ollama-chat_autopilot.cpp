@@ -1978,7 +1978,7 @@ namespace
             std::string specs;
             for (int specNo = 0; specNo < MAX_SPECNO; ++specNo)
             {
-                const std::string& name = sPlayerbotAIConfig.premadeSpecName[bot->getClass()][specNo];
+                const std::string& name = sPlayerbotAIConfig.PremadeSpecName[bot->getClass()][specNo];
                 if (name.empty())
                     break;
                 specs += (specs.empty() ? "" : ", ") + name;
@@ -3617,7 +3617,7 @@ void Autopilot_LoadConfig()
 
     // With NoHandouts the whole level-up maintenance, its teleport included,
     // is dropped for enrolled bots by the marker strategy.
-    if (g_cfg.enable && g_cfg.noTeleport && !g_cfg.noHandouts && sPlayerbotAIConfig.autoTeleportForLevel)
+    if (g_cfg.enable && g_cfg.noTeleport && !g_cfg.noHandouts && sPlayerbotAIConfig.AutoTeleportForLevel)
         LOG_WARN("module.ollamachat",
                  "[Ollama Chat] AiPlayerbot.AutoTeleportForLevel is on: playerbots will still teleport "
                  "autopilot bots on level-up. Set it to 0 for OllamaChat.Autopilot.NoTeleport to cover them.");

@@ -804,7 +804,7 @@ bool AutopilotCommands_IsDenied(const std::string& command)
     // and strips "#w " / "#p " style prefixes before running them, so either
     // would slip a denied command past a leading-words check ("stay\reset").
     // One order is one command.
-    const std::string& sep = sPlayerbotAIConfig.commandSeparator;
+    const std::string& sep = sPlayerbotAIConfig.CommandSeparator;
     // "@tank reset", "@20 logout": playerbots' chat filters are stripped
     // before the command runs, so they too would slip past the check.
     if ((!sep.empty() && c.find(sep) != std::string::npos) || (!c.empty() && (c[0] == '#' || c[0] == '@')))
