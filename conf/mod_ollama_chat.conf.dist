@@ -1173,6 +1173,36 @@ OllamaChat.RateLimitRetries = 2
 #        Default: 15
 OllamaChat.RateLimitMaxWaitSeconds = 15
 
+#    OllamaChat.Guard.Enable
+#        Check what real players type before it reaches a prompt. Emails,
+#        phone numbers, SSNs, card numbers and API keys are replaced with a
+#        placeholder such as [EMAIL] in the copy the bots see (prompt,
+#        conversation history, sentiment), so they are never sent to the
+#        provider. Lines that score as a prompt-injection attempt ("ignore
+#        previous instructions", "you are now", "system prompt", ...) are
+#        not answered. What other players see in chat is never changed.
+#        Default: 1
+OllamaChat.Guard.Enable = 1
+
+#    OllamaChat.Cache.Enable
+#        Reuse the reply to a byte-identical prompt instead of making another
+#        LLM call. Most useful on busy servers with a hosted, billed provider,
+#        where the same sentiment or event prompt can come up more than once.
+#        Identical prompts get identical replies while cached. The cache is
+#        emptied on .ollama reload.
+#        Default: 0
+OllamaChat.Cache.Enable = 0
+
+#    OllamaChat.Cache.MaxEntries
+#        Replies kept; the least recently used is dropped beyond this.
+#        Default: 512
+OllamaChat.Cache.MaxEntries = 512
+
+#    OllamaChat.Cache.TtlSeconds
+#        How long a cached reply stays valid. 0 = until evicted or reloaded.
+#        Default: 300
+OllamaChat.Cache.TtlSeconds = 300
+
 #    OllamaChat.TypingSimulationMaxDelay
 #        Ceiling on the simulated typing delay, in milliseconds. Without a cap
 #        a long reply could be held back for a very long time.

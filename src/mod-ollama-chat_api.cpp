@@ -6,10 +6,14 @@
 
 #include "Log.h"
 
+#define LLM_CACHE_IMPLEMENTATION
+#include "llm/llm_cache.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <mutex>
 #include <sstream>
@@ -23,6 +27,24 @@ namespace
 
     std::mutex             g_settingsMutex;
     OllamaEndpointSettings g_settings;
+
+    // OllamaChat.Cache.*: replies to byte-identical prompts. Rebuilt on every
+    // publish (startup and .ollama reload) under g_settingsMutex, so a model,
+    // provider or prompt-template change never serves a stale reply. Null
+    // when the cache is disabled. Workers hold a shared_ptr copy, so a reload
+    // never frees the cache underneath a request in flight.
+    std::shared_ptr<llm::ResponseCache> g_responseCache;
+
+    std::shared_ptr<llm::ResponseCache> AcquireResponseCache()
+    {
+        std::lock_guard<std::mutex> lock(g_settingsMutex);
+        return g_responseCache;
+    }
+
+    std::string ResponseCacheKey(OllamaRequestKind kind, const std::string& prompt)
+    {
+        return llm::prompt_hash(std::to_string(static_cast<int>(kind)) + '\n' + prompt);
+    }
 
     // Per-session self-heals for OpenAI-format endpoints, learned from one
     // HTTP 400 each and remembered so the next request does not repeat it:
@@ -575,8 +597,19 @@ void OllamaConfig_Publish()
     g_authFailureLogged.store(false);
     g_rateLimitLogged.store(false);
 
+    std::shared_ptr<llm::ResponseCache> cache;
+    if (g_CacheEnable && g_CacheMaxEntries > 0)
+    {
+        llm::CacheConfig cacheCfg;
+        cacheCfg.max_entries    = g_CacheMaxEntries;
+        cacheCfg.ttl_seconds    = static_cast<double>(g_CacheTtlSeconds);
+        cacheCfg.case_sensitive = true;
+        cache = std::make_shared<llm::ResponseCache>(cacheCfg);
+    }
+
     std::lock_guard<std::mutex> lock(g_settingsMutex);
-    g_settings = std::move(next);
+    g_settings      = std::move(next);
+    g_responseCache = std::move(cache);
 }
 
 OllamaEndpointSettings OllamaConfig_Snapshot()
@@ -635,6 +668,25 @@ OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
     }
 
     const OllamaEndpointSettings cfg = OllamaConfig_Snapshot();
+
+    // A byte-identical prompt already answered: hand back that reply without
+    // another round trip. Latency is not noted, so a hit cannot skew the
+    // think-latency guard.
+    const std::shared_ptr<llm::ResponseCache> cache = AcquireResponseCache();
+    const std::string cacheKey = cache ? ResponseCacheKey(kind, prompt) : std::string();
+    if (cache)
+    {
+        if (std::optional<std::string> cached = cache->get(cacheKey))
+        {
+            result.ok     = true;
+            result.status = 200;
+            result.text   = std::move(*cached);
+            if (g_DebugEnabled)
+                LOG_INFO("module.ollamachat",
+                         "[Ollama Chat] Cache hit, {} chars (no request sent).", result.text.size());
+            return result;
+        }
+    }
 
     // One place decides what the "think" field should be: policy for this
     // request kind, plus everything learned about this model so far.
@@ -776,6 +828,9 @@ OllamaApiResult QueryOllama(const std::string& prompt, OllamaRequestKind kind)
 
     if (result.ok)
         OllamaCapability_NoteLatency(result.latencyMs, result.thinkUsed);
+
+    if (cache && result.ok && !result.text.empty())
+        cache->put(cacheKey, result.text);
 
     if (!result.ok)
     {

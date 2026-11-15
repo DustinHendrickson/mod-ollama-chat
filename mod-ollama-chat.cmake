@@ -40,6 +40,9 @@ if(TARGET modules)
     
     # Include cpp-httplib library (header-only)
     target_include_directories(modules PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
+
+    # Bundled single-header llm-guard / llm-cache (deps/llm, MIT)
+    target_include_directories(modules PRIVATE ${CMAKE_CURRENT_LIST_DIR}/deps)
     
     # Enable SSL/TLS support for HTTPS connections
     find_package(OpenSSL QUIET)
