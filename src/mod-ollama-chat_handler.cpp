@@ -35,6 +35,7 @@
 #include "mod-ollama-chat_rag.h"
 #include "mod-ollama-chat_dispatch.h"
 #include "mod-ollama-chat_governor.h"
+#include "mod-ollama-chat_guard.h"
 #include "mod-ollama-chat_response.h"
 #include "mod-ollama-chat_capability.h"
 #include "mod-ollama-chat_expression.h"
@@ -1175,6 +1176,29 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     PlayerbotAI* senderAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
     bool senderIsBot = (senderAI && senderAI->IsBotAI());
 
+    // What a real player typed is checked before it reaches any prompt: PII
+    // is replaced in the copy the bots see, and an injection attempt gets no
+    // reply. `msg` itself is what everyone else sees and is left alone. Bot
+    // lines are the module's own output and pass through unchanged.
+    std::string promptMsg = msg;
+    if (!senderIsBot)
+    {
+        OllamaGuardedText guarded = OllamaGuard_PlayerMessage(msg);
+        if (guarded.blocked)
+        {
+            if (g_DebugEnabled)
+                LOG_INFO("module.ollamachat",
+                         "[Ollama Chat] Message from {} scored {:.2f} as prompt injection. "
+                         "Skipping bot responses.", player->GetName(), guarded.injectionScore);
+            return;
+        }
+        if (guarded.piiRedacted > 0 && g_DebugEnabled)
+            LOG_INFO("module.ollamachat",
+                     "[Ollama Chat] Redacted {} PII span(s) from {}'s message before prompting.",
+                     guarded.piiRedacted, player->GetName());
+        promptMsg = std::move(guarded.text);
+    }
+
     // --- conversation governor -------------------------------------------
     // One key per conversation space so cooldowns, rate limits and repetition
     // history are tracked per channel rather than globally.
@@ -1741,7 +1765,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
             continue;
         }
 
-        std::string prompt = GenerateBotPrompt(bot, msg, player);
+        std::string prompt = GenerateBotPrompt(bot, promptMsg, player);
         if (prompt.empty())
             continue;
 
@@ -1756,7 +1780,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         request.scopeKey    = scopeKey;
         request.prompt      = std::move(prompt);
         request.botName     = bot->GetName();
-        request.originMessage = msg;
+        request.originMessage = promptMsg;
         request.kind = (g_RoleplayEnable && g_RoleplayStrictness >= 1)
                            ? OllamaRequestKind::RoleplayReply
                            : OllamaRequestKind::ChatReply;

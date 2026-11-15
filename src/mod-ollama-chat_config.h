@@ -191,6 +191,14 @@ extern uint32_t g_DispatchWorkerThreads;
 extern uint32_t g_MaxQueueDepth;
 
 // --------------------------------------------
+// Input guard / response cache
+// --------------------------------------------
+extern bool     g_GuardEnable;           // scrub PII, skip prompt-injection lines
+extern bool     g_CacheEnable;           // reuse replies to identical prompts
+extern uint32_t g_CacheMaxEntries;
+extern uint32_t g_CacheTtlSeconds;
+
+// --------------------------------------------
 // Response post-processing
 // --------------------------------------------
 extern uint32_t g_MaxReplyLength;

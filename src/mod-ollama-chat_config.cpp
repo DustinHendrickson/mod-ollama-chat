@@ -148,6 +148,14 @@ uint32_t g_DispatchWorkerThreads  = 4;
 uint32_t g_MaxQueueDepth          = 64;
 
 // --------------------------------------------
+// Input guard / response cache
+// --------------------------------------------
+bool     g_GuardEnable            = true;
+bool     g_CacheEnable            = false;
+uint32_t g_CacheMaxEntries        = 512;
+uint32_t g_CacheTtlSeconds        = 300;
+
+// --------------------------------------------
 // Response post-processing
 // --------------------------------------------
 uint32_t g_MaxReplyLength                = 240;
@@ -790,6 +798,12 @@ void LoadOllamaChatConfig()
     g_DispatchWorkerThreads           = sConfigMgr->GetOption<uint32_t>("OllamaChat.WorkerThreads",
                                             g_MaxConcurrentQueries > 0 ? g_MaxConcurrentQueries : 4);
     g_MaxQueueDepth                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxQueueDepth", 64);
+
+    // --- Input guard / response cache -----------------------------------
+    g_GuardEnable                     = sConfigMgr->GetOption<bool>("OllamaChat.Guard.Enable", true);
+    g_CacheEnable                     = sConfigMgr->GetOption<bool>("OllamaChat.Cache.Enable", false);
+    g_CacheMaxEntries                 = sConfigMgr->GetOption<uint32_t>("OllamaChat.Cache.MaxEntries", 512);
+    g_CacheTtlSeconds                 = sConfigMgr->GetOption<uint32_t>("OllamaChat.Cache.TtlSeconds", 300);
 
     // --- Response pipeline ----------------------------------------------
     g_MaxReplyLength                  = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxReplyLength", 240);
