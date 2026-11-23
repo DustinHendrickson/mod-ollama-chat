@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+bridge-key
+host.json
+session.json
+session.lock
