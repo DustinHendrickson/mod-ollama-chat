@@ -215,6 +215,8 @@ endpoint), LM Studio, vLLM, llama.cpp server, and Ollama's own
 `/v1/chat/completions` route all accept it. `anthropic` is the native Claude
 Messages API. Claude is also reachable through OpenRouter using `openai`.
 
+For a self-hosted ChatGPT plan option, see the [Sign in with ChatGPT bridge](apps/chatgpt-bridge/README.md).
+
 ### Examples
 
 **OpenAI**
